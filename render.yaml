@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: investreport
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free                  # change to "starter" or higher for production
+    healthCheckPath: /healthz
+    envVars:
+      # ── Required ──────────────────────────────────────────────────────────
+      - key: GOOGLE_CREDENTIALS_JSON
+        sync: false             # set manually in Render dashboard (paste JSON)
+      - key: GOOGLE_DRIVE_FOLDER_ID
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      # ── Optional / defaults ───────────────────────────────────────────────
+      - key: ALLOWED_ORIGINS
+        value: ""               # leave blank; same-origin requests need no CORS
+      - key: DATABASE_URL
+        value: ""               # leave blank to use local SQLite (./investreport.db)
+      - key: VITE_GOOGLE_CLIENT_ID
+        sync: false             # build-time arg — set if you want Google login

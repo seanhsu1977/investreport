@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.env
+venv/
+.venv/
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+
+# Google credentials (NEVER commit this)
+credentials.json
+*.json.key
+
+# Node
+node_modules/
+frontend/dist/
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/

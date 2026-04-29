@@ -9,6 +9,7 @@ import AdminPage from "./pages/AdminPage";
 import RankingPage from "./pages/RankingPage";
 import SyncStatus from "./components/SyncStatus";
 import LoginButton from "./components/LoginButton";
+import PostMaterialsBar from "./components/PostMaterialsBar";
 import { AuthProvider } from "./contexts/AuthContext";
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID ?? "";
@@ -115,6 +116,7 @@ export default function App() {
               <Route path="/admin" element={<AdminPage />} />
             </Routes>
           </main>
+          <PostMaterialsBar />
         </div>
       </AuthProvider>
     </GoogleOAuthProvider>

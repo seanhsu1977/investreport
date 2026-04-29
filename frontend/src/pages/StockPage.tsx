@@ -6,6 +6,7 @@ import ShareButton from "../components/ShareButton";
 import { buildShareText, buildShareUrl } from "../utils/share";
 import { useAuth } from "../contexts/AuthContext";
 import StockLinkedText from "../components/StockLinkedText";
+import { usePostMaterials } from "../hooks/usePostMaterials";
 
 const REC_COLOR: Record<string, string> = {
   買進: "bg-green-500",
@@ -91,6 +92,9 @@ export default function StockPage() {
 
   type TabKey = "reports" | "news";
   const [tab, setTab] = useState<TabKey>("reports");
+
+  // 貼文素材選取（跨個股頁累積，僅 admin 顯示）
+  const materials = usePostMaterials();
 
   return (
     <div className="max-w-3xl mx-auto py-8 px-4 space-y-6">
@@ -280,7 +284,9 @@ export default function StockPage() {
                     </span>
                   </div>
                   {/* 報告內容 */}
-                  <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+                  <div className={`bg-white rounded-xl border p-4 shadow-sm transition ${
+                    materials.has(r.id) ? "border-blue-400 ring-2 ring-blue-100" : "border-gray-200"
+                  }`}>
                     {r.summary && (
                       <p className="text-sm text-gray-700 leading-relaxed mb-3">{r.summary}</p>
                     )}
@@ -294,9 +300,24 @@ export default function StockPage() {
                         ))}
                       </ul>
                     )}
-                    {r.source_filename && (
-                      <p className="mt-2 pt-2 border-t border-gray-100 text-xs text-gray-400 truncate">📄 {r.source_filename}</p>
-                    )}
+                    <div className="mt-2 pt-2 border-t border-gray-100 flex items-center gap-2">
+                      {r.source_filename && (
+                        <p className="text-xs text-gray-400 truncate flex-1">📄 {r.source_filename}</p>
+                      )}
+                      {user?.is_admin && (
+                        <label className={`ml-auto flex items-center gap-1.5 text-xs cursor-pointer select-none shrink-0 transition ${
+                          materials.has(r.id) ? "text-blue-600 font-medium" : "text-gray-500 hover:text-blue-600"
+                        }`}>
+                          <input
+                            type="checkbox"
+                            checked={materials.has(r.id)}
+                            onChange={() => materials.toggle(r.id)}
+                            className="accent-blue-500"
+                          />
+                          {materials.has(r.id) ? "已選為素材" : "選為貼文素材"}
+                        </label>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}

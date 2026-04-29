@@ -65,3 +65,12 @@ class Watchlist(Base):
     __table_args__ = (
         UniqueConstraint("user_id", "stock_code", name="uq_watchlist_user_stock"),
     )
+
+
+class Stock(Base):
+    """股票主檔（中文股名標準來源，從 nstock.tw 同步）"""
+    __tablename__ = "stocks"
+
+    code = Column(String, primary_key=True)
+    name = Column(String, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

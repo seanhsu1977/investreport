@@ -36,5 +36,5 @@ def get_db():
 
 
 def init_db():
-    from models import DriveFile, Report, Watchlist  # noqa: F401
+    from models import DriveFile, Report, Watchlist, FuturesChip, Stock  # noqa: F401
     Base.metadata.create_all(bind=engine)

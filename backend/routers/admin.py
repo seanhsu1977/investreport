@@ -6,8 +6,15 @@ from sqlalchemy import func
 from database import get_db
 from models import User, LoginSession
 from routers.auth import require_admin
+import stocks_master
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+
+@router.post("/stocks/refresh")
+def refresh_stock_names(db: Session = Depends(get_db), _=Depends(require_admin)):
+    """補抓 reports/watchlist 中尚未在 stocks 主檔的股號中文名（從 nstock）"""
+    return stocks_master.seed_stocks(db)
 
 
 @router.get("/users")

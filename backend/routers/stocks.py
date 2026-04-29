@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from models import Report
+from stocks_master import resolve_name
 
 router = APIRouter(prefix="/stocks", tags=["stocks"])
 
@@ -17,7 +18,7 @@ def _serialize_report(r: Report, include_mentioned: bool = False) -> dict:
     d = {
         "id": r.id,
         "stock_code": r.stock_code,
-        "stock_name": r.stock_name,
+        "stock_name": resolve_name(r.stock_code, r.stock_name),
         "recommendation": r.recommendation,
         "target_price": r.target_price,
         "analyst": r.analyst,
@@ -58,7 +59,7 @@ def list_stocks(db: Session = Depends(get_db)):
         )
         result.append({
             "stock_code": row.stock_code,
-            "stock_name": row.stock_name,
+            "stock_name": resolve_name(row.stock_code, row.stock_name),
             "report_count": row.report_count,
             "latest_at": row.latest_at,
             "latest_recommendation": latest.recommendation if latest else None,

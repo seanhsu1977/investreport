@@ -2,11 +2,13 @@ import json
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy import func, nullslast
 from sqlalchemy.orm import Session
 
 from database import get_db
 from models import Report, Watchlist
 from routers.auth import get_current_user, User
+from stocks_master import resolve_name
 
 router = APIRouter(prefix="/watchlist", tags=["watchlist"])
 
@@ -30,17 +32,21 @@ def get_watchlist(db: Session = Depends(get_db), user: User = Depends(get_curren
         latest = (
             db.query(Report)
             .filter(Report.stock_code == item.stock_code)
-            .order_by(Report.created_at.desc())
+            .order_by(
+                nullslast(Report.report_date.desc()),
+                Report.created_at.desc(),
+            )
             .first()
         )
+        canonical = resolve_name(item.stock_code, item.stock_name)
         result.append({
             "stock_code": item.stock_code,
-            "stock_name": item.stock_name,
+            "stock_name": canonical,
             "added_at": item.added_at,
             "latest_report": {
                 "id": latest.id,
                 "stock_code": latest.stock_code,
-                "stock_name": latest.stock_name,
+                "stock_name": resolve_name(latest.stock_code, latest.stock_name),
                 "recommendation": latest.recommendation,
                 "target_price": latest.target_price,
                 "analyst": latest.analyst,
@@ -69,6 +75,7 @@ def add_to_watchlist(body: WatchlistAdd, db: Session = Depends(get_db), user: Us
         report = db.query(Report).filter(Report.stock_code == body.stock_code).first()
         if report:
             stock_name = report.stock_name
+    stock_name = resolve_name(body.stock_code, stock_name)
 
     item = Watchlist(user_id=user.id, stock_code=body.stock_code, stock_name=stock_name)
     db.add(item)

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, Link, useNavigate, useLocation } from "react-router-dom";
-import { stocksApi, watchlistApi, type Report, type StockPrice } from "../api/client";
+import { stocksApi, watchlistApi, fundamentalsApi, type Report, type StockPrice, type FundamentalsResponse } from "../api/client";
 import RecommendationBadge from "../components/RecommendationBadge";
 import ShareButton from "../components/ShareButton";
 import { buildShareText, buildShareUrl } from "../utils/share";
@@ -34,6 +34,7 @@ export default function StockPage() {
   const [priceLoading, setPriceLoading] = useState(false);
   const [inWatchlist, setInWatchlist] = useState(false);
   const [watchlistLoading, setWatchlistLoading] = useState(false);
+  const [fundamentals, setFundamentals] = useState<FundamentalsResponse | null>(null);
 
   const fetchPrice = () => {
     if (!code) return;
@@ -51,6 +52,7 @@ export default function StockPage() {
       })
       .finally(() => setLoading(false));
     fetchPrice();
+    fundamentalsApi.get(code).then(setFundamentals).catch(() => {});
     if (user) {
       watchlistApi.get().then((list) => {
         setInWatchlist(list.some((item) => item.stock_code === code));
@@ -66,7 +68,7 @@ export default function StockPage() {
         await watchlistApi.remove(code);
         setInWatchlist(false);
       } else {
-        await watchlistApi.add(code, stockName);
+        await watchlistApi.add(code, stockName ?? undefined);
         setInWatchlist(true);
       }
     } finally {
@@ -129,87 +131,131 @@ export default function StockPage() {
 
       {/* 趨勢摘要卡片 */}
       {!loading && reports.length > 0 && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 space-y-4">
-          {/* 推薦趨勢 */}
-          {recTrend.length > 0 && (
-            <div>
-              <p className="text-xs text-gray-400 mb-2">推薦評等趨勢</p>
-              <div className="flex items-center gap-1 flex-wrap">
-                {recTrend.map((rec, i) => (
-                  <div key={i} className="flex items-center gap-1">
-                    <span
-                      className={`w-2.5 h-2.5 rounded-full ${REC_COLOR[rec!] ?? "bg-gray-300"}`}
-                    />
-                    <span className="text-sm text-gray-700">{rec}</span>
-                    {i < recTrend.length - 1 && (
-                      <span className="text-gray-300 mx-1">→</span>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* 目標價趨勢 */}
-          {priceTrend.length > 0 && (
-            <div>
-              <p className="text-xs text-gray-400 mb-2">目標價趨勢</p>
-              <div className="flex items-center gap-1 flex-wrap">
-                {priceTrend.map((price, i) => (
-                  <div key={i} className="flex items-center gap-1">
-                    <span className="text-sm font-semibold text-gray-800">{price}</span>
-                    {i < priceTrend.length - 1 && (
-                      <span className="text-gray-300 mx-1">→</span>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* 現價 vs 目標價 */}
-          {stockPrice?.price && (
-            <div>
-              <div className="flex items-center gap-2 mb-2">
-                <p className="text-xs text-gray-400">即時股價</p>
-                {stockPrice.date && <span className="text-xs text-gray-300">{stockPrice.date}</span>}
-                <button
-                  onClick={fetchPrice}
-                  disabled={priceLoading}
-                  className="ml-auto text-xs text-blue-500 hover:text-blue-700 disabled:opacity-40 transition"
-                >
-                  {priceLoading ? "更新中…" : "↻ 更新"}
-                </button>
-              </div>
-              <div className="flex items-center gap-3 flex-wrap">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 space-y-3">
+          {/* 第一行：即時股價 + 最新結論 */}
+          <div className="flex items-center gap-4 flex-wrap">
+            {stockPrice?.price ? (
+              <div className="flex items-center gap-2">
                 <span className="text-2xl font-bold text-gray-800">{stockPrice.price}</span>
                 {stockPrice.change !== null && (
                   <span className={`text-sm font-medium ${stockPrice.change >= 0 ? "text-red-500" : "text-green-600"}`}>
                     {stockPrice.change >= 0 ? "▲" : "▼"} {Math.abs(stockPrice.change)} ({stockPrice.change_pct?.toFixed(2)}%)
                   </span>
                 )}
+                <button onClick={fetchPrice} disabled={priceLoading}
+                  className="text-xs text-blue-400 hover:text-blue-600 disabled:opacity-40 transition">
+                  {priceLoading ? "…" : "↻ 更新"}
+                </button>
               </div>
+            ) : null}
+            {latest && (
+              <div className="flex items-center gap-2 flex-wrap">
+                <RecommendationBadge value={latest.recommendation} />
+                {latest.target_price && (
+                  <span className="text-sm text-gray-500">
+                    目標價 <span className="font-semibold text-gray-800">{latest.target_price}</span>
+                    {stockPrice?.price && (
+                      <span className={`ml-1 font-medium ${latest.target_price > stockPrice.price ? "text-red-500" : "text-green-600"}`}>
+                        ({latest.target_price > stockPrice.price ? "+" : ""}{((latest.target_price / stockPrice.price - 1) * 100).toFixed(1)}%)
+                      </span>
+                    )}
+                  </span>
+                )}
+                {latest.analyst && <span className="text-xs text-gray-400">{latest.analyst}</span>}
+              </div>
+            )}
+          </div>
+
+          {/* 第二行：趨勢（並排，最近 10 筆） */}
+          {(recTrend.length > 0 || priceTrend.length > 0) && (
+            <div className="pt-2 border-t border-gray-100 grid grid-cols-2 gap-3">
+              {recTrend.length > 0 && (
+                <div>
+                  <p className="text-xs text-gray-400 mb-1.5">評等趨勢</p>
+                  <div className="flex items-center gap-0.5 flex-wrap">
+                    {recTrend.slice(-10).map((rec, i, arr) => (
+                      <div key={i} className="flex items-center gap-0.5">
+                        <span className={`w-2 h-2 rounded-full ${REC_COLOR[rec!] ?? "bg-gray-300"}`} />
+                        <span className="text-xs text-gray-600">{rec}</span>
+                        {i < arr.length - 1 && <span className="text-gray-200 mx-0.5">→</span>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {priceTrend.length > 0 && (
+                <div>
+                  <p className="text-xs text-gray-400 mb-1.5">目標價趨勢</p>
+                  <div className="flex items-center gap-0.5 flex-wrap">
+                    {priceTrend.slice(-10).map((price, i, arr) => (
+                      <div key={i} className="flex items-center gap-0.5">
+                        <span className="text-xs font-medium text-gray-700">{price}</span>
+                        {i < arr.length - 1 && <span className="text-gray-200 mx-0.5">→</span>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
+        </div>
+      )}
 
-          {/* 最新結論 */}
-          {latest && (
-            <div className="pt-3 border-t border-gray-100 flex items-center gap-3">
-              <span className="text-xs text-gray-400">最新結論</span>
-              <RecommendationBadge value={latest.recommendation} />
-              {latest.target_price && (
-                <span className="text-sm text-gray-500">
-                  目標價 <span className="font-semibold text-gray-800">{latest.target_price}</span>
-                  {stockPrice?.price && (
-                    <span className={`ml-1 font-medium ${latest.target_price > stockPrice.price ? "text-red-500" : "text-green-600"}`}>
-                      ({latest.target_price > stockPrice.price ? "+" : ""}{((latest.target_price / stockPrice.price - 1) * 100).toFixed(1)}%)
-                    </span>
-                  )}
-                </span>
-              )}
-              {latest.analyst && (
-                <span className="text-xs text-gray-400">{latest.analyst}</span>
-              )}
+      {/* 基本面：月營收 + 法人買賣超 */}
+      {fundamentals && (fundamentals.revenue || fundamentals.institutional) && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 space-y-3">
+          {fundamentals.revenue && (() => {
+            const r = fundamentals.revenue!;
+            const fmtB = (v: number) => `${(v / 100000).toFixed(0)}億`;
+            const pctCls = (v: number | null) => v == null ? "" : v >= 0 ? "text-red-500" : "text-green-600";
+            const pctStr = (v: number | null) => v == null ? "—" : `${v >= 0 ? "+" : ""}${v.toFixed(1)}%`;
+            return (
+              <div>
+                <p className="text-xs text-gray-400 mb-1.5">月營收（{r.year}/{r.month}月）</p>
+                <div className="flex items-center gap-4 flex-wrap text-sm">
+                  <span className="font-semibold text-gray-800">{fmtB(r.revenue)}</span>
+                  <span className="text-gray-400">YoY <span className={`font-medium ${pctCls(r.yoy_pct)}`}>{pctStr(r.yoy_pct)}</span></span>
+                  <span className="text-gray-400">MoM <span className={`font-medium ${pctCls(r.mom_pct)}`}>{pctStr(r.mom_pct)}</span></span>
+                  <span className="text-xs text-gray-400">累計 {fmtB(r.ytd)} YoY <span className={`font-medium ${pctCls(r.ytd_yoy_pct)}`}>{pctStr(r.ytd_yoy_pct)}</span></span>
+                </div>
+              </div>
+            );
+          })()}
+          {fundamentals.institutional && fundamentals.institutional.length > 0 && (
+            <div className={fundamentals.revenue ? "pt-3 border-t border-gray-100" : ""}>
+              <p className="text-xs text-gray-400 mb-1.5">法人買賣超（張）</p>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-gray-400">
+                      <th className="text-left py-1 pr-3 font-normal">日期</th>
+                      <th className="text-right py-1 px-2 font-normal">外資</th>
+                      <th className="text-right py-1 px-2 font-normal">投信</th>
+                      <th className="text-right py-1 px-2 font-normal">自營商</th>
+                      <th className="text-right py-1 pl-2 font-normal">合計</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {fundamentals.institutional.map((row) => {
+                      const fmt = (v: number) => {
+                        const abs = Math.abs(v);
+                        const s = abs >= 1000 ? `${(abs / 1000).toFixed(0)}千` : String(abs);
+                        return v >= 0 ? `+${s}` : `-${s}`;
+                      };
+                      const cls = (v: number) => v >= 0 ? "text-red-500" : "text-green-600";
+                      return (
+                        <tr key={row.date} className="border-t border-gray-50">
+                          <td className="py-1 pr-3 text-gray-500">{row.date.slice(5)}</td>
+                          <td className={`py-1 px-2 text-right tabular-nums font-medium ${cls(row.foreign)}`}>{fmt(row.foreign)}</td>
+                          <td className={`py-1 px-2 text-right tabular-nums font-medium ${cls(row.trust)}`}>{fmt(row.trust)}</td>
+                          <td className={`py-1 px-2 text-right tabular-nums font-medium ${cls(row.dealer)}`}>{fmt(row.dealer)}</td>
+                          <td className={`py-1 pl-2 text-right tabular-nums font-semibold ${cls(row.total)}`}>{fmt(row.total)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </div>
@@ -246,7 +292,22 @@ export default function StockPage() {
 
       {/* 內容區 */}
       {loading ? (
-        <p className="text-gray-400">載入中…</p>
+        <div className="space-y-6 animate-pulse">
+          {[...Array(3)].map((_, i) => (
+            <div key={i} className="relative pl-10">
+              <div className="absolute left-0.5 top-1.5 w-5 h-5 rounded-full bg-gray-200" />
+              <div className="flex items-center gap-2 mb-2">
+                <div className="bg-gray-200 rounded h-3 w-20" />
+                <div className="bg-gray-200 rounded h-5 w-10" />
+              </div>
+              <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-2">
+                <div className="bg-gray-100 rounded h-3 w-full" />
+                <div className="bg-gray-100 rounded h-3 w-5/6" />
+                <div className="bg-gray-100 rounded h-3 w-4/6" />
+              </div>
+            </div>
+          ))}
+        </div>
       ) : tab === "reports" ? (
         reports.length === 0 ? (
           <p className="text-gray-400">尚無報告資料</p>
@@ -374,6 +435,7 @@ export default function StockPage() {
           </div>
         )
       )}
+
     </div>
   );
 }

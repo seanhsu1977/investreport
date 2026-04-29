@@ -180,6 +180,91 @@ async def get_upside_ranking(
     return ranking[:50]
 
 
+@router.get("/market-overview")
+async def get_market_overview_api():
+    """大盤加權 / 上櫃指數即時資料與技術訊號"""
+    from price_analysis import get_market_overview
+    return await asyncio.to_thread(get_market_overview)
+
+
+@router.get("/batch-prices")
+async def get_batch_prices(codes: str = Query(..., description="逗號分隔的股票代碼")):
+    """批次取得多支股票的即時股價（nstock.tw）"""
+    code_list = [c.strip() for c in codes.split(",") if c.strip()][:30]
+    semaphore = asyncio.Semaphore(10)
+
+    def _fetch(code: str):
+        url = f"https://www.nstock.tw/api/v2/real-time-quotes/data?stock_id={code}"
+        try:
+            with httpx.Client(timeout=5) as client:
+                data = client.get(url).json().get("data", [])
+                if not data:
+                    return code, None
+                row = data[0]
+                price = float(row.get("當盤成交價") or 0) or None
+                change = float(row.get("漲跌") or 0) or None
+                change_pct = float(row.get("漲跌幅") or 0) or None
+                return code, {"price": price, "change": change, "change_pct": change_pct}
+        except Exception:
+            return code, None
+
+    async def fetch_one(code: str):
+        async with semaphore:
+            return await asyncio.to_thread(_fetch, code)
+
+    results = await asyncio.gather(*[fetch_one(c) for c in code_list])
+    return {code: data for code, data in results if data is not None}
+
+
+@router.get("/batch-signals")
+async def get_batch_signals(codes: str = Query(..., description="逗號分隔的股票代碼")):
+    """批次取得多支股票的價量訊號（yfinance，1小時快取）"""
+    from price_analysis import get_signals
+
+    code_list = [c.strip() for c in codes.split(",") if c.strip()][:20]
+
+    semaphore = asyncio.Semaphore(5)
+
+    async def fetch_one(code: str):
+        async with semaphore:
+            result = await asyncio.to_thread(get_signals, code)
+            return code, result
+
+    results = await asyncio.gather(*[fetch_one(c) for c in code_list])
+    return {code: data for code, data in results if data is not None}
+
+
+@router.get("/batch-fundamentals")
+async def get_batch_fundamentals(codes: str = Query(..., description="逗號分隔的股票代碼")):
+    """批次取得月營收與法人買賣超摘要（上市股票）"""
+    from fundamental_analysis import get_revenue, get_institutional
+
+    code_list = [c.strip() for c in codes.split(",") if c.strip()][:20]
+    semaphore = asyncio.Semaphore(5)
+
+    async def fetch_one(code: str):
+        async with semaphore:
+            rev, inst = await asyncio.gather(
+                asyncio.to_thread(get_revenue, code),
+                asyncio.to_thread(get_institutional, code, 1),  # 只要今日
+            )
+            return code, {"revenue": rev, "inst_latest": inst[0] if inst else None}
+
+    results = await asyncio.gather(*[fetch_one(c) for c in code_list])
+    return {code: data for code, data in results}
+
+
+@router.get("/{stock_code}/fundamentals")
+async def get_stock_fundamentals(stock_code: str):
+    """取得個股月營收與近5日法人買賣超"""
+    from fundamental_analysis import get_revenue, get_institutional
+    rev, inst = await asyncio.gather(
+        asyncio.to_thread(get_revenue, stock_code),
+        asyncio.to_thread(get_institutional, stock_code, 5),
+    )
+    return {"revenue": rev, "institutional": inst}
+
+
 @router.get("/{stock_code}/price")
 def get_stock_price(stock_code: str):
     """從 nstock.tw 取得即時股價"""

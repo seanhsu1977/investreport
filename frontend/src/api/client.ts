@@ -69,6 +69,60 @@ export interface UpsideRankingItem {
   report_count: number;
 }
 
+export interface MarketIndex {
+  name: string;
+  current: number;
+  change: number;
+  change_pct: number;
+  ma5: number;
+  ma20: number;
+  ma_signal: string;
+  volume_signal: string;
+  rsi: number | null;
+  rsi_signal: string;
+  bb_upper: number | null;
+  bb_lower: number | null;
+  bb_pct_b: number | null;
+  bb_signal: string | null;
+  suggestion: string;
+  resistance: number[];
+  support: number[];
+  tower: TowerSignal | null;
+  updated_at: string;
+}
+
+export interface StockPriceData {
+  price: number | null;
+  change: number | null;
+  change_pct: number | null;
+}
+
+export interface TowerSignal {
+  color: "陽" | "陰";
+  count: number;
+  signal: "轉陽" | "轉陰" | "持續陽" | "持續陰";
+}
+
+export interface StockSignal {
+  current_price: number;
+  price_change_5d: number | null;
+  ma5: number;
+  ma20: number;
+  ma_signal: "多頭排列" | "空頭排列" | "均線糾結";
+  volume_signal: "量增" | "量縮" | "量持平";
+  rsi: number | null;
+  rsi_signal: "超買" | "超賣" | "正常" | "無";
+  bb_upper: number | null;
+  bb_lower: number | null;
+  bb_pct_b: number | null;
+  bb_signal: string | null;
+  suggestion: string;
+  resistance: number[];
+  support: number[];
+  tower: TowerSignal | null;
+  updated_at: string;
+}
+
 export const stocksApi = {
   list: () => api.get<StockSummary[]>("/stocks").then((r) => r.data),
   reports: (code: string) =>
@@ -79,6 +133,12 @@ export const stocksApi = {
     api.get<StockPrice>(`/stocks/${code}/price`).then((r) => r.data),
   upside_ranking: (days: number) =>
     api.get<UpsideRankingItem[]>(`/stocks/upside-ranking?days=${days}`).then((r) => r.data),
+  batch_signals: (codes: string[]) =>
+    api.get<Record<string, StockSignal>>(`/stocks/batch-signals?codes=${codes.join(",")}`).then((r) => r.data),
+  batch_prices: (codes: string[]) =>
+    api.get<Record<string, StockPriceData>>(`/stocks/batch-prices?codes=${codes.join(",")}`).then((r) => r.data),
+  market_overview: () =>
+    api.get<Record<string, MarketIndex>>("/stocks/market-overview").then((r) => r.data),
 };
 
 export const searchApi = {
@@ -109,6 +169,41 @@ export interface DigestResponse {
   nstock_count?: number;
   generated_at?: string;
 }
+
+export interface RevenueData {
+  year: number;
+  month: number;
+  revenue: number;
+  mom_pct: number | null;
+  yoy_pct: number | null;
+  ytd: number;
+  ytd_yoy_pct: number | null;
+}
+
+export interface InstDay {
+  date: string;
+  foreign: number;
+  trust: number;
+  dealer: number;
+  total: number;
+}
+
+export interface FundamentalsResponse {
+  revenue: RevenueData | null;
+  institutional: InstDay[] | null;
+}
+
+export interface FundamentalSummary {
+  revenue: RevenueData | null;
+  inst_latest: InstDay | null;
+}
+
+export const fundamentalsApi = {
+  get: (code: string) =>
+    api.get<FundamentalsResponse>(`/stocks/${code}/fundamentals`).then((r) => r.data),
+  batch: (codes: string[]) =>
+    api.get<Record<string, FundamentalSummary>>(`/stocks/batch-fundamentals?codes=${codes.join(",")}`).then((r) => r.data),
+};
 
 export const digestApi = {
   get: (days: number, refresh = false) =>

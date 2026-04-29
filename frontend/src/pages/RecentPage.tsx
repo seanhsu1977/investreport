@@ -1,20 +1,37 @@
 import { useEffect, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { stocksApi, type Report, type RecentResponse } from "../api/client";
 import { useAutoRefresh } from "../hooks/useAutoRefresh";
 import RecommendationBadge from "../components/RecommendationBadge";
 import ShareButton from "../components/ShareButton";
 import StockLinkedText from "../components/StockLinkedText";
 import { buildShareText, buildShareUrl } from "../utils/share";
+import { useAuth } from "../contexts/AuthContext";
 
 const PAGE_SIZE = 20;
 
-function StockReportCard({ r, fromTab }: { r: Report; fromTab: string }) {
+function StockReportCard({ r, fromTab, selectable, selected, onToggle }: {
+  r: Report; fromTab: string;
+  selectable?: boolean; selected?: boolean; onToggle?: (id: number) => void;
+}) {
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+    <div
+      className={`bg-white rounded-xl shadow-sm border p-5 transition ${
+        selectable && selected ? "border-blue-400 bg-blue-50" : "border-gray-200"
+      }`}
+      onClick={selectable ? () => onToggle?.(r.id) : undefined}
+      style={selectable ? { cursor: "pointer" } : undefined}
+    >
       <div className="flex items-start justify-between mb-2">
         <div className="flex items-center gap-2 flex-wrap">
-          <Link to={`/stocks/${r.stock_code}`} state={{ from: "/recent", label: "近期消息", recentTab: fromTab }} className="font-mono font-bold text-blue-600 hover:underline">
+          {selectable && (
+            <input type="checkbox" checked={selected} onChange={() => onToggle?.(r.id)}
+              onClick={(e) => e.stopPropagation()}
+              className="accent-blue-600 w-4 h-4 shrink-0" />
+          )}
+          <Link to={`/stocks/${r.stock_code}`} state={{ from: "/recent", label: "近期消息", recentTab: fromTab }}
+            className="font-mono font-bold text-blue-600 hover:underline"
+            onClick={(e) => selectable && e.preventDefault()}>
             {r.stock_code}
           </Link>
           {r.stock_name && <span className="text-gray-600">{r.stock_name}</span>}
@@ -49,13 +66,27 @@ function StockReportCard({ r, fromTab }: { r: Report; fromTab: string }) {
   );
 }
 
-function NewsCard({ r, fromTab }: { r: Report & { mentioned_stocks?: string[] }; fromTab: string }) {
+function NewsCard({ r, fromTab, selectable, selected, onToggle }: {
+  r: Report & { mentioned_stocks?: string[] }; fromTab: string;
+  selectable?: boolean; selected?: boolean; onToggle?: (id: number) => void;
+}) {
   const mentioned = r.mentioned_stocks ?? [];
   const linkState = { from: "/recent", label: "近期消息", recentTab: fromTab };
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+    <div
+      className={`bg-white rounded-xl shadow-sm border p-5 transition ${
+        selectable && selected ? "border-blue-400 bg-blue-50" : "border-gray-200"
+      }`}
+      onClick={selectable ? () => onToggle?.(r.id) : undefined}
+      style={selectable ? { cursor: "pointer" } : undefined}
+    >
       <div className="flex items-start justify-between mb-2">
         <div className="flex items-center gap-2 flex-wrap">
+          {selectable && (
+            <input type="checkbox" checked={selected} onChange={() => onToggle?.(r.id)}
+              onClick={(e) => e.stopPropagation()}
+              className="accent-blue-600 w-4 h-4 shrink-0" />
+          )}
           <span className="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-600 font-medium">市場新聞</span>
           {r.analyst && <span className="text-sm text-gray-500">{r.analyst}</span>}
         </div>
@@ -163,6 +194,8 @@ const BtnGroup = ({ label, options, value, onChange }: {
 
 export default function RecentPage() {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { user } = useAuth();
   const restoredTab = (location.state as { tab?: TabKey } | null)?.tab;
 
   const [data, setData] = useState<RecentResponse | null>(null);
@@ -173,6 +206,16 @@ export default function RecentPage() {
   const [tab, setTab] = useState<TabKey>(restoredTab ?? "stocks");
   const [stockPage, setStockPage] = useState(1);
   const [newsPage, setNewsPage] = useState(1);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+
+  const toggleSelect = (id: number) =>
+    setSelectedIds((prev) => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
+
+  const exitSelect = () => { setSelectMode(false); setSelectedIds(new Set()); };
+
+  const goToDraft = () =>
+    navigate("/admin", { state: { tab: "publish", selectedIds: [...selectedIds] } });
 
   const fetchData = () => {
     stocksApi.recent(days).then(setData).catch(console.error);
@@ -206,8 +249,23 @@ export default function RecentPage() {
       {/* 標題列 */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-2xl font-bold text-gray-800">近期重點消息</h1>
-        <BtnGroup label="顯示近" options={[{key:"1",text:"1 天"},{key:"3",text:"3 天"},{key:"7",text:"7 天"}]}
-          value={String(days)} onChange={(v) => setDays(Number(v))} />
+        <div className="flex items-center gap-3">
+          <BtnGroup label="顯示近" options={[{key:"1",text:"1 天"},{key:"3",text:"3 天"},{key:"7",text:"7 天"}]}
+            value={String(days)} onChange={(v) => setDays(Number(v))} />
+          {user?.is_admin && (
+            selectMode ? (
+              <button onClick={exitSelect}
+                className="text-xs px-3 py-1.5 rounded-lg border border-gray-300 text-gray-500 hover:bg-gray-50 transition">
+                取消選取
+              </button>
+            ) : (
+              <button onClick={() => setSelectMode(true)}
+                className="text-xs px-3 py-1.5 rounded-lg border border-blue-300 text-blue-600 hover:bg-blue-50 transition">
+                選取報告
+              </button>
+            )
+          )}
+        </div>
       </div>
 
       {/* 頁籤 */}
@@ -248,7 +306,24 @@ export default function RecentPage() {
       </div>
 
       {loading ? (
-        <p className="text-gray-400">載入中…</p>
+        <div className="space-y-4">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="bg-white rounded-xl border border-gray-200 p-5 animate-pulse">
+              <div className="flex items-start justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <div className="bg-gray-200 rounded h-4 w-10" />
+                  <div className="bg-gray-100 rounded h-4 w-16" />
+                  <div className="bg-gray-200 rounded h-5 w-10" />
+                </div>
+                <div className="bg-gray-100 rounded h-3 w-16" />
+              </div>
+              <div className="space-y-1.5">
+                <div className="bg-gray-100 rounded h-3 w-full" />
+                <div className="bg-gray-100 rounded h-3 w-4/5" />
+              </div>
+            </div>
+          ))}
+        </div>
       ) : tab === "stocks" ? (
         <section className="space-y-4">
           {pagedReports.length === 0 ? (
@@ -257,7 +332,10 @@ export default function RecentPage() {
             </p>
           ) : (
             <>
-              {pagedReports.map((r) => <StockReportCard key={r.id} r={r} fromTab={tab} />)}
+              {pagedReports.map((r) => (
+                <StockReportCard key={r.id} r={r} fromTab={tab}
+                  selectable={selectMode} selected={selectedIds.has(r.id)} onToggle={toggleSelect} />
+              ))}
               <Pagination page={stockPage} total={filteredReports.length} pageSize={PAGE_SIZE} onChange={setStockPage} />
             </>
           )}
@@ -268,11 +346,34 @@ export default function RecentPage() {
             <p className="text-gray-400 text-sm">近 {days} 天內沒有市場新聞</p>
           ) : (
             <>
-              {pagedNews.map((r) => <NewsCard key={r.id} r={r as any} fromTab={tab} />)}
+              {pagedNews.map((r) => (
+                <NewsCard key={r.id} r={r as any} fromTab={tab}
+                  selectable={selectMode} selected={selectedIds.has(r.id)} onToggle={toggleSelect} />
+              ))}
               <Pagination page={newsPage} total={sortedNews.length} pageSize={PAGE_SIZE} onChange={setNewsPage} />
             </>
           )}
         </section>
+      )}
+
+      {/* 浮動草稿列 */}
+      {selectMode && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-white border border-gray-200 shadow-xl rounded-2xl px-5 py-3">
+          <span className="text-sm text-gray-600">
+            已選 <span className="font-semibold text-blue-600">{selectedIds.size}</span> 篇
+          </span>
+          <button onClick={exitSelect}
+            className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-400 hover:text-gray-600 transition">
+            取消
+          </button>
+          <button
+            onClick={goToDraft}
+            disabled={selectedIds.size === 0}
+            className="text-sm px-4 py-1.5 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 disabled:opacity-40 transition"
+          >
+            產生 Threads 草稿 →
+          </button>
+        </div>
       )}
     </div>
   );

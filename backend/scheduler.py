@@ -1,11 +1,11 @@
 from __future__ import annotations
 import json
 import logging
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from apscheduler.schedulers.background import BackgroundScheduler
 from database import SessionLocal
 from drive_sync import sync_drive
-from models import FuturesChip
+from models import Report, FuturesChip
 import taifex
 
 logger = logging.getLogger(__name__)
@@ -16,15 +16,33 @@ _sync_cancelled: bool = False
 scheduler = BackgroundScheduler()
 
 
+def _fetch_new_reports(db, since: datetime) -> list[dict]:
+    rows = db.query(Report).filter(Report.created_at >= since).order_by(Report.created_at).all()
+    return [
+        {
+            "stock_code": r.stock_code,
+            "stock_name": r.stock_name,
+            "recommendation": r.recommendation,
+            "target_price": r.target_price,
+            "summary": r.summary,
+        }
+        for r in rows
+    ]
+
+
 def _sync_job():
     global _last_sync_result, _sync_progress, _sync_cancelled
     logger.info("Starting scheduled Drive sync...")
     _sync_cancelled = False
     _sync_progress = {"running": True, "current": "", "processed": 0, "skipped": 0, "errors": 0, "total": 0}
     db = SessionLocal()
+    sync_start = datetime.now(timezone.utc).replace(tzinfo=None)
     try:
         _last_sync_result = sync_drive(db, progress=_sync_progress, cancelled=lambda: _sync_cancelled)
         logger.info(f"Sync completed: {_last_sync_result}")
+        from notifier import notify_sync_done
+        new_reports = _fetch_new_reports(db, sync_start)
+        notify_sync_done(_last_sync_result, new_reports)
     except Exception as e:
         logger.error(f"Sync failed: {e}")
         _last_sync_result = {"error": str(e)}
@@ -85,12 +103,16 @@ def get_sync_progress() -> dict:
     return _sync_progress
 
 
-def run_sync_now(db) -> dict:
+def run_sync_now(db, since: str | None = None) -> dict:
     global _sync_progress, _sync_cancelled
     _sync_cancelled = False
     _sync_progress = {"running": True, "current": "", "processed": 0, "skipped": 0, "errors": 0, "total": 0}
-    result = sync_drive(db, progress=_sync_progress, cancelled=lambda: _sync_cancelled)
+    sync_start = datetime.now(timezone.utc).replace(tzinfo=None)
+    result = sync_drive(db, progress=_sync_progress, cancelled=lambda: _sync_cancelled, since=since)
     _sync_progress["running"] = False
+    from notifier import notify_sync_done
+    new_reports = _fetch_new_reports(db, sync_start)
+    notify_sync_done(result, new_reports)
     return result
 
 

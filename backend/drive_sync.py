@@ -92,12 +92,18 @@ SUPPORTED_MIME_QUERY = (
 )
 
 
-def list_pdf_files(service, folder_id: str) -> list[dict]:
-    """遞迴掃描資料夾及所有子資料夾中的 PDF 與圖片"""
+def list_pdf_files(service, folder_id: str, since: str | None = None) -> list[dict]:
+    """遞迴掃描資料夾及所有子資料夾中的 PDF 與圖片
+
+    Args:
+        since: RFC-3339 日期字串（如 "2024-01-01T00:00:00"），只列出此時間之後建立的檔案
+    """
     results = []
 
     # 取得當前資料夾中的 PDF + 圖片
     query = f"'{folder_id}' in parents and ({SUPPORTED_MIME_QUERY}) and trashed=false"
+    if since:
+        query += f" and createdTime >= '{since}'"
     page_token = None
     while True:
         resp = service.files().list(
@@ -119,7 +125,7 @@ def list_pdf_files(service, folder_id: str) -> list[dict]:
         pageSize=100,
     ).execute()
     for subfolder in resp.get("files", []):
-        results.extend(list_pdf_files(service, subfolder["id"]))
+        results.extend(list_pdf_files(service, subfolder["id"], since=since))
 
     return results
 
@@ -134,7 +140,12 @@ def download_file(service, file_id: str) -> bytes:
     return buffer.getvalue()
 
 
-def sync_drive(db: Session, progress: dict | None = None, cancelled=None) -> dict:
+def sync_drive(db: Session, progress: dict | None = None, cancelled=None, since: str | None = None) -> dict:
+    """同步 Google Drive 檔案
+
+    Args:
+        since: 只同步此日期之後建立的檔案，格式 "YYYY-MM-DD"（會自動補 T00:00:00）
+    """
     folder_ids_raw = os.getenv("GOOGLE_DRIVE_FOLDER_ID")
     if not folder_ids_raw:
         raise ValueError("GOOGLE_DRIVE_FOLDER_ID not set")
@@ -142,10 +153,13 @@ def sync_drive(db: Session, progress: dict | None = None, cancelled=None) -> dic
     folder_ids = [fid.strip() for fid in folder_ids_raw.split(",") if fid.strip()]
     service = get_drive_service()
 
+    # 轉成 RFC-3339 格式（Drive API 要求）
+    since_rfc = f"{since}T00:00:00" if since and len(since) == 10 else since
+
     files = []
     seen_ids = set()
     for fid in folder_ids:
-        for f in list_pdf_files(service, fid):
+        for f in list_pdf_files(service, fid, since=since_rfc):
             if f["id"] not in seen_ids:
                 files.append(f)
                 seen_ids.add(f["id"])

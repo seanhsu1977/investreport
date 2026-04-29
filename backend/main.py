@@ -21,7 +21,10 @@ logging.basicConfig(level=logging.INFO)
 async def lifespan(app: FastAPI):
     init_db()
     start_scheduler()
+    from notifier import start_polling, stop_polling
+    start_polling()
     yield
+    stop_polling()
     stop_scheduler()
 
 

@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 
 from database import init_db
 from scheduler import start_scheduler, stop_scheduler
-from routers import stocks, watchlist, sync
+from routers import stocks, watchlist, sync, chips
 from routers import auth, admin, publish
 
 logging.basicConfig(level=logging.INFO)
@@ -44,6 +44,7 @@ app.include_router(sync.router)
 app.include_router(auth.router)
 app.include_router(admin.router)
 app.include_router(publish.router)
+app.include_router(chips.router)
 
 
 @app.get("/healthz")

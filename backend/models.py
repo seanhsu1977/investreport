@@ -67,6 +67,15 @@ class Watchlist(Base):
     )
 
 
+class FuturesChip(Base):
+    """期交所單日籌碼面快照（TXF 法人未平倉 + TMF 散戶多空比 + 加權指數）"""
+    __tablename__ = "futures_chips"
+
+    date = Column(String, primary_key=True)   # YYYY-MM-DD
+    payload = Column(Text, nullable=False)    # JSON: taifex.build_chip_snapshot 結果
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class Stock(Base):
     """股票主檔（中文股名標準來源，從 nstock.tw 同步）"""
     __tablename__ = "stocks"

@@ -1,8 +1,12 @@
 from __future__ import annotations
+import json
 import logging
+from datetime import date, datetime
 from apscheduler.schedulers.background import BackgroundScheduler
 from database import SessionLocal
 from drive_sync import sync_drive
+from models import FuturesChip
+import taifex
 
 logger = logging.getLogger(__name__)
 
@@ -29,10 +33,44 @@ def _sync_job():
         db.close()
 
 
+def _chips_job():
+    """每日台股收盤後抓期交所籌碼面"""
+    logger.info("Starting daily chips fetch...")
+    db = SessionLocal()
+    try:
+        today = date.today()
+        try:
+            snap = taifex.build_chip_snapshot(today.strftime("%Y/%m/%d"))
+        except Exception as e:
+            logger.warning("Chips fetch for %s failed: %s", today, e)
+            snap = None
+        if snap:
+            iso = today.isoformat()
+            existing = db.get(FuturesChip, iso)
+            payload = json.dumps(snap, ensure_ascii=False)
+            if existing:
+                existing.payload = payload
+                existing.updated_at = datetime.utcnow()
+            else:
+                db.add(FuturesChip(date=iso, payload=payload))
+            db.commit()
+            logger.info("Chips snapshot saved for %s", iso)
+        else:
+            logger.info("No chips data for %s (likely non-trading day)", today)
+    finally:
+        db.close()
+
+
 def start_scheduler():
     scheduler.add_job(_sync_job, "cron", hour=20, minute=0, id="drive_sync")
+    # 期交所三大法人 ~15:00 公布；保險點 15:45 (Asia/Taipei) Mon-Fri
+    scheduler.add_job(
+        _chips_job, "cron",
+        day_of_week="mon-fri", hour=15, minute=45, timezone="Asia/Taipei",
+        id="chips_fetch",
+    )
     scheduler.start()
-    logger.info("Scheduler started (daily at 20:00)")
+    logger.info("Scheduler started (drive 20:00, chips 15:45 Mon-Fri)")
 
 
 def stop_scheduler():

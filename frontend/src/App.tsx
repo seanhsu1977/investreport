@@ -7,6 +7,7 @@ import RecentPage from "./pages/RecentPage";
 import SearchPage from "./pages/SearchPage";
 import AdminPage from "./pages/AdminPage";
 import RankingPage from "./pages/RankingPage";
+import ChipsPage from "./pages/ChipsPage";
 import SyncStatus from "./components/SyncStatus";
 import LoginButton from "./components/LoginButton";
 import PostMaterialsBar from "./components/PostMaterialsBar";
@@ -18,6 +19,7 @@ const NAV_ITEMS = [
   { to: "/",        label: "自選股",   end: true  },
   { to: "/recent",  label: "近期消息", end: false },
   { to: "/ranking", label: "排行",     end: false },
+  { to: "/chips",   label: "籌碼面",   end: false },
   { to: "/search",  label: "搜尋",     end: false },
 ];
 
@@ -113,6 +115,7 @@ export default function App() {
               <Route path="/search" element={<SearchPage />} />
               <Route path="/stocks/:code" element={<StockPage />} />
               <Route path="/ranking" element={<RankingPage />} />
+              <Route path="/chips" element={<ChipsPage />} />
               <Route path="/admin" element={<AdminPage />} />
             </Routes>
           </main>

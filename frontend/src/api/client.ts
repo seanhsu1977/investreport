@@ -121,3 +121,53 @@ export const syncApi = {
   trigger: () => api.post("/sync").then((r) => r.data),
   cancel: () => api.post("/sync/cancel").then((r) => r.data),
 };
+
+export interface InstitutionPosition {
+  long_oi: number;
+  short_oi: number;
+  net_oi: number;
+  net_change: number;
+}
+
+export interface SpotInstitutional {
+  foreign: number;
+  trust: number;
+  dealer: number;
+  total: number;
+}
+
+export interface ChipSnapshot {
+  date: string;
+  taiex: { date: string; close: number; change: number; change_pct: number } | null;
+  spot: SpotInstitutional | null;
+  txf: {
+    foreign: InstitutionPosition | null;
+    trust: InstitutionPosition | null;
+    dealer: InstitutionPosition | null;
+  };
+  tmf: {
+    total_oi: number;
+    close: number | null;
+    change: number | null;
+    change_pct: number | null;
+    foreign: InstitutionPosition | null;
+    trust: InstitutionPosition | null;
+    dealer: InstitutionPosition | null;
+    retail_long: number;
+    retail_short: number;
+    retail_net: number;
+    retail_ratio: number;
+    retail_ratio_change?: number;
+  };
+  fetched_at?: string;
+}
+
+export const chipsApi = {
+  latest: () => api.get<ChipSnapshot>("/chips/latest").then((r) => r.data),
+  history: (days: number) =>
+    api.get<ChipSnapshot[]>(`/chips/history?days=${days}`).then((r) => r.data),
+  refresh: (target?: string) =>
+    api.post("/chips/refresh", null, { params: target ? { target } : {} }).then((r) => r.data),
+  backfill: (start: string, end?: string) =>
+    api.post("/chips/backfill", null, { params: { start, end } }).then((r) => r.data),
+};

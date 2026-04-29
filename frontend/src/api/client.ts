@@ -213,7 +213,8 @@ export const digestApi = {
 export const syncApi = {
   status: () => api.get("/sync/status").then((r) => r.data),
   progress: () => api.get("/sync/progress").then((r) => r.data),
-  trigger: () => api.post("/sync").then((r) => r.data),
+  trigger: (since?: string) =>
+    api.post("/sync", null, { params: since ? { since } : {} }).then((r) => r.data),
   cancel: () => api.post("/sync/cancel").then((r) => r.data),
 };
 

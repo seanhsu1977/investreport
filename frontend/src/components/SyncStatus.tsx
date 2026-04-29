@@ -10,10 +10,19 @@ interface Progress {
   total: number;
 }
 
+// 預設：7 天前
+function defaultSince() {
+  const d = new Date();
+  d.setDate(d.getDate() - 7);
+  return d.toISOString().slice(0, 10);
+}
+
 export default function SyncStatus() {
   const [status, setStatus] = useState<Record<string, unknown> | null>(null);
   const [progress, setProgress] = useState<Progress | null>(null);
   const [open, setOpen] = useState(false);
+  const [since, setSince] = useState<string>(defaultSince());
+  const [useSince, setUseSince] = useState(true);
   const ref = useRef<HTMLDivElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -50,7 +59,7 @@ export default function SyncStatus() {
   }, [open]);
 
   const handleSync = async () => {
-    await syncApi.trigger();
+    await syncApi.trigger(useSince ? since : undefined);
     fetchProgress();
     startPolling();
     window.dispatchEvent(new Event("sync-started"));
@@ -161,6 +170,32 @@ export default function SyncStatus() {
           {warning && (
             <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
               ⚠️ {warning}
+            </div>
+          )}
+
+          {/* 日期篩選 */}
+          {!isRunning && (
+            <div className="space-y-1.5 pt-1 border-t border-gray-100">
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={useSince}
+                  onChange={(e) => setUseSince(e.target.checked)}
+                  className="rounded"
+                />
+                <span className="text-xs text-gray-600">只同步此日期後的新檔案</span>
+              </label>
+              {useSince && (
+                <input
+                  type="date"
+                  value={since}
+                  onChange={(e) => setSince(e.target.value)}
+                  className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                />
+              )}
+              {!useSince && (
+                <p className="text-xs text-amber-600">⚠️ 將掃描全部檔案，速度較慢</p>
+              )}
             </div>
           )}
 

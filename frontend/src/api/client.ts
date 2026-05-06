@@ -57,11 +57,39 @@ export interface StockPrice {
   date: string | null;
 }
 
+export interface RecommendationItem {
+  code: string;
+  name: string | null;
+  current_price: number | null;
+  change_pct: number | null;
+  volume: number | null;
+  target_price: number;
+  upside_pct: number | null;
+  latest_recommendation: string | null;
+  latest_analyst: string | null;
+  latest_report_date: string | null;
+  report_count: number;
+  rec_avg: number;
+  rec_max_score: number;
+  inst_5d_net: number;
+  ma_signal: string | null;
+  volume_signal: string | null;
+  rsi: number | null;
+  score: number;
+  score_breakdown: {
+    upside: number;
+    consensus: number;
+    institutional: number;
+    technical: number;
+  };
+}
+
 export interface UpsideRankingItem {
   stock_code: string;
   stock_name: string | null;
   target_price: number;
   current_price: number;
+  volume: number | null;
   upside_pct: number;
   recommendation: string | null;
   analyst: string | null;
@@ -107,8 +135,11 @@ export interface StockSignal {
   current_price: number;
   price_change_5d: number | null;
   ma5: number;
+  ma10: number | null;
   ma20: number;
+  ma60: number | null;
   ma_signal: "多頭排列" | "空頭排列" | "均線糾結";
+  ma_position: string | null;
   volume_signal: "量增" | "量縮" | "量持平";
   rsi: number | null;
   rsi_signal: "超買" | "超賣" | "正常" | "無";
@@ -133,6 +164,10 @@ export const stocksApi = {
     api.get<StockPrice>(`/stocks/${code}/price`).then((r) => r.data),
   upside_ranking: (days: number) =>
     api.get<UpsideRankingItem[]>(`/stocks/upside-ranking?days=${days}`).then((r) => r.data),
+  recommendations: (params: { days: number; min_reports: number; rec_filter: string; limit?: number }) =>
+    api.get<{ items: RecommendationItem[]; warnings: string[]; computed_at: string }>(
+      "/stocks/recommendations", { params }
+    ).then((r) => r.data),
   batch_signals: (codes: string[]) =>
     api.get<Record<string, StockSignal>>(`/stocks/batch-signals?codes=${codes.join(",")}`).then((r) => r.data),
   batch_prices: (codes: string[]) =>
@@ -151,24 +186,14 @@ export const watchlistApi = {
   add: (stock_code: string, stock_name?: string) =>
     api.post("/watchlist", { stock_code, stock_name }).then((r) => r.data),
   remove: (stock_code: string) => api.delete(`/watchlist/${stock_code}`),
+  parseImage: (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return api.post<{ stocks: { code: string; name: string | null }[] }>(
+      "/watchlist/parse-image", form
+    ).then((r) => r.data);
+  },
 };
-
-export interface DigestSection {
-  title: string;
-  tags: string[];
-  event: string;
-  viewpoint?: string;
-  stock_codes?: string[];
-  sentiment?: "利多" | "利空" | "中立";
-}
-
-export interface DigestResponse {
-  date: string;
-  sections: DigestSection[];
-  report_count: number;
-  nstock_count?: number;
-  generated_at?: string;
-}
 
 export interface RevenueData {
   year: number;
@@ -205,10 +230,19 @@ export const fundamentalsApi = {
     api.get<Record<string, FundamentalSummary>>(`/stocks/batch-fundamentals?codes=${codes.join(",")}`).then((r) => r.data),
 };
 
-export const digestApi = {
-  get: (days: number, refresh = false) =>
-    api.get<DigestResponse>(`/digest?days=${days}&refresh=${refresh}`).then((r) => r.data),
-};
+
+export interface SyncLogEntry {
+  id: number;
+  started_at: string;
+  finished_at: string | null;
+  trigger: "manual" | "scheduled";
+  processed: number;
+  skipped: number;
+  errors: number;
+  new_reports: number;
+  status: "running" | "done" | "error";
+  error_message: string | null;
+}
 
 export const syncApi = {
   status: () => api.get("/sync/status").then((r) => r.data),
@@ -216,6 +250,8 @@ export const syncApi = {
   trigger: (since?: string) =>
     api.post("/sync", null, { params: since ? { since } : {} }).then((r) => r.data),
   cancel: () => api.post("/sync/cancel").then((r) => r.data),
+  history: (limit = 20) =>
+    api.get<SyncLogEntry[]>(`/sync/history?limit=${limit}`).then((r) => r.data),
 };
 
 export interface InstitutionPosition {

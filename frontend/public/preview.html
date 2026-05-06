@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="zh-TW">
+<head>
+<meta charset="utf-8" />
+<title>投顧精選 — 預覽 mockup</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "PingFang TC", "Microsoft JhengHei", sans-serif; }
+  .tabular-nums { font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+
+<header class="bg-white border-b border-gray-200 sticky top-0 z-10">
+  <div class="max-w-6xl mx-auto px-4 py-3 flex items-center gap-4">
+    <span class="font-bold text-gray-800">投顧報告系統</span>
+    <nav class="flex gap-1">
+      <span class="px-3 py-1.5 text-sm text-gray-500">自選股</span>
+      <span class="px-3 py-1.5 text-sm text-gray-500">近期消息</span>
+      <span class="px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-100 text-blue-700">排行</span>
+      <span class="px-3 py-1.5 text-sm text-gray-500">籌碼面</span>
+      <span class="px-3 py-1.5 text-sm text-gray-500">搜尋</span>
+    </nav>
+  </div>
+</header>
+
+<main class="max-w-6xl mx-auto px-4 py-6 space-y-4">
+
+  <!-- 頁標 -->
+  <div class="flex items-center justify-between flex-wrap gap-2">
+    <div>
+      <h1 class="text-2xl font-bold text-gray-800">投顧精選</h1>
+      <p class="text-sm text-gray-500 mt-1">依投顧共識度 + 籌碼面 + 量價綜合評分　·　即時計算</p>
+    </div>
+    <button class="px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 flex items-center gap-1.5">
+      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+      重新整理
+    </button>
+  </div>
+
+  <!-- Tab (顯示在「排行」次層) -->
+  <div class="flex gap-1 bg-gray-100 p-1 rounded-xl w-fit">
+    <button class="px-4 py-1.5 rounded-lg text-sm text-gray-500">目標價差異</button>
+    <button class="px-4 py-1.5 rounded-lg text-sm font-medium bg-white text-gray-800 shadow-sm">投顧精選</button>
+  </div>
+
+  <!-- 篩選列 -->
+  <section class="bg-white rounded-xl border border-gray-200 p-3 flex items-center gap-3 flex-wrap text-xs">
+    <span class="text-gray-500">期間</span>
+    <div class="flex gap-1">
+      <button class="px-2.5 py-1 rounded bg-blue-100 text-blue-700 font-medium">30 天</button>
+      <button class="px-2.5 py-1 rounded text-gray-500 hover:bg-gray-50">60 天</button>
+      <button class="px-2.5 py-1 rounded text-gray-500 hover:bg-gray-50">90 天</button>
+    </div>
+    <div class="w-px h-4 bg-gray-200"></div>
+    <span class="text-gray-500">最少報告數</span>
+    <div class="flex gap-1">
+      <button class="px-2.5 py-1 rounded bg-blue-100 text-blue-700 font-medium">1+</button>
+      <button class="px-2.5 py-1 rounded text-gray-500 hover:bg-gray-50">2+</button>
+      <button class="px-2.5 py-1 rounded text-gray-500 hover:bg-gray-50">3+</button>
+    </div>
+    <div class="w-px h-4 bg-gray-200"></div>
+    <span class="text-gray-500">評等</span>
+    <div class="flex gap-1">
+      <button class="px-2.5 py-1 rounded bg-blue-100 text-blue-700 font-medium">全部</button>
+      <button class="px-2.5 py-1 rounded text-gray-500 hover:bg-gray-50">只看買進系</button>
+    </div>
+    <span class="ml-auto text-gray-400">更新於 21:38:42</span>
+  </section>
+
+  <!-- Top 3 卡片區 -->
+  <section class="grid grid-cols-1 md:grid-cols-3 gap-3">
+    <!-- #1 -->
+    <div class="bg-white rounded-xl border-2 border-yellow-300 shadow-sm p-4 space-y-2 relative">
+      <span class="absolute top-3 right-3 text-2xl">🥇</span>
+      <div>
+        <span class="font-mono text-blue-700 font-semibold">2330</span>
+        <span class="ml-1 text-gray-500 text-sm">台積電</span>
+      </div>
+      <div class="flex items-baseline gap-2">
+        <span class="text-2xl font-bold tabular-nums">1,150.00</span>
+        <span class="text-xs text-red-500">▲ +0.87%</span>
+      </div>
+      <div class="text-xs text-gray-500 flex items-center gap-2 flex-wrap">
+        <span>目標 <span class="font-semibold text-gray-700 tabular-nums">1,400</span></span>
+        <span class="text-red-500 font-medium">+21.7%</span>
+      </div>
+      <div class="flex items-center gap-1.5 flex-wrap">
+        <span class="text-xs px-1.5 py-0.5 rounded bg-red-50 text-red-600 border border-red-200 font-bold">▲ 買進</span>
+        <span class="text-xs text-gray-500">8 篇 · 共識 2.6/3</span>
+      </div>
+      <div class="text-xs text-gray-500">外資 +12,345 張 · 多頭 + 量增</div>
+      <div class="flex items-center justify-between pt-2 border-t border-gray-100">
+        <div>
+          <div class="text-xs text-gray-400">總分</div>
+          <div class="text-2xl font-bold text-yellow-600 tabular-nums">87</div>
+        </div>
+        <button class="px-2.5 py-1.5 rounded-lg text-xs bg-purple-100 text-purple-700 hover:bg-purple-200 font-medium">💡 生成推薦理由</button>
+      </div>
+    </div>
+
+    <!-- #2 -->
+    <div class="bg-white rounded-xl border-2 border-gray-300 shadow-sm p-4 space-y-2 relative">
+      <span class="absolute top-3 right-3 text-2xl">🥈</span>
+      <div>
+        <span class="font-mono text-blue-700 font-semibold">6669</span>
+        <span class="ml-1 text-gray-500 text-sm">緯穎</span>
+      </div>
+      <div class="flex items-baseline gap-2">
+        <span class="text-2xl font-bold tabular-nums">4,845.00</span>
+        <span class="text-xs text-red-500">▲ +0.94%</span>
+      </div>
+      <div class="text-xs text-gray-500 flex items-center gap-2 flex-wrap">
+        <span>目標 <span class="font-semibold text-gray-700 tabular-nums">8,000</span></span>
+        <span class="text-red-500 font-medium">+65.1%</span>
+      </div>
+      <div class="flex items-center gap-1.5 flex-wrap">
+        <span class="text-xs px-1.5 py-0.5 rounded bg-red-50 text-red-600 border border-red-200 font-bold">▲ 買進</span>
+        <span class="text-xs text-gray-500">5 篇 · 共識 2.8/3</span>
+      </div>
+      <div class="text-xs text-gray-500">外資 +5,621 張 · 多頭 + 量增</div>
+      <div class="flex items-center justify-between pt-2 border-t border-gray-100">
+        <div>
+          <div class="text-xs text-gray-400">總分</div>
+          <div class="text-2xl font-bold text-gray-500 tabular-nums">82</div>
+        </div>
+        <button class="px-2.5 py-1.5 rounded-lg text-xs bg-purple-100 text-purple-700 hover:bg-purple-200 font-medium">💡 生成推薦理由</button>
+      </div>
+    </div>
+
+    <!-- #3 -->
+    <div class="bg-white rounded-xl border-2 border-orange-300 shadow-sm p-4 space-y-2 relative">
+      <span class="absolute top-3 right-3 text-2xl">🥉</span>
+      <div>
+        <span class="font-mono text-blue-700 font-semibold">3665</span>
+        <span class="ml-1 text-gray-500 text-sm">貿聯-KY</span>
+      </div>
+      <div class="flex items-baseline gap-2">
+        <span class="text-2xl font-bold tabular-nums">2,780.00</span>
+        <span class="text-xs text-red-500">▲ +5.71%</span>
+      </div>
+      <div class="text-xs text-gray-500 flex items-center gap-2 flex-wrap">
+        <span>目標 <span class="font-semibold text-gray-700 tabular-nums">2,545</span></span>
+        <span class="text-green-600 font-medium">−8.5%</span>
+      </div>
+      <div class="flex items-center gap-1.5 flex-wrap">
+        <span class="text-xs px-1.5 py-0.5 rounded bg-red-50 text-red-600 border border-red-200 font-bold">▲ 買進</span>
+        <span class="text-xs text-gray-500">4 篇 · 共識 2.3/3</span>
+      </div>
+      <div class="text-xs text-gray-500">投信 +203 張 · 多頭 + 量增</div>
+      <div class="flex items-center justify-between pt-2 border-t border-gray-100">
+        <div>
+          <div class="text-xs text-gray-400">總分</div>
+          <div class="text-2xl font-bold text-orange-500 tabular-nums">76</div>
+        </div>
+        <button class="px-2.5 py-1.5 rounded-lg text-xs bg-purple-100 text-purple-700 hover:bg-purple-200 font-medium">💡 生成推薦理由</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 詳細表格 -->
+  <section class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+    <div class="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
+      <h2 class="font-semibold text-gray-700">完整排行（共 17 檔）</h2>
+      <span class="text-xs text-gray-400">點欄位排序 · 點列跳到個股頁</span>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="bg-gray-50 text-gray-500 text-xs uppercase">
+          <tr>
+            <th class="px-3 py-2 text-center w-10">#</th>
+            <th class="px-3 py-2 text-left">股票</th>
+            <th class="px-3 py-2 text-right">現價</th>
+            <th class="px-3 py-2 text-right">目標價</th>
+            <th class="px-3 py-2 text-right">Upside</th>
+            <th class="px-3 py-2 text-center">評等共識</th>
+            <th class="px-3 py-2 text-center">報告</th>
+            <th class="px-3 py-2 text-right">法人 5d</th>
+            <th class="px-3 py-2 text-left">訊號</th>
+            <th class="px-3 py-2 text-right">總分 ↓</th>
+            <th class="px-3 py-2 text-center"></th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+
+          <!-- Row 1 -->
+          <tr class="hover:bg-blue-50 cursor-pointer">
+            <td class="px-3 py-2 text-center text-yellow-500">🥇</td>
+            <td class="px-3 py-2"><span class="font-mono text-blue-700 font-medium">2330</span> <span class="text-xs text-gray-500">台積電</span></td>
+            <td class="px-3 py-2 text-right tabular-nums">1,150.00</td>
+            <td class="px-3 py-2 text-right tabular-nums">1,400.00</td>
+            <td class="px-3 py-2 text-right tabular-nums text-red-500 font-semibold">+21.7%</td>
+            <td class="px-3 py-2 text-center">
+              <span class="text-xs px-1.5 py-0.5 rounded bg-red-50 text-red-600 border border-red-200 font-bold">▲ 買</span>
+              <span class="text-xs text-gray-400 ml-1">2.6/3</span>
+            </td>
+            <td class="px-3 py-2 text-center tabular-nums">8</td>
+            <td class="px-3 py-2 text-right tabular-nums text-red-500 font-medium">+12,345</td>
+            <td class="px-3 py-2 text-xs text-gray-600">多頭 · 量增</td>
+            <td class="px-3 py-2 text-right tabular-nums font-bold text-yellow-600">87</td>
+            <td class="px-3 py-2 text-center"><button class="text-xs text-purple-600 hover:underline">💡 理由</button></td>
+          </tr>
+
+          <!-- Row 2 -->
+          <tr class="hover:bg-blue-50 cursor-pointer">
+            <td class="px-3 py-2 text-center text-gray-400">🥈</td>
+            <td class="px-3 py-2"><span class="font-mono text-blue-700 font-medium">6669</span> <span class="text-xs text-gray-500">緯穎</span></td>
+            <td class="px-3 py-2 text-right tabular-nums">4,845.00</td>
+            <td class="px-3 py-2 text-right tabular-nums">8,000.00</td>
+            <td class="px-3 py-2 text-right tabular-nums text-red-500 font-semibold">+65.1%</td>
+            <td class="px-3 py-2 text-center">
+              <span class="text-xs px-1.5 py-0.5 rounded bg-red-50 text-red-600 border border-red-200 font-bold">▲ 買</span>
+              <span class="text-xs text-gray-400 ml-1">2.8/3</span>
+            </td>
+            <td class="px-3 py-2 text-center tabular-nums">5</td>
+            <td class="px-3 py-2 text-right tabular-nums text-red-500 font-medium">+5,621</td>
+            <td class="px-3 py-2 text-xs text-gray-600">多頭 · 量增</td>
+            <td class="px-3 py-2 text-right tabular-nums font-bold text-gray-500">82</td>
+            <td class="px-3 py-2 text-center"><button class="text-xs text-purple-600 hover:underline">💡 理由</button></td>
+          </tr>
+
+          <!-- Row 3 -->
+          <tr class="hover:bg-blue-50 cursor-pointer">
+            <td class="px-3 py-2 text-center text-orange-400">🥉</td>
+            <td class="px-3 py-2"><span class="font-mono text-blue-700 font-medium">3665</span> <span class="text-xs text-gray-500">貿聯-KY</span></td>
+            <td class="px-3 py-2 text-right tabular-nums">2,780.00</td>
+            <td class="px-3 py-2 text-right tabular-nums">2,545.00</td>
+            <td class="px-3 py-2 text-right tabular-nums text-green-600 font-semibold">−8.5%</td>
+            <td class="px-3 py-2 text-center">
+              <span class="text-xs px-1.5 py-0.5 rounded bg-red-50 text-red-600 border border-red-200 font-bold">▲ 買</span>
+              <span class="text-xs text-gray-400 ml-1">2.3/3</span>
+            </td>
+            <td class="px-3 py-2 text-center tabular-nums">4</td>
+            <td class="px-3 py-2 text-right tabular-nums text-red-500 font-medium">+203</td>
+            <td class="px-3 py-2 text-xs text-gray-600">多頭 · 量增</td>
+            <td class="px-3 py-2 text-right tabular-nums font-bold text-orange-500">76</td>
+            <td class="px-3 py-2 text-center"><button class="text-xs text-purple-600 hover:underline">💡 理由</button></td>
+          </tr>
+
+          <!-- Row 4 -->
+          <tr class="hover:bg-blue-50 cursor-pointer">
+            <td class="px-3 py-2 text-center text-gray-400">4</td>
+            <td class="px-3 py-2"><span class="font-mono text-blue-700 font-medium">2454</span> <span class="text-xs text-gray-500">聯發科</span></td>
+            <td class="px-3 py-2 text-right tabular-nums">1,260.00</td>
+            <td class="px-3 py-2 text-right tabular-nums">1,500.00</td>
+            <td class="px-3 py-2 text-right tabular-nums text-red-500 font-semibold">+19.0%</td>
+            <td class="px-3 py-2 text-center">
+              <span class="text-xs px-1.5 py-0.5 rounded bg-red-50 text-red-600 border border-red-200 font-bold">▲ 買</span>
+              <span class="text-xs text-gray-400 ml-1">2.5/3</span>
+            </td>
+            <td class="px-3 py-2 text-center tabular-nums">6</td>
+            <td class="px-3 py-2 text-right tabular-nums text-red-500 font-medium">+3,210</td>
+            <td class="px-3 py-2 text-xs text-gray-600">多頭 · 量持平</td>
+            <td class="px-3 py-2 text-right tabular-nums font-bold text-gray-700">71</td>
+            <td class="px-3 py-2 text-center"><button class="text-xs text-purple-600 hover:underline">💡 理由</button></td>
+          </tr>
+
+          <!-- Row 5 -->
+          <tr class="hover:bg-blue-50 cursor-pointer">
+            <td class="px-3 py-2 text-center text-gray-400">5</td>
+            <td class="px-3 py-2"><span class="font-mono text-blue-700 font-medium">5274</span> <span class="text-xs text-gray-500">信驊</span></td>
+            <td class="px-3 py-2 text-right tabular-nums">16,555.00</td>
+            <td class="px-3 py-2 text-right tabular-nums">19,000.00</td>
+            <td class="px-3 py-2 text-right tabular-nums text-red-500 font-semibold">+14.8%</td>
+            <td class="px-3 py-2 text-center">
+              <span class="text-xs px-1.5 py-0.5 rounded bg-red-50 text-red-600 border border-red-200 font-bold">▲ 買</span>
+              <span class="text-xs text-gray-400 ml-1">2.4/3</span>
+            </td>
+            <td class="px-3 py-2 text-center tabular-nums">3</td>
+            <td class="px-3 py-2 text-right tabular-nums text-red-500 font-medium">+892</td>
+            <td class="px-3 py-2 text-xs text-gray-600">多頭 · 量增</td>
+            <td class="px-3 py-2 text-right tabular-nums font-bold text-gray-700">68</td>
+            <td class="px-3 py-2 text-center"><button class="text-xs text-purple-600 hover:underline">💡 理由</button></td>
+          </tr>
+
+          <!-- Row 6: 中性例子 -->
+          <tr class="hover:bg-blue-50 cursor-pointer">
+            <td class="px-3 py-2 text-center text-gray-400">6</td>
+            <td class="px-3 py-2"><span class="font-mono text-blue-700 font-medium">3037</span> <span class="text-xs text-gray-500">欣興</span></td>
+            <td class="px-3 py-2 text-right tabular-nums">198.50</td>
+            <td class="px-3 py-2 text-right tabular-nums">240.00</td>
+            <td class="px-3 py-2 text-right tabular-nums text-red-500 font-semibold">+20.9%</td>
+            <td class="px-3 py-2 text-center">
+              <span class="text-xs px-1.5 py-0.5 rounded bg-gray-50 text-gray-600 border border-gray-300 font-bold">◆ 增持</span>
+              <span class="text-xs text-gray-400 ml-1">2.0/3</span>
+            </td>
+            <td class="px-3 py-2 text-center tabular-nums">4</td>
+            <td class="px-3 py-2 text-right tabular-nums text-green-600 font-medium">−1,200</td>
+            <td class="px-3 py-2 text-xs text-gray-600">糾結 · 量縮</td>
+            <td class="px-3 py-2 text-right tabular-nums font-bold text-gray-700">58</td>
+            <td class="px-3 py-2 text-center"><button class="text-xs text-purple-600 hover:underline">💡 理由</button></td>
+          </tr>
+
+          <!-- Row 7 -->
+          <tr class="hover:bg-blue-50 cursor-pointer">
+            <td class="px-3 py-2 text-center text-gray-400">7</td>
+            <td class="px-3 py-2"><span class="font-mono text-blue-700 font-medium">2308</span> <span class="text-xs text-gray-500">台達電</span></td>
+            <td class="px-3 py-2 text-right tabular-nums">410.00</td>
+            <td class="px-3 py-2 text-right tabular-nums">480.00</td>
+            <td class="px-3 py-2 text-right tabular-nums text-red-500 font-semibold">+17.1%</td>
+            <td class="px-3 py-2 text-center">
+              <span class="text-xs px-1.5 py-0.5 rounded bg-red-50 text-red-600 border border-red-200 font-bold">▲ 買</span>
+              <span class="text-xs text-gray-400 ml-1">2.5/3</span>
+            </td>
+            <td class="px-3 py-2 text-center tabular-nums">3</td>
+            <td class="px-3 py-2 text-right tabular-nums text-red-500 font-medium">+1,540</td>
+            <td class="px-3 py-2 text-xs text-gray-600">多頭 · 量持平</td>
+            <td class="px-3 py-2 text-right tabular-nums font-bold text-gray-700">55</td>
+            <td class="px-3 py-2 text-center"><button class="text-xs text-purple-600 hover:underline">💡 理由</button></td>
+          </tr>
+
+          <tr><td colspan="11" class="px-3 py-3 text-center text-xs text-gray-400">… 還有 10 檔 …</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 點 [💡 理由] 後展開的範例（mock） -->
+  <section class="bg-purple-50 border-2 border-purple-300 rounded-xl p-5 space-y-3">
+    <div class="flex items-center justify-between">
+      <h3 class="font-semibold text-purple-800">💡 LLM 推薦理由（範例展開效果）</h3>
+      <button class="text-xs text-gray-500 hover:text-gray-700">關閉 ✕</button>
+    </div>
+    <div class="bg-white rounded-lg p-4 text-sm text-gray-700 leading-relaxed">
+      <p><span class="font-bold text-blue-700">2330 台積電</span> 近 30 天累計 <strong>8 篇</strong>投顧報告，外資 5 家、本土 3 家，目標價區間落在 1,300–1,500 元，共識評等 2.6/3 偏向 <strong>買進</strong>。3nm 量產順利、4Q AI 訂單動能延續是主要支撐論點。技術面 MA5 在 MA20 上方 1.8%，當週量能比 20 日均高出 23%，呈現「<strong>多頭排列 + 量增</strong>」配合。籌碼面外資近 5 日累計買超 12,345 張，與投信方向一致。當前股價 1,150 元，距目標價中位數仍有 21.7% 上行空間，技術面無短線過熱訊號（RSI 62），可列為核心持股。</p>
+    </div>
+    <p class="text-xs text-purple-600">↑ 這段是按下 💡 後 LLM 即時生成（每次約 2–4 秒，成本約 $0.01）</p>
+  </section>
+
+  <!-- 評分說明 -->
+  <section class="bg-white rounded-xl border border-gray-200 p-4 text-xs text-gray-500 space-y-1">
+    <h4 class="font-medium text-gray-700">評分構成（總分 0–100）</h4>
+    <div>· <span class="text-gray-700">Upside 空間</span>：cap +50% 避免極端值灌分　(0–30 分)</div>
+    <div>· <span class="text-gray-700">投顧共識</span>：報告數 × 評等平均（買=3、增持=2、持有=1、中立=0、減=-1、賣=-2）　(0–35 分)</div>
+    <div>· <span class="text-gray-700">籌碼配合</span>：法人 5 日淨買超 > 0 加分　(0–15 分)</div>
+    <div>· <span class="text-gray-700">技術面</span>：多頭排列 +10、量增 +10　(0–20 分)</div>
+  </section>
+</main>
+
+</body>
+</html>

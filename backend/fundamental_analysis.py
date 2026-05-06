@@ -3,7 +3,15 @@ import time
 import httpx
 from datetime import datetime, timedelta
 
-_HEADERS = {"User-Agent": "Mozilla/5.0"}
+_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36",
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8",
+    "Referer": "https://www.twse.com.tw/zh/page/trading/fund/T86.html",
+}
+
+# 被 TWSE rate-limit 時的全域標記（避免一直重打）
+_T86_BLOCKED_UNTIL: float = 0.0
 
 # T86 法人資料：以日期為 key，永久快取（歷史資料不會變）
 _T86_CACHE: dict[str, list] = {}
@@ -35,13 +43,23 @@ def _parse_float(s: str) -> float | None:
 
 
 def _fetch_t86(date_str: str) -> list:
+    """抓 TWSE T86 法人買賣超。被 rate-limit 時 5 分鐘內不重打。"""
+    global _T86_BLOCKED_UNTIL
+    if time.time() < _T86_BLOCKED_UNTIL:
+        return []
     url = (
         f"https://www.twse.com.tw/rwd/zh/fund/T86"
         f"?response=json&date={date_str}&selectType=ALL"
     )
     try:
         with httpx.Client(timeout=10, headers=_HEADERS, follow_redirects=True) as c:
-            d = c.get(url).json()
+            r = c.get(url)
+        ctype = r.headers.get("content-type", "")
+        if "json" not in ctype:
+            # TWSE 擋掉時回 HTML 錯誤頁
+            _T86_BLOCKED_UNTIL = time.time() + 300
+            return []
+        d = r.json()
         if d.get("stat") == "OK":
             return d.get("data", [])
     except Exception:
@@ -49,47 +67,92 @@ def _fetch_t86(date_str: str) -> list:
     return []
 
 
-def get_institutional(code: str, days: int = 5) -> list[dict] | None:
-    """取近 days 個交易日的法人買賣超（上市股票）"""
-    global _T86_TODAY_TS
+def is_t86_blocked() -> bool:
+    return time.time() < _T86_BLOCKED_UNTIL
 
+
+# 個股法人快取：以 stock_id 為 key，1 小時 TTL
+_NSTOCK_INST_CACHE: dict[str, tuple[float, list]] = {}
+_NSTOCK_INST_TTL = 3600
+
+
+def _fetch_institutional_nstock(code: str) -> list:
+    """從 nStock API 抓個股法人買賣超（已是「張」單位）。"""
+    cached = _NSTOCK_INST_CACHE.get(code)
+    if cached and time.time() - cached[0] < _NSTOCK_INST_TTL:
+        return cached[1]
+    url = f"https://api.nstock.tw/v2/three-institutional-investors/data?stock_id={code}"
+    try:
+        with httpx.Client(timeout=8, headers={"User-Agent": "Mozilla/5.0"}) as c:
+            j = c.get(url).json()
+        data = j.get("data") or []
+        if not data:
+            return []
+        rows = data[0].get("三大法人") or []
+        out: list[dict] = []
+        for r in rows:
+            ds = r.get("日期", "")
+            if len(ds) != 8:
+                continue
+            foreign = _parse_int(r.get("外資買賣超", 0))
+            trust = _parse_int(r.get("投信買賣超", 0))
+            dealer = _parse_int(r.get("自營商買賣超", 0))
+            out.append({
+                "date": f"{ds[:4]}/{ds[4:6]}/{ds[6:]}",
+                "foreign": foreign,
+                "trust": trust,
+                "dealer": dealer,
+                "total": foreign + trust + dealer,
+            })
+        _NSTOCK_INST_CACHE[code] = (time.time(), out)
+        return out
+    except Exception:
+        return []
+
+
+def get_institutional(code: str, days: int = 5) -> list[dict] | None:
+    """取近 days 個交易日的法人買賣超（單位：張）。
+
+    走 nStock API（per-stock，無 rate-limit 問題），TWSE T86 留 fallback。
+    """
+    rows = _fetch_institutional_nstock(code)
+    if rows:
+        return rows[:days]
+
+    # Fallback：TWSE T86（IP 沒被擋時）
+    global _T86_TODAY_TS
     results: list[dict] = []
     today = _tw_now().strftime("%Y%m%d")
     d = _tw_now()
-
     for _ in range(20):
         date_str = d.strftime("%Y%m%d")
-
-        # 今日資料每小時重拉；歷史資料永久快取
         is_today = date_str == today
         need_fetch = date_str not in _T86_CACHE or (
             is_today and time.time() - _T86_TODAY_TS > 3600
         )
-
         if need_fetch:
-            rows = _fetch_t86(date_str)
-            _T86_CACHE[date_str] = rows
+            t86_rows = _fetch_t86(date_str)
+            _T86_CACHE[date_str] = t86_rows
             if is_today:
                 _T86_TODAY_TS = time.time()
         else:
-            rows = _T86_CACHE[date_str]
-
-        if rows:
-            for row in rows:
+            t86_rows = _T86_CACHE[date_str]
+        if t86_rows:
+            for row in t86_rows:
                 if row[0] == code:
+                    def col(i: int) -> str:
+                        return row[i] if i < len(row) else "0"
                     results.append({
                         "date": f"{date_str[:4]}/{date_str[4:6]}/{date_str[6:]}",
-                        "foreign": _parse_int(row[4]),   # 外陸資買賣超
-                        "trust":   _parse_int(row[10]),  # 投信買賣超
-                        "dealer":  _parse_int(row[11]),  # 自營商買賣超
-                        "total":   _parse_int(row[18]),  # 三大法人合計
+                        "foreign": _parse_int(col(4)) // 1000,
+                        "trust":   _parse_int(col(10)) // 1000,
+                        "dealer":  _parse_int(col(11)) // 1000,
+                        "total":   _parse_int(col(18)) // 1000,
                     })
                     break
-
         if len(results) >= days:
             break
         d -= timedelta(days=1)
-
     return results if results else None
 
 

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Routes, Route, NavLink, useLocation } from "react-router-dom";
 import { GoogleOAuthProvider } from "@react-oauth/google";
 import WatchlistPage from "./pages/WatchlistPage";
@@ -14,6 +14,27 @@ import PostMaterialsBar from "./components/PostMaterialsBar";
 import { AuthProvider } from "./contexts/AuthContext";
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID ?? "";
+
+function ScrollToTop() {
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    const onScroll = () => setVisible(window.scrollY > 300);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+  if (!visible) return null;
+  return (
+    <button
+      onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+      className="fixed bottom-20 right-6 z-50 w-10 h-10 rounded-full bg-white border border-gray-200 shadow-md text-gray-500 hover:text-blue-600 hover:border-blue-300 flex items-center justify-center transition"
+      title="回到頂端"
+    >
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+        <path d="M5 15l7-7 7 7" />
+      </svg>
+    </button>
+  );
+}
 
 const NAV_ITEMS = [
   { to: "/",        label: "自選股",   end: true  },
@@ -120,6 +141,7 @@ export default function App() {
             </Routes>
           </main>
           <PostMaterialsBar />
+          <ScrollToTop />
         </div>
       </AuthProvider>
     </GoogleOAuthProvider>

@@ -3,6 +3,7 @@ import axios from "axios";
 import { useAuth } from "../contexts/AuthContext";
 import { Navigate, useLocation } from "react-router-dom";
 import { usePostMaterials } from "../hooks/usePostMaterials";
+import { syncApi, type SyncLogEntry } from "../api/client";
 
 interface UserRecord {
   id: number;
@@ -33,6 +34,459 @@ interface ReportItem {
   summary: string;
 }
 
+// ── 每日草稿區塊（00981A × 投顧報告 自動生成） ────────────────
+interface DailyDraftSummary {
+  id: number;
+  date: string;
+  topic_stock_code: string;
+  topic_stock_name: string | null;
+  title: string;
+  generated_at: string;
+  published_at: string | null;          // nStock 送出時間
+  nstock_article_id: number | null;
+  edit_url: string | null;
+  threads_post_id: string | null;
+  threads_posted_at: string | null;
+  fb_post_id: string | null;
+  fb_posted_at: string | null;
+  fb_url: string | null;
+  preview?: string;
+}
+
+interface DailyDraftDetail extends DailyDraftSummary {
+  content: string;
+}
+
+function DailySection({ token }: { token: string }) {
+  const headers = { Authorization: `Bearer ${token}` };
+  const [list, setList] = useState<DailyDraftSummary[]>([]);
+  const [active, setActive] = useState<DailyDraftDetail | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [publishLive, setPublishLive] = useState(false);  // 預設送 nStock 草稿區不上架
+  const [postingThreads, setPostingThreads] = useState(false);
+  const [threadsTag, setThreadsTag] = useState("");
+  const [postingFb, setPostingFb] = useState(false);
+  const [fbWithLink, setFbWithLink] = useState(true);
+  const [fbSummaryOnly, setFbSummaryOnly] = useState(true);
+  const [fbPicture, setFbPicture] = useState("");
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const refreshList = async () => {
+    setLoading(true);
+    try {
+      const r = await axios.get<DailyDraftSummary[]>("/api/publish/daily", { headers });
+      setList(r.data);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const openDraft = async (id: number) => {
+    setMsg(null);
+    const r = await axios.get<DailyDraftDetail>(`/api/publish/daily/${id}`, { headers });
+    setActive(r.data);
+  };
+
+  useEffect(() => { refreshList(); }, []);
+
+  const [generateDate, setGenerateDate] = useState("");  // "" = 今日
+
+  const generateToday = async () => {
+    setMsg(null);
+    setGenerating(true);
+    try {
+      const params: Record<string, string | boolean> = { force: true };
+      if (generateDate) params.date = generateDate;
+      const r = await axios.post<DailyDraftDetail>(
+        "/api/publish/daily/refresh", null, { headers, params }
+      );
+      setActive(r.data);
+      await refreshList();
+      setMsg({ ok: true, text: `✅ 生成完成：${r.data.title}` });
+    } catch (e: any) {
+      setMsg({ ok: false, text: `❌ ${e.response?.data?.detail ?? "生成失敗"}` });
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const saveDraft = async () => {
+    if (!active) return;
+    setSaving(true);
+    setMsg(null);
+    try {
+      const r = await axios.patch<DailyDraftDetail>(
+        `/api/publish/daily/${active.id}`,
+        { title: active.title, content: active.content },
+        { headers }
+      );
+      setActive(r.data);
+      await refreshList();
+      setMsg({ ok: true, text: "✅ 已儲存" });
+    } catch (e: any) {
+      setMsg({ ok: false, text: `❌ ${e.response?.data?.detail ?? "儲存失敗"}` });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const publishToNstock = async () => {
+    if (!active) return;
+    const action = publishLive ? "直接上架" : "送到 nStock 草稿區（不上架）";
+    const repostHint = active.published_at
+      ? "\n\n⚠️ 此草稿之前已送出過，再送會在 nStock 產生第二篇文章。"
+      : "";
+    if (!confirm(`確定要 ${action}「${active.title}」？${repostHint}`)) return;
+    setPublishing(true);
+    setMsg(null);
+    try {
+      // 先 auto-save，避免使用者修改標題/內文未存就送出（後端從 DB 讀）
+      await axios.patch(
+        `/api/publish/daily/${active.id}`,
+        { title: active.title, content: active.content },
+        { headers }
+      );
+      const r = await axios.post(
+        `/api/publish/daily/${active.id}/publish-nstock`, null,
+        { headers, params: { live: publishLive } }
+      );
+      const aid = r.data?.article_id;
+      if (aid) {
+        const statusHint = publishLive ? "已上架" : "存於 nStock 後台草稿區";
+        setMsg({ ok: true, text: `✅ ${statusHint}：article_id ${aid}` });
+        await openDraft(active.id);
+        await refreshList();
+      } else {
+        setMsg({ ok: false, text: "⚠️ 回 200 但抓不到 article_id" });
+      }
+    } catch (e: any) {
+      setMsg({ ok: false, text: `❌ ${e.response?.data?.detail ?? "發送失敗"}` });
+    } finally {
+      setPublishing(false);
+    }
+  };
+
+  const publishToThreads = async () => {
+    if (!active) return;
+    const repostHint = active.threads_post_id
+      ? "\n\n⚠️ 此草稿之前已發過 Threads，再發會產生第二串。"
+      : "";
+    if (!confirm(`確定要發到 Threads？（會自動切段成留言鏈，粗體 ** 會被剝掉）${repostHint}`)) return;
+    setPostingThreads(true);
+    setMsg(null);
+    try {
+      // 一樣先 auto-save
+      await axios.patch(
+        `/api/publish/daily/${active.id}`,
+        { title: active.title, content: active.content },
+        { headers }
+      );
+      const r = await axios.post(
+        `/api/publish/daily/${active.id}/publish-threads`, null,
+        { headers, params: threadsTag.trim() ? { topic_tag: threadsTag.trim() } : {} }
+      );
+      const pid = r.data?.post_id;
+      const segs = r.data?.segments ?? 1;
+      if (pid) {
+        const chainHint = segs > 1 ? `（${segs} 段留言鏈）` : "";
+        setMsg({ ok: true, text: `✅ Threads ${chainHint}：${pid}` });
+        await openDraft(active.id);
+        await refreshList();
+      } else {
+        setMsg({ ok: false, text: "⚠️ 回 200 但抓不到 post_id" });
+      }
+    } catch (e: any) {
+      setMsg({ ok: false, text: `❌ ${e.response?.data?.detail ?? "Threads 發送失敗"}` });
+    } finally {
+      setPostingThreads(false);
+    }
+  };
+
+  const publishToFacebook = async () => {
+    if (!active) return;
+    const repostHint = active.fb_post_id
+      ? "\n\n⚠️ 此草稿之前已發過 FB，再發會在粉專產生第二篇貼文。"
+      : "";
+    const linkHint = fbWithLink && active.nstock_article_id
+      ? "\n\n（會帶 nStock 文章連結，FB 會生 link card）"
+      : (fbWithLink && !active.nstock_article_id
+        ? "\n\n（勾了帶 nStock 連結但 nStock 還沒發過，這次會純文字）"
+        : "");
+    if (!confirm(`確定要發到 Facebook 粉專？${linkHint}${repostHint}`)) return;
+    setPostingFb(true);
+    setMsg(null);
+    try {
+      await axios.patch(
+        `/api/publish/daily/${active.id}`,
+        { title: active.title, content: active.content },
+        { headers }
+      );
+      const fbParams: Record<string, string | boolean> = {
+        with_nstock_link: fbWithLink,
+        summary_only: fbSummaryOnly,
+      };
+      if (fbPicture.trim()) fbParams.picture = fbPicture.trim();
+      const r = await axios.post(
+        `/api/publish/daily/${active.id}/publish-facebook`, null,
+        { headers, params: fbParams }
+      );
+      const pid = r.data?.post_id;
+      if (pid) {
+        setMsg({ ok: true, text: `✅ FB 已發布：${pid}` });
+        await openDraft(active.id);
+        await refreshList();
+      } else {
+        setMsg({ ok: false, text: "⚠️ 回 200 但抓不到 post_id" });
+      }
+    } catch (e: any) {
+      setMsg({ ok: false, text: `❌ ${e.response?.data?.detail ?? "FB 發送失敗"}` });
+    } finally {
+      setPostingFb(false);
+    }
+  };
+
+  const fmtDateTime = (s: string | null) => s ? s.replace("T", " ").slice(0, 16) : "—";
+
+  return (
+    <div className="space-y-4">
+      {/* 操作列 */}
+      <section className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-3 flex-wrap">
+        <p className="text-sm text-gray-600 flex-1">
+          每天 19:45 自動抓 ETF 小百科 00981A 操作，挑一檔有投顧報告的個股寫成 Newtalk 風格議論文。
+        </p>
+        <div className="flex items-center gap-2">
+          <input
+            type="date"
+            value={generateDate}
+            onChange={(e) => setGenerateDate(e.target.value)}
+            className="text-sm px-2 py-1.5 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-300"
+          />
+          <button
+            onClick={generateToday}
+            disabled={generating}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-40 transition"
+          >
+            {generating ? "生成中…" : generateDate ? `生成 ${generateDate} 草稿` : "立即生成今日草稿"}
+          </button>
+        </div>
+      </section>
+
+      {msg && (
+        <div className={`rounded-lg px-4 py-2 text-sm ${
+          msg.ok ? "bg-green-50 text-green-700 border border-green-200"
+                 : "bg-red-50 text-red-700 border border-red-200"
+        }`}>{msg.text}</div>
+      )}
+
+      {/* 草稿清單 */}
+      <section className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
+          <h2 className="font-semibold text-gray-700">草稿列表</h2>
+          <span className="text-sm text-gray-400">{list.length} 篇</span>
+        </div>
+        {loading ? (
+          <p className="px-5 py-8 text-center text-gray-400 text-sm">載入中…</p>
+        ) : list.length === 0 ? (
+          <p className="px-5 py-8 text-center text-gray-400 text-sm">尚無草稿</p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
+              <tr>
+                <th className="px-4 py-2 text-left">日期</th>
+                <th className="px-4 py-2 text-left">主題</th>
+                <th className="px-4 py-2 text-left">標題</th>
+                <th className="px-4 py-2 text-left">狀態</th>
+                <th className="px-4 py-2"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {list.map((d) => (
+                <tr
+                  key={d.id}
+                  onClick={() => openDraft(d.id)}
+                  className={`hover:bg-blue-50 cursor-pointer transition ${
+                    active?.id === d.id ? "bg-blue-50" : ""
+                  }`}
+                >
+                  <td className="px-4 py-2 text-gray-700 tabular-nums">{d.date}</td>
+                  <td className="px-4 py-2 text-gray-700">
+                    <span className="font-mono text-blue-700">{d.topic_stock_code}</span>
+                    {d.topic_stock_name && <span className="ml-1 text-xs text-gray-500">{d.topic_stock_name}</span>}
+                  </td>
+                  <td className="px-4 py-2 text-gray-700 truncate max-w-md" title={d.title}>{d.title}</td>
+                  <td className="px-4 py-2">
+                    <div className="flex flex-wrap gap-1">
+                      {d.published_at ? (
+                        <span className="text-xs px-1.5 py-0.5 rounded bg-green-50 text-green-700 border border-green-200" title={`nStock ${fmtDateTime(d.published_at)}`}>nStock</span>
+                      ) : null}
+                      {d.threads_post_id ? (
+                        <span className="text-xs px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200" title={`Threads ${fmtDateTime(d.threads_posted_at)}`}>Threads</span>
+                      ) : null}
+                      {d.fb_post_id ? (
+                        <span className="text-xs px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200" title={`FB ${fmtDateTime(d.fb_posted_at)}`}>FB</span>
+                      ) : null}
+                      {!d.published_at && !d.threads_post_id && !d.fb_post_id && (
+                        <span className="text-xs px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">草稿</span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-4 py-2 text-right">
+                    {d.edit_url && (
+                      <a href={d.edit_url} target="_blank" rel="noopener" onClick={(e) => e.stopPropagation()}
+                        className="text-xs text-blue-600 hover:underline">nStock ↗</a>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+
+      {/* 編輯 / 發布 */}
+      {active && (
+        <section className="bg-white rounded-xl border border-gray-200 p-5 space-y-3">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <h2 className="font-semibold text-gray-700">編輯草稿 — {active.date}</h2>
+            <button
+              onClick={saveDraft}
+              disabled={saving}
+              className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-lg text-sm font-medium disabled:opacity-40 transition"
+            >
+              {saving ? "儲存中…" : "儲存"}
+            </button>
+          </div>
+
+          <input
+            type="text"
+            value={active.title}
+            onChange={(e) => setActive({ ...active, title: e.target.value })}
+            className="w-full text-lg font-semibold border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-400"
+          />
+          <textarea
+            value={active.content}
+            onChange={(e) => setActive({ ...active, content: e.target.value })}
+            rows={24}
+            className="w-full font-mono text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-400 leading-relaxed"
+          />
+          <p className="text-xs text-gray-400">
+            字數 {active.content.length} ｜ 主題：{active.topic_stock_code} {active.topic_stock_name} ｜ 生成時間 {fmtDateTime(active.generated_at)}
+          </p>
+
+          {/* 發送區：nStock + Threads + Facebook */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-3 border-t border-gray-100">
+            {/* nStock */}
+            <div className="border border-gray-200 rounded-lg p-3 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-medium text-gray-700">nStock</span>
+                {active.published_at && (
+                  <span className="text-xs text-gray-400">已送 {fmtDateTime(active.published_at)}</span>
+                )}
+              </div>
+              <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={publishLive}
+                  onChange={(e) => setPublishLive(e.target.checked)}
+                  className="accent-red-500"
+                />
+                直接上架（預設只送草稿區）
+              </label>
+              <button
+                onClick={publishToNstock}
+                disabled={publishing}
+                className={`w-full text-white px-3 py-1.5 rounded-lg text-sm font-medium disabled:opacity-40 transition ${
+                  publishLive ? "bg-red-600 hover:bg-red-700" : "bg-blue-600 hover:bg-blue-700"
+                }`}
+              >
+                {publishing ? "送出中…"
+                  : publishLive
+                    ? (active.published_at ? "再送一次（並上架）" : "送到 nStock 並上架")
+                    : (active.published_at ? "再送一次（草稿）" : "送到 nStock 草稿區")}
+              </button>
+            </div>
+
+            {/* Threads */}
+            <div className="border border-gray-200 rounded-lg p-3 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-medium text-gray-700">Threads</span>
+                {active.threads_post_id && (
+                  <span className="text-xs text-gray-400">已發 {fmtDateTime(active.threads_posted_at)}</span>
+                )}
+              </div>
+              <input
+                type="text"
+                value={threadsTag}
+                onChange={(e) => setThreadsTag(e.target.value)}
+                placeholder="主題標籤 (選填，例：#台股)"
+                className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-purple-400"
+              />
+              <button
+                onClick={publishToThreads}
+                disabled={postingThreads}
+                className="w-full bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium disabled:opacity-40 transition"
+              >
+                {postingThreads ? "發布中…"
+                  : active.threads_post_id ? "再發一次到 Threads" : "送到 Threads"}
+              </button>
+            </div>
+
+            {/* Facebook */}
+            <div className="border border-gray-200 rounded-lg p-3 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-medium text-gray-700">Facebook</span>
+                {active.fb_post_id && (
+                  <a href={active.fb_url ?? "#"} target="_blank" rel="noopener"
+                    className="text-xs text-blue-600 hover:underline">
+                    已發 {fmtDateTime(active.fb_posted_at)} ↗
+                  </a>
+                )}
+              </div>
+              <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={fbSummaryOnly}
+                  onChange={(e) => setFbSummaryOnly(e.target.checked)}
+                  className="accent-blue-500"
+                />
+                只發摘要（首段 + link card，FB 觸及較好）
+              </label>
+              <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={fbWithLink}
+                  onChange={(e) => setFbWithLink(e.target.checked)}
+                  className="accent-blue-500"
+                />
+                帶 nStock 連結（生 link card）
+              </label>
+              <input
+                type="url"
+                value={fbPicture}
+                onChange={(e) => setFbPicture(e.target.value)}
+                placeholder="縮圖 URL（選填，貼圖片網址可覆蓋 nStock logo）"
+                className="w-full text-xs px-2 py-1.5 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-300"
+              />
+              <button
+                onClick={publishToFacebook}
+                disabled={postingFb}
+                className="w-full bg-blue-700 hover:bg-blue-800 text-white px-3 py-1.5 rounded-lg text-sm font-medium disabled:opacity-40 transition"
+              >
+                {postingFb ? "發布中…"
+                  : active.fb_post_id ? "再發一次到 FB" : "送到 Facebook"}
+              </button>
+            </div>
+          </div>
+        </section>
+      )}
+    </div>
+  );
+}
+
+
 // ── 社群發布區塊 ─────────────────────────────────────────
 function PublishSection({ token, initialIds }: { token: string; initialIds?: number[] }) {
   const headers = { Authorization: `Bearer ${token}` };
@@ -46,7 +500,11 @@ function PublishSection({ token, initialIds }: { token: string; initialIds?: num
   const [draft, setDraft] = useState("");
   const [topicTag, setTopicTag] = useState("");
   const [nstockTitle, setNstockTitle] = useState("");
+  const [alsoThreads, setAlsoThreads] = useState(true);
   const [alsoNstock, setAlsoNstock] = useState(true);
+  const [alsoFb, setAlsoFb] = useState(false);
+  const [fbLink, setFbLink] = useState("");
+  const [fbPic, setFbPic] = useState("");
   const [generating, setGenerating] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [publishResult, setPublishResult] = useState<{ ok: boolean; msg: string } | null>(null);
@@ -135,21 +593,24 @@ function PublishSection({ token, initialIds }: { token: string; initialIds?: num
     let anyFail = false;
 
     // 1. Threads
-    try {
-      const payload: { text: string; topic_tag?: string } = { text: draft };
-      const tag = topicTag.trim();
-      if (tag) payload.topic_tag = tag;
-      const r = await axios.post("/api/publish/threads", payload, { headers });
-      const segs = r.data.segments ?? 1;
-      const chainHint = segs > 1 ? `（${segs} 段留言鏈）` : "";
-      messages.push(`✅ Threads ${chainHint}：${r.data.post_id}`);
-    } catch (e: any) {
-      anyFail = true;
-      const detail = e.response?.data?.detail ?? "發布失敗";
-      messages.push(`❌ Threads：${detail}`);
+    if (alsoThreads) {
+      try {
+        const payload: { text: string; topic_tag?: string } = { text: draft };
+        const tag = topicTag.trim();
+        if (tag) payload.topic_tag = tag;
+        const r = await axios.post("/api/publish/threads", payload, { headers });
+        const segs = r.data.segments ?? 1;
+        const chainHint = segs > 1 ? `（${segs} 段留言鏈）` : "";
+        messages.push(`✅ Threads ${chainHint}：${r.data.post_id}`);
+      } catch (e: any) {
+        anyFail = true;
+        const detail = e.response?.data?.detail ?? "發布失敗";
+        messages.push(`❌ Threads：${detail}`);
+      }
     }
 
     // 2. nStock（同時發布）
+    let nstockArticleId: number | null = null;
     if (alsoNstock) {
       try {
         const r = await axios.post(
@@ -161,6 +622,7 @@ function PublishSection({ token, initialIds }: { token: string; initialIds?: num
         const sids = r.data.stock_ids;
         const stockHint = sids ? `（相關股號 ${sids}）` : "";
         if (aid) {
+          nstockArticleId = aid;
           messages.push(`✅ nStock：article_id ${aid}${stockHint}`);
         } else {
           const rawPreview = JSON.stringify(r.data.raw ?? r.data).slice(0, 120);
@@ -170,6 +632,30 @@ function PublishSection({ token, initialIds }: { token: string; initialIds?: num
         anyFail = true;
         const detail = e.response?.data?.detail ?? "發布失敗";
         messages.push(`❌ nStock：${detail}`);
+      }
+    }
+
+    // 3. Facebook（同時發布）
+    if (alsoFb) {
+      try {
+        const link = fbLink.trim()
+          || (nstockArticleId ? `https://www.nstock.tw/author/article?id=${nstockArticleId}` : undefined);
+        const r = await axios.post(
+          "/api/publish/facebook",
+          { text: draft, ...(link ? { link } : {}), ...(fbPic.trim() ? { picture: fbPic.trim() } : {}) },
+          { headers }
+        );
+        const pid = r.data.post_id;
+        if (pid) {
+          const linkHint = link ? "（含 link card）" : "";
+          messages.push(`✅ FB：${pid}${linkHint}`);
+        } else {
+          messages.push("⚠️ FB 回 200 但抓不到 post_id");
+        }
+      } catch (e: any) {
+        anyFail = true;
+        const detail = e.response?.data?.detail ?? "發布失敗";
+        messages.push(`❌ FB：${detail}`);
       }
     }
 
@@ -305,13 +791,22 @@ function PublishSection({ token, initialIds }: { token: string; initialIds?: num
             className="flex-1 w-full text-sm px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-300 resize-none font-sans leading-relaxed"
           />
           <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-500 shrink-0 w-16">Threads 主題</span>
+            <label className="flex items-center gap-1.5 shrink-0 text-xs text-gray-600 select-none">
+              <input
+                type="checkbox"
+                checked={alsoThreads}
+                onChange={(e) => setAlsoThreads(e.target.checked)}
+                className="accent-black"
+              />
+              發布 Threads
+            </label>
             <input
               type="text"
               value={topicTag}
               onChange={(e) => setTopicTag(e.target.value)}
-              placeholder="例：投資、台股、ETF（可留空）"
-              className="flex-1 text-sm px-3 py-1.5 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-300"
+              disabled={!alsoThreads}
+              placeholder={alsoThreads ? "Threads 主題標籤（可留空）" : "已停用"}
+              className="flex-1 text-sm px-3 py-1.5 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-300 disabled:bg-gray-50 disabled:text-gray-400"
             />
           </div>
 
@@ -334,6 +829,38 @@ function PublishSection({ token, initialIds }: { token: string; initialIds?: num
               className="flex-1 text-sm px-3 py-1.5 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-300 disabled:bg-gray-50 disabled:text-gray-400"
             />
           </div>
+          <div className="flex items-center gap-2">
+            <label className="flex items-center gap-1.5 shrink-0 text-xs text-gray-600 select-none">
+              <input
+                type="checkbox"
+                checked={alsoFb}
+                onChange={(e) => setAlsoFb(e.target.checked)}
+                className="accent-blue-700"
+              />
+              同步 Facebook
+            </label>
+            <input
+              type="text"
+              value={fbLink}
+              onChange={(e) => setFbLink(e.target.value)}
+              disabled={!alsoFb}
+              placeholder={alsoFb
+                ? (alsoNstock ? "FB link card URL（留空=自動帶剛發的 nStock 連結）" : "FB link card URL（選填，會生 link card）")
+                : "已停用"}
+              className="flex-1 text-sm px-3 py-1.5 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-300 disabled:bg-gray-50 disabled:text-gray-400"
+            />
+          </div>
+          {alsoFb && (
+            <div className="flex items-center gap-2 pl-[6.5rem]">
+              <input
+                type="url"
+                value={fbPic}
+                onChange={(e) => setFbPic(e.target.value)}
+                placeholder="FB 縮圖 URL（選填，覆蓋預設 og:image）"
+                className="flex-1 text-sm px-3 py-1.5 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-300"
+              />
+            </div>
+          )}
           <div className="flex items-center justify-between">
             <span className={`text-xs font-medium ${draft.length > 500 ? "text-yellow-600" : "text-gray-400"}`}>
               {draft.length} 字元{draft.length > 500 ? `　• 將切成 ${Math.ceil(draft.length / 490)} 段串留言鏈` : ""}
@@ -346,7 +873,11 @@ function PublishSection({ token, initialIds }: { token: string; initialIds?: num
               <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm0 18c-4.418 0-8-3.582-8-8s3.582-8 8-8 8 3.582 8 8-3.582 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z"/>
               </svg>
-              {publishing ? "發布中…" : "發布到 Threads"}
+              {publishing ? "發布中…" : `發布${[
+                alsoThreads && "Threads",
+                alsoNstock && "nStock",
+                alsoFb && "FB",
+              ].filter(Boolean).join(" + ")}`}
             </button>
           </div>
 
@@ -364,11 +895,120 @@ function PublishSection({ token, initialIds }: { token: string; initialIds?: num
 }
 
 // ── 主頁面 ────────────────────────────────────────────────
+function SyncHistorySection() {
+  const [logs, setLogs] = useState<SyncLogEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const load = () => {
+    setLoading(true);
+    syncApi.history(30).then(setLogs).finally(() => setLoading(false));
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const handleSync = async () => {
+    setSyncing(true);
+    setMsg(null);
+    try {
+      await syncApi.trigger();
+      setMsg("同步已啟動，稍後重新整理查看結果");
+      setTimeout(load, 5000);
+    } catch {
+      setMsg("啟動失敗");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const fmtDt = (s: string | null) =>
+    s ? new Date(s + (s.includes("+") ? "" : "Z")).toLocaleString("zh-TW", { timeZone: "Asia/Taipei", hour12: false }) : "—";
+
+  const duration = (log: SyncLogEntry) => {
+    if (!log.finished_at) return "進行中…";
+    const s = Math.round((new Date(log.finished_at).getTime() - new Date(log.started_at).getTime()) / 1000);
+    return s >= 60 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${s}s`;
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-gray-500">顯示最近 30 筆同步記錄</p>
+        <div className="flex items-center gap-2">
+          {msg && <span className="text-xs text-blue-600">{msg}</span>}
+          <button onClick={load} className="px-3 py-1.5 text-sm rounded-lg border border-gray-300 hover:bg-gray-50">重新整理</button>
+          <button
+            onClick={handleSync}
+            disabled={syncing}
+            className="px-3 py-1.5 text-sm rounded-lg bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-50"
+          >
+            {syncing ? "啟動中…" : "立即同步"}
+          </button>
+        </div>
+      </div>
+
+      <section className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        {loading ? (
+          <p className="px-5 py-6 text-gray-400 text-sm">載入中…</p>
+        ) : logs.length === 0 ? (
+          <p className="px-5 py-6 text-gray-400 text-sm">尚無同步記錄，點「立即同步」開始第一次同步。</p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
+              <tr>
+                <th className="px-4 py-2.5 text-left">開始時間</th>
+                <th className="px-4 py-2.5 text-left">觸發</th>
+                <th className="px-4 py-2.5 text-right">處理</th>
+                <th className="px-4 py-2.5 text-right">略過</th>
+                <th className="px-4 py-2.5 text-right">新增報告</th>
+                <th className="px-4 py-2.5 text-right">錯誤</th>
+                <th className="px-4 py-2.5 text-right">耗時</th>
+                <th className="px-4 py-2.5 text-left">狀態</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {logs.map((log) => (
+                <tr key={log.id} className="hover:bg-gray-50">
+                  <td className="px-4 py-2.5 text-gray-700 whitespace-nowrap">{fmtDt(log.started_at)}</td>
+                  <td className="px-4 py-2.5">
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${log.trigger === "scheduled" ? "bg-purple-50 text-purple-600" : "bg-blue-50 text-blue-600"}`}>
+                      {log.trigger === "scheduled" ? "排程" : "手動"}
+                    </span>
+                  </td>
+                  <td className="px-4 py-2.5 text-right text-gray-700 tabular-nums">{log.processed}</td>
+                  <td className="px-4 py-2.5 text-right text-gray-400 tabular-nums">{log.skipped}</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums">
+                    <span className={log.new_reports > 0 ? "text-green-600 font-semibold" : "text-gray-400"}>{log.new_reports}</span>
+                  </td>
+                  <td className="px-4 py-2.5 text-right tabular-nums">
+                    <span className={log.errors > 0 ? "text-red-500 font-medium" : "text-gray-400"}>{log.errors}</span>
+                  </td>
+                  <td className="px-4 py-2.5 text-right text-gray-500 whitespace-nowrap">{duration(log)}</td>
+                  <td className="px-4 py-2.5">
+                    {log.status === "running" ? (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-50 text-yellow-600 font-medium animate-pulse">同步中</span>
+                    ) : log.status === "error" ? (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-red-50 text-red-600 font-medium" title={log.error_message ?? ""}>失敗</span>
+                    ) : (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-green-50 text-green-600 font-medium">完成</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+    </div>
+  );
+}
+
 export default function AdminPage() {
   const { user, token } = useAuth();
   const location = useLocation();
-  const locState = location.state as { tab?: "publish" | "users"; selectedIds?: number[] } | null;
-  const [tab, setTab] = useState<"publish" | "users">(locState?.tab ?? "publish");
+  const locState = location.state as { tab?: "publish" | "daily" | "users"; selectedIds?: number[] } | null;
+  const [tab, setTab] = useState<"publish" | "daily" | "users" | "sync">(locState?.tab ?? "publish");
   const [users, setUsers] = useState<UserRecord[]>([]);
   const [selectedUser, setSelectedUser] = useState<UserRecord | null>(null);
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -402,6 +1042,8 @@ export default function AdminPage() {
 
   const tabs = [
     { id: "publish", label: "社群發布" },
+    { id: "daily",   label: "每日草稿" },
+    { id: "sync",    label: "同步記錄" },
     { id: "users",   label: "帳號管理" },
   ] as const;
 
@@ -427,6 +1069,10 @@ export default function AdminPage() {
       </div>
 
       {tab === "publish" && <PublishSection token={token ?? ""} initialIds={locState?.selectedIds} />}
+
+      {tab === "daily" && <DailySection token={token ?? ""} />}
+
+      {tab === "sync" && <SyncHistorySection />}
 
       {tab === "users" && (
         <>{/* 使用者列表 */}

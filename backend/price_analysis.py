@@ -181,12 +181,30 @@ def _compute_bollinger(closes: pd.Series, current: float, period: int = 20) -> d
     return {"upper": upper, "lower": lower, "pct_b": pct_b, "signal": signal}
 
 
+def _ma_position_text(price: float, ma5, ma10, ma20, ma60) -> str:
+    """描述現價與各均線的位置關係"""
+    mas = [("5日", ma5), ("10日", ma10), ("20日", ma20), ("60日", ma60)]
+    mas = [(label, val) for label, val in mas if val is not None]
+    above = [label for label, val in mas if price >= val]
+    below = [label for label, val in mas if price < val]
+    if not below:
+        return "站上所有均線"
+    if not above:
+        return "跌破所有均線"
+    if len(above) == 1:
+        return f"僅站上{above[0]}均線"
+    if len(below) == 1:
+        return f"站上所有均線，逼近{below[0]}均線"
+    return f"站上{above[-1]}均線，跌破{below[0]}均線"
+
+
 def _make_suggestion(
     ma_signal: str,
     volume_signal: str,
     rsi: float | None,
     price_change_5d: float | None,
     bb_signal: str | None = None,
+    change_pct_today: float | None = None,
 ) -> str:
     if bb_signal == "突破上軌":
         return "突破布林上軌，短線過熱"
@@ -196,12 +214,24 @@ def _make_suggestion(
         return "短線過熱，注意回檔"
     if rsi is not None and rsi <= 25:
         return "短線超賣，留意反彈"
+
+    today_up = change_pct_today is not None and change_pct_today > 0
+    today_down = change_pct_today is not None and change_pct_today < 0
+
     if ma_signal == "多頭排列" and volume_signal == "量增":
-        return "量增價漲，偏多"
+        if today_up:
+            return "量增價漲，偏多"
+        if today_down:
+            return "量增收黑，留意賣壓"
+        return "多頭 + 量增"
     if ma_signal == "多頭排列" and volume_signal == "量縮":
         return "多頭趨勢，量縮整理"
     if ma_signal == "空頭排列" and volume_signal == "量增":
-        return "量增價跌，注意風險"
+        if today_down:
+            return "量增價跌，注意風險"
+        if today_up:
+            return "量增反彈，注意是否有效"
+        return "空頭 + 量增"
     if ma_signal == "空頭排列":
         return "弱勢整理，觀望為主"
     return "盤整，等待方向"
@@ -290,7 +320,7 @@ def _build_index_data_from_nstock(key: str, meta: dict) -> dict | None:
         pct_b = None
         bb_sig = None
 
-    suggestion = _make_suggestion(ma_signal, volume_signal, rsi, change_pct, bb_sig)
+    suggestion = _make_suggestion(ma_signal, volume_signal, rsi, change_pct, bb_sig, change_pct_today=change_pct)
     levels = _find_levels(closes, highs, lows, current, volumes)
     tower  = _compute_tower(closes)
 
@@ -353,7 +383,7 @@ def _build_index_data_from_yf(key: str, meta: dict) -> dict | None:
     rsi_signal = ("超買" if rsi and rsi >= 70 else "超賣" if rsi and rsi <= 30 else "正常")
 
     bb = _compute_bollinger(closes, current)
-    suggestion = _make_suggestion(ma_signal, volume_signal, rsi, change_pct, bb["signal"])
+    suggestion = _make_suggestion(ma_signal, volume_signal, rsi, change_pct, bb["signal"], change_pct_today=change_pct)
     levels = _find_levels(closes, highs, lows, current, volumes)
     tower  = _compute_tower(closes)
 
@@ -454,10 +484,13 @@ def get_signals(code: str) -> dict | None:
                     price_change_5d = round((current_price / prev5 - 1) * 100, 1)
 
             ma5  = float(closes.iloc[-5:].mean())
+            ma10 = round(float(closes.iloc[-10:].mean()), 2) if len(closes) >= 10 else None
             ma20 = round(float(bars[0].get("SD20") or closes.iloc[-20:].mean()), 2)
+            ma60 = round(float(closes.iloc[-60:].mean()), 2) if len(closes) >= 60 else None
             ma_signal = ("多頭排列" if ma5 > ma20 * 1.01
                          else "空頭排列" if ma5 < ma20 * 0.99
                          else "均線糾結")
+            ma_position = _ma_position_text(current_price, round(ma5, 2), ma10, ma20, ma60)
 
             vol1  = vols_list[-1]
             vol20 = float(volumes[volumes > 0].iloc[-20:].mean()) if (volumes > 0).sum() >= 5 else 0
@@ -488,8 +521,11 @@ def get_signals(code: str) -> dict | None:
                 "current_price": round(current_price, 2),
                 "price_change_5d": price_change_5d,
                 "ma5": round(ma5, 2),
+                "ma10": ma10,
                 "ma20": ma20,
+                "ma60": ma60,
                 "ma_signal": ma_signal,
+                "ma_position": ma_position,
                 "volume_signal": volume_signal,
                 "rsi": rsi,
                 "rsi_signal": rsi_signal,
@@ -527,10 +563,13 @@ def get_signals(code: str) -> dict | None:
                 price_change_5d = round((current_price / prev - 1) * 100, 1)
 
         ma5  = float(closes.iloc[-5:].mean())
+        ma10 = round(float(closes.iloc[-10:].mean()), 2) if len(closes) >= 10 else None
         ma20 = float(closes.iloc[-20:].mean())
+        ma60 = round(float(closes.iloc[-60:].mean()), 2) if len(closes) >= 60 else None
         ma_signal = ("多頭排列" if ma5 > ma20 * 1.01
                      else "空頭排列" if ma5 < ma20 * 0.99
                      else "均線糾結")
+        ma_position = _ma_position_text(current_price, round(ma5, 2), ma10, round(ma20, 2), ma60)
 
         vol1  = float(volumes.iloc[-1])
         vol20 = float(volumes[volumes > 0].iloc[-20:].mean()) if (volumes > 0).sum() >= 5 else 0
@@ -552,8 +591,11 @@ def get_signals(code: str) -> dict | None:
             "current_price": current_price,
             "price_change_5d": price_change_5d,
             "ma5": round(ma5, 2),
+            "ma10": ma10,
             "ma20": round(ma20, 2),
+            "ma60": ma60,
             "ma_signal": ma_signal,
+            "ma_position": ma_position,
             "volume_signal": volume_signal,
             "rsi": rsi,
             "rsi_signal": rsi_signal,

@@ -83,3 +83,39 @@ class Stock(Base):
     code = Column(String, primary_key=True)
     name = Column(String, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class SyncLog(Base):
+    """每次 Google Drive 同步的執行記錄"""
+    __tablename__ = "sync_logs"
+
+    id = Column(Integer, primary_key=True)
+    started_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    finished_at = Column(DateTime, nullable=True)
+    trigger = Column(String, default="manual")   # "manual" | "scheduled"
+    processed = Column(Integer, default=0)
+    skipped = Column(Integer, default=0)
+    errors = Column(Integer, default=0)
+    new_reports = Column(Integer, default=0)
+    status = Column(String, default="running")   # "running" | "done" | "error"
+    error_message = Column(Text, nullable=True)
+
+
+class DailyArticle(Base):
+    """每日 00981A × 投顧報告 自動生成的草稿文章。"""
+    __tablename__ = "daily_articles"
+
+    id = Column(Integer, primary_key=True)
+    date = Column(String, unique=True, nullable=False, index=True)  # YYYY-MM-DD
+    topic_stock_code = Column(String, nullable=False)
+    topic_stock_name = Column(String)
+    title = Column(String, nullable=False)
+    content = Column(Text, nullable=False)        # Markdown / 純文字草稿
+    raw_context = Column(Text)                    # JSON：餵給 LLM 的全部 context（debug 用）
+    generated_at = Column(DateTime, default=datetime.utcnow)
+    published_at = Column(DateTime, nullable=True)        # nStock 送出時間（向下相容）
+    nstock_article_id = Column(Integer, nullable=True)
+    threads_post_id = Column(String, nullable=True)        # Threads 主貼文 id（鏈頭）
+    threads_posted_at = Column(DateTime, nullable=True)
+    fb_post_id = Column(String, nullable=True)             # Facebook page post id ("PAGE_POST")
+    fb_posted_at = Column(DateTime, nullable=True)

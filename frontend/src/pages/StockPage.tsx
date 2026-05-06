@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, Link, useNavigate, useLocation } from "react-router-dom";
-import { stocksApi, watchlistApi, fundamentalsApi, type Report, type StockPrice, type FundamentalsResponse } from "../api/client";
+import { stocksApi, watchlistApi, fundamentalsApi, type Report, type StockPrice, type FundamentalsResponse, type StockSignal } from "../api/client";
 import RecommendationBadge from "../components/RecommendationBadge";
 import ShareButton from "../components/ShareButton";
 import { buildShareText, buildShareUrl } from "../utils/share";
@@ -35,6 +35,8 @@ export default function StockPage() {
   const [inWatchlist, setInWatchlist] = useState(false);
   const [watchlistLoading, setWatchlistLoading] = useState(false);
   const [fundamentals, setFundamentals] = useState<FundamentalsResponse | null>(null);
+  const [signal, setSignal] = useState<StockSignal | null>(null);
+  const [signalLoading, setSignalLoading] = useState(false);
 
   const fetchPrice = () => {
     if (!code) return;
@@ -53,6 +55,11 @@ export default function StockPage() {
       .finally(() => setLoading(false));
     fetchPrice();
     fundamentalsApi.get(code).then(setFundamentals).catch(() => {});
+    setSignalLoading(true);
+    stocksApi.batch_signals([code])
+      .then((d) => setSignal(d[code] ?? null))
+      .catch(() => {})
+      .finally(() => setSignalLoading(false));
     if (user) {
       watchlistApi.get().then((list) => {
         setInWatchlist(list.some((item) => item.stock_code === code));
@@ -258,6 +265,83 @@ export default function StockPage() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* 技術指標 */}
+      {(signalLoading || signal) && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 space-y-3">
+          <p className="text-xs font-medium text-gray-500">技術指標</p>
+          {signalLoading && !signal ? (
+            <div className="animate-pulse space-y-2">
+              <div className="h-4 bg-gray-100 rounded w-48" />
+              <div className="h-3 bg-gray-100 rounded w-full" />
+            </div>
+          ) : signal ? (
+            <>
+              {/* 均線位置描述 */}
+              {signal.ma_position && (
+                <div className="text-sm font-semibold text-gray-800">{signal.ma_position}</div>
+              )}
+
+              {/* MA 數值 */}
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
+                <span>MA5 <span className="text-gray-700 font-medium tabular-nums">{signal.ma5}</span></span>
+                {signal.ma10 != null && <span>MA10 <span className="text-gray-700 font-medium tabular-nums">{signal.ma10}</span></span>}
+                <span>MA20 <span className="text-gray-700 font-medium tabular-nums">{signal.ma20}</span></span>
+                {signal.ma60 != null && <span>MA60 <span className="text-gray-700 font-medium tabular-nums">{signal.ma60}</span></span>}
+              </div>
+
+              {/* 其他指標 */}
+              <div className="flex flex-wrap gap-2 text-xs pt-1 border-t border-gray-100">
+                {signal.volume_signal && (
+                  <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-100">{signal.volume_signal}</span>
+                )}
+                {signal.rsi != null && (
+                  <span className={`px-2 py-0.5 rounded-full border font-medium ${
+                    signal.rsi >= 70 ? "bg-red-50 text-red-500 border-red-200" :
+                    signal.rsi <= 30 ? "bg-green-50 text-green-600 border-green-200" :
+                    "bg-gray-50 text-gray-500 border-gray-200"
+                  }`}>RSI {signal.rsi}</span>
+                )}
+                {signal.bb_signal && (
+                  <span className="px-2 py-0.5 rounded-full bg-purple-50 text-purple-600 border border-purple-100">布林 {signal.bb_signal}</span>
+                )}
+                {signal.tower && (
+                  <span className={`px-2 py-0.5 rounded-full border font-medium ${
+                    signal.tower.color === "陽" ? "bg-red-50 text-red-500 border-red-200" : "bg-green-50 text-green-600 border-green-200"
+                  }`}>寶塔 {signal.tower.signal}（{signal.tower.count}根）</span>
+                )}
+                {signal.price_change_5d != null && (
+                  <span className={`px-2 py-0.5 rounded-full border ${
+                    signal.price_change_5d >= 0 ? "bg-red-50 text-red-500 border-red-100" : "bg-green-50 text-green-600 border-green-100"
+                  }`}>5日 {signal.price_change_5d >= 0 ? "+" : ""}{signal.price_change_5d}%</span>
+                )}
+              </div>
+
+              {/* 支撐壓力 */}
+              {(signal.resistance.length > 0 || signal.support.length > 0) && (
+                <div className="flex flex-wrap gap-4 text-xs text-gray-400 pt-1 border-t border-gray-100">
+                  {signal.resistance.length > 0 && (
+                    <span className="flex items-center gap-1">
+                      壓力
+                      {signal.resistance.map((v) => (
+                        <span key={v} className="px-1.5 py-0.5 rounded bg-red-50 text-red-500 border border-red-100 tabular-nums font-medium">{v}</span>
+                      ))}
+                    </span>
+                  )}
+                  {signal.support.length > 0 && (
+                    <span className="flex items-center gap-1">
+                      支撐
+                      {signal.support.map((v) => (
+                        <span key={v} className="px-1.5 py-0.5 rounded bg-green-50 text-green-700 border border-green-100 tabular-nums font-medium">{v}</span>
+                      ))}
+                    </span>
+                  )}
+                </div>
+              )}
+            </>
+          ) : null}
         </div>
       )}
 

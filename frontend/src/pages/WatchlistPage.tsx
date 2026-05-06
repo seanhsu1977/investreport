@@ -79,68 +79,84 @@ function fmtNum(v: number): string {
   return v.toLocaleString("zh-TW", { maximumFractionDigits: 0 });
 }
 
-function MarketOverview({ data }: { data: Record<string, MarketIndex> | null }) {
+function MarketOverview({ data, expanded, onToggle }: { data: Record<string, MarketIndex> | null; expanded: boolean; onToggle: () => void }) {
   if (!data || Object.keys(data).length === 0) return null;
+  const entries = Object.entries(data);
+  const first = entries[0]?.[1];
+  const firstUp = first ? first.change >= 0 : true;
+  const firstColor = firstUp ? "text-red-500" : "text-green-600";
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-      {Object.entries(data).map(([key, idx]) => {
-        const up = idx.change >= 0;
-        const color = up ? "text-red-500" : "text-green-600";
-        const bgColor = up ? "bg-red-50" : "bg-green-50";
-        const suggCls = SUGGESTION_STYLE_MAP[idx.suggestion] ?? "bg-gray-50 text-gray-400 border-gray-200";
-        return (
-          <div key={key} className="bg-white rounded-xl border border-gray-200 shadow-sm px-3 py-2.5 space-y-1.5">
-            <div className="flex items-start justify-between gap-1">
-              <div className="min-w-0">
-                <p className="text-xs text-gray-400 mb-0.5 truncate">{idx.name}</p>
-                <p className={`text-lg font-bold tabular-nums leading-tight ${color}`}>
-                  {fmtNum(idx.current)}
-                </p>
-              </div>
-              <div className={`text-right px-1.5 py-0.5 rounded-lg shrink-0 ${bgColor}`}>
-                <p className={`text-xs font-semibold tabular-nums ${color}`}>
-                  {up ? "▲" : "▼"}{fmtNum(Math.abs(idx.change))}
-                </p>
-                <p className={`text-xs font-medium ${color}`}>
-                  {up ? "+" : ""}{idx.change_pct.toFixed(2)}%
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <span className={`inline-flex items-center px-1 py-0.5 rounded text-xs border ${suggCls}`}>
-                {idx.suggestion}
+    <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+      {/* 摺疊標題列 */}
+      <button
+        onClick={onToggle}
+        className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-gray-50 transition"
+      >
+        <div className="grid gap-x-4 gap-y-1.5 flex-1 min-w-0" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))" }}>
+          {entries.map(([key, idx]) => {
+            const up = idx.change >= 0;
+            const c = up ? "text-red-500" : "text-green-600";
+            return (
+              <span key={key} className="flex items-center gap-1.5 text-sm min-w-0">
+                <span className="text-gray-500 text-xs shrink-0">{idx.name}</span>
+                <span className={`font-semibold tabular-nums ${c} shrink-0`}>{fmtNum(idx.current)}</span>
+                <span className={`text-xs ${c} shrink-0`}>{up ? "▲" : "▼"}{Math.abs(idx.change_pct).toFixed(2)}%</span>
               </span>
-              <TowerTag tower={idx.tower} />
-              <BbTag signal={idx.bb_signal} pctB={idx.bb_pct_b} />
-            </div>
-            {idx.rsi !== null && (
-              <p className="text-xs text-gray-400">RSI <span className="text-gray-600 font-medium">{idx.rsi}</span></p>
-            )}
-            {(idx.resistance.length > 0 || idx.support.length > 0) && (
-              <div className="flex items-center gap-1.5 flex-wrap text-xs text-gray-400">
-                {idx.resistance.length > 0 && (
-                  <span className="flex items-center gap-0.5">
-                    壓 {idx.resistance.map((v) => (
-                      <span key={v} className="px-1 py-0.5 rounded bg-red-50 text-red-500 border border-red-100 tabular-nums">
-                        {fmtNum(v)}
-                      </span>
-                    ))}
-                  </span>
+            );
+          })}
+        </div>
+        <svg className={`w-4 h-4 text-gray-400 shrink-0 ml-2 transition-transform ${expanded ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+          <path d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {/* 展開詳情 */}
+      {expanded && (
+        <div className="border-t border-gray-100 p-3 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+          {entries.map(([key, idx]) => {
+            const up = idx.change >= 0;
+            const color = up ? "text-red-500" : "text-green-600";
+            const bgColor = up ? "bg-red-50" : "bg-green-50";
+            const suggCls = SUGGESTION_STYLE_MAP[idx.suggestion] ?? "bg-gray-50 text-gray-400 border-gray-200";
+            return (
+              <div key={key} className="space-y-1.5">
+                <div className="flex items-start justify-between gap-1">
+                  <div className="min-w-0">
+                    <p className="text-xs text-gray-400 mb-0.5 truncate">{idx.name}</p>
+                    <p className={`text-lg font-bold tabular-nums leading-tight ${color}`}>{fmtNum(idx.current)}</p>
+                  </div>
+                  <div className={`text-right px-1.5 py-0.5 rounded-lg shrink-0 ${bgColor}`}>
+                    <p className={`text-xs font-semibold tabular-nums ${color}`}>{up ? "▲" : "▼"}{fmtNum(Math.abs(idx.change))}</p>
+                    <p className={`text-xs font-medium ${color}`}>{up ? "+" : ""}{idx.change_pct.toFixed(2)}%</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className={`inline-flex items-center px-1 py-0.5 rounded text-xs border ${suggCls}`}>{idx.suggestion}</span>
+                  <TowerTag tower={idx.tower} />
+                  <BbTag signal={idx.bb_signal} pctB={idx.bb_pct_b} />
+                </div>
+                {idx.rsi !== null && (
+                  <p className="text-xs text-gray-400">RSI <span className="text-gray-600 font-medium">{idx.rsi}</span></p>
                 )}
-                {idx.support.length > 0 && (
-                  <span className="flex items-center gap-0.5">
-                    撐 {idx.support.map((v) => (
-                      <span key={v} className="px-1 py-0.5 rounded bg-green-50 text-green-700 border border-green-100 tabular-nums">
-                        {fmtNum(v)}
-                      </span>
-                    ))}
-                  </span>
+                {(idx.resistance.length > 0 || idx.support.length > 0) && (
+                  <div className="flex items-center gap-1.5 flex-wrap text-xs text-gray-400">
+                    {idx.resistance.length > 0 && (
+                      <span className="flex items-center gap-0.5">壓 {idx.resistance.map((v) => (
+                        <span key={v} className="px-1 py-0.5 rounded bg-red-50 text-red-500 border border-red-100 tabular-nums">{fmtNum(v)}</span>
+                      ))}</span>
+                    )}
+                    {idx.support.length > 0 && (
+                      <span className="flex items-center gap-0.5">撐 {idx.support.map((v) => (
+                        <span key={v} className="px-1 py-0.5 rounded bg-green-50 text-green-700 border border-green-100 tabular-nums">{fmtNum(v)}</span>
+                      ))}</span>
+                    )}
+                  </div>
                 )}
               </div>
-            )}
-          </div>
-        );
-      })}
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -151,11 +167,11 @@ function PriceCell({ data }: { data?: StockPriceData }) {
   const color = up ? "text-red-500" : "text-green-600";
   return (
     <div className="leading-tight">
-      <span className={`font-semibold tabular-nums text-sm ${color}`}>{data.price.toLocaleString()}</span>
+      <div className={`font-semibold tabular-nums text-sm ${color}`}>{data.price.toLocaleString()}</div>
       {data.change_pct !== null && (
-        <span className={`ml-1 text-xs ${color}`}>
+        <div className={`text-xs ${color}`}>
           {up ? "▲" : "▼"}{Math.abs(data.change_pct).toFixed(2)}%
-        </span>
+        </div>
       )}
     </div>
   );
@@ -214,8 +230,14 @@ function SignalDetail({ signal }: { signal: StockSignal }) {
     <div className="mt-2 space-y-1.5">
       <div className="flex items-center gap-3 flex-wrap text-xs text-gray-400">
         {changeStr && <span>5日 <span className={`font-medium ${changeColor}`}>{changeStr}</span></span>}
+        {signal.ma_position && (
+          <span className="font-medium text-gray-700">{signal.ma_position}</span>
+        )}
+        <span className="text-gray-300">|</span>
         <span>MA5 <span className="text-gray-600">{signal.ma5}</span></span>
+        {signal.ma10 != null && <span>MA10 <span className="text-gray-600">{signal.ma10}</span></span>}
         <span>MA20 <span className="text-gray-600">{signal.ma20}</span></span>
+        {signal.ma60 != null && <span>MA60 <span className="text-gray-600">{signal.ma60}</span></span>}
         {signal.volume_signal && <span>{signal.volume_signal}</span>}
         {signal.rsi !== null && <span>RSI <span className="text-gray-600">{signal.rsi}</span></span>}
         <TowerTag tower={signal.tower} />
@@ -278,12 +300,11 @@ function FundRow({ fund }: { fund?: FundamentalSummary }) {
   );
 }
 
-function ListSignalCell({ signal, loading, fund }: { signal?: StockSignal; loading: boolean; fund?: FundamentalSummary }) {
+function ListSignalCell({ signal, loading, fund, expanded, onToggle }: { signal?: StockSignal; loading: boolean; fund?: FundamentalSummary; expanded: boolean; onToggle: () => void }) {
   if (loading) {
     return (
       <div className="space-y-1 animate-pulse">
         <div className="bg-gray-100 rounded h-4 w-24" />
-        <div className="bg-gray-100 rounded h-3 w-32" />
       </div>
     );
   }
@@ -296,36 +317,48 @@ function ListSignalCell({ signal, loading, fund }: { signal?: StockSignal; loadi
 
   return (
     <div className="space-y-1">
-      <div className="flex items-center gap-2 flex-wrap">
-        <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs border ${cls}`}>
-          {signal.suggestion}
-        </span>
-        <TowerTag tower={signal.tower} />
-        <BbTag signal={signal.bb_signal} pctB={signal.bb_pct_b} />
-        {changeStr && <span className={`text-xs ${changeColor} font-medium`}>5日 {changeStr}</span>}
-        {signal.rsi !== null && (
-          <span className="text-xs text-gray-400">RSI <span className="text-gray-600">{signal.rsi}</span></span>
-        )}
-      </div>
-      {(signal.resistance.length > 0 || signal.support.length > 0) && (
-        <div className="flex items-center gap-2 flex-wrap text-xs text-gray-400">
-          {signal.resistance.length > 0 && (
-            <span className="flex items-center gap-1">
-              壓 {signal.resistance.map((v) => (
-                <span key={v} className="px-1 py-0.5 rounded bg-red-50 text-red-500 border border-red-100 tabular-nums">{v}</span>
-              ))}
-            </span>
-          )}
-          {signal.support.length > 0 && (
-            <span className="flex items-center gap-1">
-              撐 {signal.support.map((v) => (
-                <span key={v} className="px-1 py-0.5 rounded bg-green-50 text-green-700 border border-green-100 tabular-nums">{v}</span>
-              ))}
-            </span>
-          )}
+      <div className="flex items-start gap-1">
+        <div className="flex-1 flex items-center gap-1.5 flex-wrap">
+          <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs border ${cls}`}>
+            {signal.suggestion}
+          </span>
+          {expanded && <>
+            <TowerTag tower={signal.tower} />
+            <BbTag signal={signal.bb_signal} pctB={signal.bb_pct_b} />
+            {changeStr && <span className={`text-xs ${changeColor} font-medium`}>5日 {changeStr}</span>}
+            {signal.rsi !== null && (
+              <span className="text-xs text-gray-400">RSI <span className="text-gray-600">{signal.rsi}</span></span>
+            )}
+          </>}
         </div>
-      )}
-      <FundRow fund={fund} />
+        <button onClick={onToggle} className="shrink-0 text-xs text-gray-300 hover:text-blue-400 transition leading-none pt-0.5">
+          {expanded ? "▲" : "▼"}
+        </button>
+      </div>
+      {expanded && <>
+        {signal.ma_position && (
+          <div className="text-xs text-gray-500">{signal.ma_position}</div>
+        )}
+        {(signal.resistance.length > 0 || signal.support.length > 0) && (
+          <div className="flex items-center gap-2 flex-wrap text-xs text-gray-400">
+            {signal.resistance.length > 0 && (
+              <span className="flex items-center gap-1">
+                壓 {signal.resistance.map((v) => (
+                  <span key={v} className="px-1 py-0.5 rounded bg-red-50 text-red-500 border border-red-100 tabular-nums">{v}</span>
+                ))}
+              </span>
+            )}
+            {signal.support.length > 0 && (
+              <span className="flex items-center gap-1">
+                撐 {signal.support.map((v) => (
+                  <span key={v} className="px-1 py-0.5 rounded bg-green-50 text-green-700 border border-green-100 tabular-nums">{v}</span>
+                ))}
+              </span>
+            )}
+          </div>
+        )}
+        <FundRow fund={fund} />
+      </>}
     </div>
   );
 }
@@ -342,13 +375,17 @@ function DragHandle() {
   );
 }
 
-function ListView({ items, onRemove, signals, signalsLoading, prices, fundamentals, onDragStart, onDragOver, onDragEnterEl, onDragLeaveEl, onDrop, onDragEnd }: {
+function ListView({ items, onRemove, signals, signalsLoading, prices, fundamentals, expandedSignals, onToggleSignal, pinnedCodes, onTogglePin, onDragStart, onDragOver, onDragEnterEl, onDragLeaveEl, onDrop, onDragEnd }: {
   items: WatchlistItem[];
   onRemove: (code: string) => void;
   signals: Record<string, StockSignal>;
   signalsLoading: boolean;
   prices: Record<string, StockPriceData>;
   fundamentals: Record<string, FundamentalSummary>;
+  expandedSignals: Set<string>;
+  onToggleSignal: (code: string) => void;
+  pinnedCodes: Set<string>;
+  onTogglePin: (code: string) => void;
   onDragStart: (e: React.DragEvent, i: number) => void;
   onDragOver: (e: React.DragEvent) => void;
   onDragEnterEl: (e: React.DragEvent) => void;
@@ -358,13 +395,14 @@ function ListView({ items, onRemove, signals, signalsLoading, prices, fundamenta
 }) {
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+      {/* 欄位標題：手機隱藏目標價 */}
       <div className="grid grid-cols-12 gap-x-1 px-3 py-2 bg-gray-50 border-b border-gray-100 text-xs text-gray-400 font-medium uppercase tracking-wide">
         <div className="col-span-1" />
-        <div className="col-span-2">股票</div>
-        <div className="col-span-1 text-center">評等</div>
+        <div className="col-span-3 sm:col-span-2">股票</div>
+        <div className="hidden sm:block sm:col-span-2 text-center">評等</div>
         <div className="col-span-2">現價</div>
-        <div className="col-span-2">目標價</div>
-        <div className="col-span-3">價量訊號</div>
+        <div className="hidden sm:block sm:col-span-2">目標價</div>
+        <div className="col-span-5 sm:col-span-2">價量訊號</div>
         <div className="col-span-1" />
       </div>
       <div className="divide-y divide-gray-50">
@@ -379,16 +417,23 @@ function ListView({ items, onRemove, signals, signalsLoading, prices, fundamenta
             onDragLeave={onDragLeaveEl}
             onDrop={(e) => onDrop(e, idx)}
             onDragEnd={onDragEnd}
-            className="grid grid-cols-12 gap-x-1 px-3 py-2 items-start hover:bg-gray-50 transition group"
+            className={`grid grid-cols-12 gap-x-1 px-3 py-2 items-start hover:bg-gray-50 transition group ${pinnedCodes.has(item.stock_code) ? "bg-amber-50" : ""}`}
           >
-            <div className="col-span-1 flex items-center h-7">
+            <div className="col-span-1 flex items-center h-7 gap-0.5">
+              <button
+                onClick={() => onTogglePin(item.stock_code)}
+                className={`transition ${pinnedCodes.has(item.stock_code) ? "text-amber-400" : "text-gray-300 hover:text-amber-300 sm:opacity-0 sm:group-hover:opacity-100"}`}
+                title={pinnedCodes.has(item.stock_code) ? "取消置頂" : "置頂"}
+              >
+                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M16 1v8l2 4H6l2-4V1h8zm-4 18a2 2 0 01-2-2h4a2 2 0 01-2 2zM10 1h4"/></svg>
+              </button>
               <DragHandle />
             </div>
-            <div className="col-span-2 flex items-center gap-1.5 h-7">
+            <div className="col-span-3 sm:col-span-2 flex items-center gap-1.5 h-7 min-w-0">
               <Link
                 to={`/stocks/${item.stock_code}`}
                 state={{ from: "/", label: "自選股" }}
-                className="font-mono font-bold text-sm text-blue-600 hover:underline"
+                className="font-mono font-bold text-sm text-blue-600 hover:underline shrink-0"
               >
                 {item.stock_code}
               </Link>
@@ -396,22 +441,22 @@ function ListView({ items, onRemove, signals, signalsLoading, prices, fundamenta
                 <span className="text-xs text-gray-500 truncate hidden sm:block">{item.stock_name}</span>
               )}
             </div>
-            <div className="col-span-1 flex justify-center h-7 items-center">
+            <div className="hidden sm:flex sm:col-span-2 justify-center h-7 items-center">
               <RecommendationBadge value={item.latest_report?.recommendation ?? null} compact />
             </div>
-            <div className="col-span-2 h-7 flex items-center">
+            <div className="col-span-2 flex items-center">
               <PriceCell data={prices[item.stock_code]} />
             </div>
-            <div className="col-span-2 tabular-nums text-sm text-gray-600 h-7 flex items-center">
+            <div className="hidden sm:flex sm:col-span-2 tabular-nums text-sm text-gray-600 h-7 items-center">
               {item.latest_report?.target_price ?? <span className="text-gray-300">—</span>}
             </div>
-            <div className="col-span-3">
-              <ListSignalCell signal={signals[item.stock_code]} loading={signalsLoading} fund={fundamentals[item.stock_code]} />
+            <div className="col-span-5 sm:col-span-2 overflow-hidden">
+              <ListSignalCell signal={signals[item.stock_code]} loading={signalsLoading} fund={fundamentals[item.stock_code]} expanded={expandedSignals.has(item.stock_code)} onToggle={() => onToggleSignal(item.stock_code)} />
             </div>
             <div className="col-span-1 flex justify-end h-7 items-center">
               <button
                 onClick={() => onRemove(item.stock_code)}
-                className="text-xs text-gray-300 hover:text-red-400 transition opacity-0 group-hover:opacity-100"
+                className="text-xs text-gray-300 hover:text-red-400 transition sm:opacity-0 sm:group-hover:opacity-100"
               >
                 ✕
               </button>
@@ -423,13 +468,17 @@ function ListView({ items, onRemove, signals, signalsLoading, prices, fundamenta
   );
 }
 
-function CardView({ items, onRemove, signals, signalsLoading, prices, fundamentals, onDragStart, onDragOver, onDragEnterEl, onDragLeaveEl, onDrop, onDragEnd }: {
+function CardView({ items, onRemove, signals, signalsLoading, prices, fundamentals, expandedSignals, onToggleSignal, pinnedCodes, onTogglePin, onDragStart, onDragOver, onDragEnterEl, onDragLeaveEl, onDrop, onDragEnd }: {
   items: WatchlistItem[];
   onRemove: (code: string) => void;
   signals: Record<string, StockSignal>;
   signalsLoading: boolean;
   prices: Record<string, StockPriceData>;
   fundamentals: Record<string, FundamentalSummary>;
+  expandedSignals: Set<string>;
+  onToggleSignal: (code: string) => void;
+  pinnedCodes: Set<string>;
+  onTogglePin: (code: string) => void;
   onDragStart: (e: React.DragEvent, i: number) => void;
   onDragOver: (e: React.DragEvent) => void;
   onDragEnterEl: (e: React.DragEvent) => void;
@@ -450,7 +499,7 @@ function CardView({ items, onRemove, signals, signalsLoading, prices, fundamenta
           onDragLeave={onDragLeaveEl}
           onDrop={(e) => onDrop(e, idx)}
           onDragEnd={onDragEnd}
-          className="bg-white rounded-xl shadow-sm border border-gray-200 p-5"
+          className={`rounded-xl shadow-sm border p-5 ${pinnedCodes.has(item.stock_code) ? "bg-amber-50 border-amber-200" : "bg-white border-gray-200"}`}
         >
           <div className="flex items-start justify-between">
             <div>
@@ -467,6 +516,13 @@ function CardView({ items, onRemove, signals, signalsLoading, prices, fundamenta
               )}
             </div>
             <div className="flex items-center gap-2">
+              <button
+                onClick={() => onTogglePin(item.stock_code)}
+                className={`transition ${pinnedCodes.has(item.stock_code) ? "text-amber-400" : "text-gray-300 hover:text-amber-300"}`}
+                title={pinnedCodes.has(item.stock_code) ? "取消置頂" : "置頂"}
+              >
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M16 1v8l2 4H6l2-4V1h8zm-4 18a2 2 0 01-2-2h4a2 2 0 01-2 2zM10 1h4"/></svg>
+              </button>
               <DragHandle />
               <button
                 onClick={() => onRemove(item.stock_code)}
@@ -505,9 +561,16 @@ function CardView({ items, onRemove, signals, signalsLoading, prices, fundamenta
             </p>
           )}
 
-          <div className="mt-2 flex items-center gap-2 flex-wrap">
-            <SignalTag signal={signals[item.stock_code]} loading={signalsLoading} />
-            {signals[item.stock_code] && (
+          <div className="mt-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <SignalTag signal={signals[item.stock_code]} loading={signalsLoading} />
+              {signals[item.stock_code] && (
+                <button onClick={() => onToggleSignal(item.stock_code)} className="text-xs text-gray-400 hover:text-blue-500 transition">
+                  {expandedSignals.has(item.stock_code) ? "收合 ▲" : "詳情 ▼"}
+                </button>
+              )}
+            </div>
+            {expandedSignals.has(item.stock_code) && signals[item.stock_code] && (
               <SignalDetail signal={signals[item.stock_code]} />
             )}
           </div>
@@ -533,6 +596,15 @@ export default function WatchlistPage() {
   const [items, setItems] = useState<WatchlistItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<ViewMode>("list");
+  const [parsing, setParsing] = useState(false);
+  const [parsedStocks, setParsedStocks] = useState<{ code: string; name: string | null }[] | null>(null);
+  const [adding, setAdding] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [showAddPanel, setShowAddPanel] = useState(false);
+  const [marketExpanded, setMarketExpanded] = useState(false);
+  const [expandedSignals, setExpandedSignals] = useState<Set<string>>(new Set());
+  const toggleSignal = (code: string) =>
+    setExpandedSignals(prev => { const s = new Set(prev); s.has(code) ? s.delete(code) : s.add(code); return s; });
   const [signals, setSignals] = useState<Record<string, StockSignal>>({});
   const [signalsLoading, setSignalsLoading] = useState(false);
   const [prices, setPrices] = useState<Record<string, StockPriceData>>({});
@@ -542,6 +614,21 @@ export default function WatchlistPage() {
   const dragSrc = useRef<number | null>(null);
 
   const storageKey = user ? `watchlist_order_${user.email ?? (user as any).id ?? "default"}` : null;
+  const pinKey    = user ? `watchlist_pin_${user.email ?? (user as any).id ?? "default"}` : null;
+
+  const [pinnedCodes, setPinnedCodes] = useState<Set<string>>(() => {
+    if (!pinKey) return new Set();
+    try { return new Set(JSON.parse(localStorage.getItem(pinKey) ?? "[]")); } catch { return new Set(); }
+  });
+
+  const togglePin = (code: string) => {
+    setPinnedCodes(prev => {
+      const s = new Set(prev);
+      s.has(code) ? s.delete(code) : s.add(code);
+      if (pinKey) localStorage.setItem(pinKey, JSON.stringify([...s]));
+      return s;
+    });
+  };
 
   const loadSignals = (codes: string[]) => {
     if (codes.length === 0) return;
@@ -587,9 +674,13 @@ export default function WatchlistPage() {
     ]);
   }, [items]);
 
-  const displayItems = orderedCodes.length
+  const baseItems = orderedCodes.length
     ? (orderedCodes.map((c) => items.find((i) => i.stock_code === c)).filter(Boolean) as WatchlistItem[])
     : items;
+  const displayItems = [
+    ...baseItems.filter(i => pinnedCodes.has(i.stock_code)),
+    ...baseItems.filter(i => !pinnedCodes.has(i.stock_code)),
+  ];
 
   const handleDragStart = (e: React.DragEvent, i: number) => {
     dragSrc.current = i;
@@ -639,10 +730,39 @@ export default function WatchlistPage() {
 
   const watchedCodes = new Set(items.map((i) => i.stock_code));
 
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    setParsing(true);
+    setParsedStocks(null);
+    try {
+      const res = await watchlistApi.parseImage(file);
+      setParsedStocks(res.stocks);
+    } catch {
+      alert("圖片解析失敗，請再試一次");
+    } finally {
+      setParsing(false);
+    }
+  };
+
+  const handleAddParsed = async () => {
+    if (!parsedStocks) return;
+    setAdding(true);
+    const existing = watchedCodes;
+    const toAdd = parsedStocks.filter((s) => !existing.has(s.code));
+    for (const s of toAdd) {
+      try { await watchlistApi.add(s.code, s.name ?? undefined); } catch {}
+    }
+    setParsedStocks(null);
+    setAdding(false);
+    load();
+  };
+
   if (!user) {
     return (
       <div className="max-w-4xl mx-auto py-8 px-4 space-y-6">
-        <MarketOverview data={marketData} />
+        <MarketOverview data={marketData} expanded={marketExpanded} onToggle={() => setMarketExpanded(v => !v)} />
         <div className="text-center py-12">
           <p className="text-2xl mb-2">🔒</p>
           <p className="text-gray-600 font-medium mb-1">請先登入</p>
@@ -653,46 +773,38 @@ export default function WatchlistPage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto py-8 px-4 space-y-6">
-      <div className="sticky top-16 z-10 bg-gray-50 pt-2 pb-3 -mx-4 px-4 border-b border-gray-200">
-        <StockSearch onAdded={load} watchedCodes={watchedCodes} />
-      </div>
-
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-800">
+    <div className="max-w-4xl mx-auto py-8 px-4 space-y-4">
+      <div className="sticky top-16 z-10 bg-gray-50 -mx-4 px-4 py-2 flex items-center justify-between border-b border-gray-200">
+        <h1 className="text-lg font-bold text-gray-800">
           我的自選股
           {!loading && items.length > 0 && (
             <span className="ml-2 text-sm font-normal text-gray-400">{items.length} 支</span>
           )}
         </h1>
-
-        {/* 檢視切換 */}
+        {/* 工具列 */}
         {items.length > 0 && (
-          <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs">
-            <button
-              onClick={() => setViewMode("list")}
-              className={`px-2.5 py-1.5 flex items-center gap-1 transition ${viewMode === "list" ? "bg-blue-600 text-white" : "bg-white text-gray-500 hover:bg-gray-50"}`}
-            >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />
-              </svg>
-              列表
-            </button>
-            <button
-              onClick={() => setViewMode("card")}
-              className={`px-2.5 py-1.5 flex items-center gap-1 transition ${viewMode === "card" ? "bg-blue-600 text-white" : "bg-white text-gray-500 hover:bg-gray-50"}`}
-            >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                <rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" />
-                <rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" />
-              </svg>
-              卡片
-            </button>
+          <div className="flex items-center gap-2">
+            <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs">
+              <button
+                onClick={() => setViewMode("list")}
+                className={`px-2.5 py-1.5 flex items-center gap-1 transition ${viewMode === "list" ? "bg-blue-600 text-white" : "bg-white text-gray-500 hover:bg-gray-50"}`}
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" /></svg>
+                列表
+              </button>
+              <button
+                onClick={() => setViewMode("card")}
+                className={`px-2.5 py-1.5 flex items-center gap-1 transition ${viewMode === "card" ? "bg-blue-600 text-white" : "bg-white text-gray-500 hover:bg-gray-50"}`}
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /></svg>
+                卡片
+              </button>
+            </div>
           </div>
         )}
       </div>
 
-      <MarketOverview data={marketData} />
+      <MarketOverview data={marketData} expanded={marketExpanded} onToggle={() => setMarketExpanded(v => !v)} />
 
       {loading ? (
         viewMode === "list" ? (
@@ -707,9 +819,72 @@ export default function WatchlistPage() {
       ) : items.length === 0 ? (
         <EmptyState />
       ) : viewMode === "list" ? (
-        <ListView items={displayItems} onRemove={handleRemove} signals={signals} signalsLoading={signalsLoading} prices={prices} fundamentals={fundamentals} onDragStart={handleDragStart} onDragOver={handleDragOver} onDragEnterEl={handleDragEnterEl} onDragLeaveEl={handleDragLeaveEl} onDrop={handleDrop} onDragEnd={handleDragEnd} />
+        <ListView items={displayItems} onRemove={handleRemove} signals={signals} signalsLoading={signalsLoading} prices={prices} fundamentals={fundamentals} expandedSignals={expandedSignals} onToggleSignal={toggleSignal} pinnedCodes={pinnedCodes} onTogglePin={togglePin} onDragStart={handleDragStart} onDragOver={handleDragOver} onDragEnterEl={handleDragEnterEl} onDragLeaveEl={handleDragLeaveEl} onDrop={handleDrop} onDragEnd={handleDragEnd} />
       ) : (
-        <CardView items={displayItems} onRemove={handleRemove} signals={signals} signalsLoading={signalsLoading} prices={prices} fundamentals={fundamentals} onDragStart={handleDragStart} onDragOver={handleDragOver} onDragEnterEl={handleDragEnterEl} onDragLeaveEl={handleDragLeaveEl} onDrop={handleDrop} onDragEnd={handleDragEnd} />
+        <CardView items={displayItems} onRemove={handleRemove} signals={signals} signalsLoading={signalsLoading} prices={prices} fundamentals={fundamentals} expandedSignals={expandedSignals} onToggleSignal={toggleSignal} pinnedCodes={pinnedCodes} onTogglePin={togglePin} onDragStart={handleDragStart} onDragOver={handleDragOver} onDragEnterEl={handleDragEnterEl} onDragLeaveEl={handleDragLeaveEl} onDrop={handleDrop} onDragEnd={handleDragEnd} />
+      )}
+
+      {/* 浮動操作按鈕 */}
+      <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
+      <button
+        onClick={() => { setShowAddPanel(v => !v); setParsedStocks(null); }}
+        className="fixed bottom-6 left-6 z-50 w-12 h-12 rounded-full bg-blue-600 hover:bg-blue-700 text-white shadow-lg flex items-center justify-center transition"
+        title="新增自選股"
+      >
+        <svg className={`w-5 h-5 transition-transform ${showAddPanel ? "rotate-45" : ""}`} fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+          <path d="M12 5v14M5 12h14" />
+        </svg>
+      </button>
+
+      {/* 新增面板 */}
+      {showAddPanel && (
+        <div className="fixed z-50 w-80 bg-white rounded-2xl shadow-2xl border border-gray-200 p-4 space-y-3" style={{ bottom: "5rem", left: "1.5rem" }}>
+          <p className="text-sm font-semibold text-gray-700">新增自選股</p>
+          <StockSearch onAdded={() => { load(); setShowAddPanel(false); }} watchedCodes={watchedCodes} />
+          <div className="border-t border-gray-100 pt-3">
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={parsing}
+              className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-dashed border-gray-300 text-sm text-gray-500 hover:border-blue-400 hover:text-blue-600 disabled:opacity-50 transition"
+            >
+              {parsing ? (
+                <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+              ) : (
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M16 8l-4-4-4 4M12 4v12"/></svg>
+              )}
+              {parsing ? "解析中…" : "上傳庫存截圖匯入"}
+            </button>
+          </div>
+          {parsedStocks && (
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-gray-600">
+                解析到 {parsedStocks.length} 檔
+                {parsedStocks.filter(s => watchedCodes.has(s.code)).length > 0 && (
+                  <span className="text-gray-400 ml-1">（{parsedStocks.filter(s => watchedCodes.has(s.code)).length} 檔已追蹤）</span>
+                )}
+              </p>
+              <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
+                {parsedStocks.map((s) => (
+                  <span key={s.code} className={`text-xs px-2 py-1 rounded-full border ${watchedCodes.has(s.code) ? "bg-gray-50 text-gray-400 border-gray-200" : "bg-blue-50 text-blue-700 border-blue-200"}`}>
+                    {s.code} {s.name}
+                  </span>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleAddParsed}
+                  disabled={adding || parsedStocks.every(s => watchedCodes.has(s.code))}
+                  className="flex-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg disabled:opacity-40 transition"
+                >
+                  {adding ? "加入中…" : `加入 ${parsedStocks.filter(s => !watchedCodes.has(s.code)).length} 檔`}
+                </button>
+                <button onClick={() => setParsedStocks(null)} className="px-3 py-1.5 text-sm text-gray-400 hover:text-gray-600">
+                  清除
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

@@ -3,22 +3,32 @@ services:
     name: investreport
     runtime: docker
     dockerfilePath: ./Dockerfile
-    plan: free                  # change to "starter" or higher for production
+    plan: starter
     healthCheckPath: /healthz
+    disk:
+      name: data
+      mountPath: /app/data
+      sizeGB: 1
     envVars:
       # ── Required ──────────────────────────────────────────────────────────
       - key: GOOGLE_CREDENTIALS_JSON
-        sync: false             # set manually in Render dashboard (paste JSON)
+        sync: false             # Render dashboard 貼上 JSON 內容
       - key: GOOGLE_DRIVE_FOLDER_ID
         sync: false
-      - key: ANTHROPIC_API_KEY
+      - key: GEMINI_API_KEY
         sync: false
       - key: JWT_SECRET
         sync: false
-      # ── Optional / defaults ───────────────────────────────────────────────
-      - key: ALLOWED_ORIGINS
-        value: ""               # leave blank; same-origin requests need no CORS
-      - key: DATABASE_URL
-        value: ""               # leave blank to use local SQLite (./investreport.db)
       - key: VITE_GOOGLE_CLIENT_ID
-        sync: false             # build-time arg — set if you want Google login
+        sync: false             # build-time arg，Google OAuth 用
+      # ── Optional ─────────────────────────────────────────────────────────
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false
+      - key: ALLOWED_ORIGINS
+        value: ""
+      - key: DATABASE_PATH
+        value: /app/data/investreport.db
+      - key: DATABASE_URL
+        value: ""

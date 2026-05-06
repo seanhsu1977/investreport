@@ -6,15 +6,23 @@ import re
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 from urllib.parse import unquote
-import anthropic
 import httpx
+from google import genai
+from google.genai import types as genai_types
+
+_SAFETY_OFF = [
+    genai_types.SafetySetting(category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="BLOCK_NONE"),
+    genai_types.SafetySetting(category="HARM_CATEGORY_HARASSMENT",         threshold="BLOCK_NONE"),
+    genai_types.SafetySetting(category="HARM_CATEGORY_HATE_SPEECH",        threshold="BLOCK_NONE"),
+    genai_types.SafetySetting(category="HARM_CATEGORY_SEXUALLY_EXPLICIT",  threshold="BLOCK_NONE"),
+]
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from database import SessionLocal, get_db
-from models import Report, Stock
+from models import Report, Stock, DailyArticle
 from routers.auth import require_admin
 
 router = APIRouter(prefix="/publish", tags=["publish"])
@@ -25,6 +33,43 @@ TPE = timezone(timedelta(hours=8))
 
 NSTOCK_BASE = os.environ.get("NSTOCK_ADMIN_BASE", "https://admin-kt290.nstock.com.tw")
 NSTOCK_ARTICLE_PATH = "/admin-api/article"
+
+# 記憶體內 cookie 快取，避免每次請求都重新登入
+_nstock_cookie_cache: dict | None = None
+
+
+def _nstock_login() -> tuple[dict, dict]:
+    """用帳密自動登入 nStock admin，回傳 (headers, cookies)。"""
+    global _nstock_cookie_cache
+    email = os.environ.get("NSTOCK_ADMIN_EMAIL", "").strip()
+    password = os.environ.get("NSTOCK_ADMIN_PASS", "").strip()
+    if not email or not password:
+        raise HTTPException(503, "請在 .env 設定 NSTOCK_ADMIN_EMAIL 和 NSTOCK_ADMIN_PASS")
+
+    login_url = f"{NSTOCK_BASE}/admin/auth/login"
+    with httpx.Client(follow_redirects=True, timeout=15) as c:
+        r = c.get(login_url)
+        m = re.search(r'Admin\.token\s*=\s*"([^"]+)"', r.text)
+        if not m:
+            raise HTTPException(503, "無法取得 nStock 登入頁 CSRF token")
+        c.post(login_url, data={"_token": m.group(1), "username": email, "password": password})
+        cookies = dict(c.cookies)
+
+    xsrf = cookies.get("XSRF-TOKEN", "")
+    if not xsrf or "laravel_session" not in cookies:
+        raise HTTPException(503, "nStock 自動登入失敗，請確認 NSTOCK_ADMIN_EMAIL / NSTOCK_ADMIN_PASS 正確")
+
+    headers = {
+        "Content-Type": "application/json;charset=UTF-8",
+        "Accept": "application/json, text/plain, */*",
+        "X-Requested-With": "XMLHttpRequest",
+        "X-XSRF-TOKEN": unquote(xsrf),
+        "Referer": NSTOCK_BASE + "/admin",
+        "Origin": NSTOCK_BASE,
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+    }
+    _nstock_cookie_cache = {"headers": headers, "cookies": cookies}
+    return headers, cookies
 
 DRAFT_SYSTEM = """你是一位財經社群媒體編輯，擅長將投顧研究報告改寫成適合 Threads 的貼文。
 風格要求：
@@ -50,6 +95,12 @@ class DraftRequest(BaseModel):
 class PublishRequest(BaseModel):
     text: str
     topic_tag: Optional[str] = None
+
+
+class FacebookPublishRequest(BaseModel):
+    text: str
+    link: Optional[str] = None    # 帶連結會生 link card
+    picture: Optional[str] = None  # 覆蓋 og:image 縮圖（完整圖片 URL）
 
 
 @router.get("/reports")
@@ -106,15 +157,18 @@ def generate_draft(
 
     def generate():
         try:
-            client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
-            with client.messages.stream(
-                model="claude-haiku-4-5-20251001",
-                max_tokens=3000,
-                system=DRAFT_SYSTEM,
-                messages=[{"role": "user", "content": user_msg}],
-            ) as stream:
-                for text in stream.text_stream:
-                    yield f"data: {json.dumps({'text': text}, ensure_ascii=False)}\n\n"
+            client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
+            for chunk in client.models.generate_content_stream(
+                model="gemini-2.5-flash",
+                contents=user_msg,
+                config=genai_types.GenerateContentConfig(
+                    system_instruction=DRAFT_SYSTEM,
+                    max_output_tokens=3000,
+                    safety_settings=_SAFETY_OFF,
+                ),
+            ):
+                if chunk.text:
+                    yield f"data: {json.dumps({'text': chunk.text}, ensure_ascii=False)}\n\n"
             yield "data: [DONE]\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'error': str(e)}, ensure_ascii=False)}\n\n"
@@ -320,25 +374,31 @@ def _parse_cookie_string(raw: str) -> dict:
     return out
 
 
-def _nstock_auth() -> tuple[dict, dict]:
-    """從 env 讀 NSTOCK_COOKIE，組出 headers + cookies。
+def _nstock_auth(force_refresh: bool = False) -> tuple[dict, dict]:
+    """取得 nStock admin headers + cookies。
 
-    NSTOCK_COOKIE 直接貼瀏覽器 DevTools 看到的整段 cookie 字串即可
-    （至少要包含 laravel_session、XSRF-TOKEN、remember_admin_*）。
+    優先使用 NSTOCK_ADMIN_EMAIL + NSTOCK_ADMIN_PASS 自動登入（有 memory cache）。
+    若未設定帳密，退回舊的 NSTOCK_COOKIE 手動方式。
     """
+    global _nstock_cookie_cache
+
+    # 優先：帳密自動登入
+    if os.environ.get("NSTOCK_ADMIN_EMAIL") and os.environ.get("NSTOCK_ADMIN_PASS"):
+        if not force_refresh and _nstock_cookie_cache:
+            return _nstock_cookie_cache["headers"], _nstock_cookie_cache["cookies"]
+        return _nstock_login()
+
+    # 退回：手動 cookie
     raw = os.environ.get("NSTOCK_COOKIE", "").strip()
     if not raw:
         raise HTTPException(
             status_code=503,
-            detail="尚未設定 NSTOCK_COOKIE。請從 nStock 後台 DevTools 複製 cookie 整段，貼進 .env 後重啟"
+            detail="請在 .env 設定 NSTOCK_ADMIN_EMAIL + NSTOCK_ADMIN_PASS（自動登入），或手動設定 NSTOCK_COOKIE"
         )
     cookies = _parse_cookie_string(raw)
     xsrf_cookie = cookies.get("XSRF-TOKEN", "")
     if not xsrf_cookie or "laravel_session" not in cookies:
-        raise HTTPException(
-            status_code=503,
-            detail="NSTOCK_COOKIE 缺少 XSRF-TOKEN 或 laravel_session"
-        )
+        raise HTTPException(status_code=503, detail="NSTOCK_COOKIE 缺少 XSRF-TOKEN 或 laravel_session")
     headers = {
         "Content-Type": "application/json;charset=UTF-8",
         "Accept": "application/json, text/plain, */*",
@@ -372,22 +432,40 @@ def extract_stock_codes(text: str) -> list[str]:
     return sorted({r[0] for r in rows})
 
 
+_MD_BOLD_RE = re.compile(r"\*\*(.+?)\*\*", re.DOTALL)
+
+
 def text_to_html(text: str) -> str:
-    """把純文字草稿（用 \\n\\n 分段）轉成 nStock 可接受的 HTML。"""
+    """把純文字（含 Markdown 粗體 **xxx**）草稿轉成 nStock 可接受的 HTML。
+
+    處理：
+      - 連續換行 → 段落 (<p>)，段落之間補 <p><br></p> 製造視覺空行
+      - 段內單換行 → <br>
+      - **xxx** → <strong>xxx</strong>
+      - 單獨成段的 `---` → <hr>
+    """
     paragraphs = re.split(r"\n{2,}", text.strip())
     parts = []
     for p in paragraphs:
         p = p.strip()
         if not p:
             continue
+        if p.strip() == "---":
+            parts.append("<hr>")
+            continue
         # 段內單換行轉 <br>
         line = p.replace("\n", "<br>")
-        # 「---」分隔線單獨成段時加 hr
-        if line.strip() == "---":
-            parts.append("<hr>")
-        else:
-            parts.append(f"<p>{line}</p>")
-    return "\n".join(parts)
+        # Markdown 粗體 → <strong>
+        line = _MD_BOLD_RE.sub(r"<strong>\1</strong>", line)
+        parts.append(f"<p>{line}</p>")
+
+    # 段落之間插 <p><br></p> 空段落（除了 <hr> 前後不用，本身已是分隔）
+    out: list[str] = []
+    for i, p in enumerate(parts):
+        if i > 0 and not (p == "<hr>" or out[-1] == "<hr>"):
+            out.append("<p><br></p>")
+        out.append(p)
+    return "\n".join(out)
 
 
 class NStockPublishRequest(BaseModel):
@@ -436,7 +514,7 @@ async def publish_nstock(body: NStockPublishRequest, _: None = Depends(require_a
         "status": body.status,
         "is_show_at_web_all_list": True,
         "show_tag": False,
-        "img": body.img_path,
+        "img": body.img_path or os.environ.get("NSTOCK_DEFAULT_IMG") or None,
         "content": content_html,
         "not_vip_content": None,
         "count": 1000,
@@ -450,7 +528,22 @@ async def publish_nstock(body: NStockPublishRequest, _: None = Depends(require_a
         raise HTTPException(502, f"連線 nStock 失敗：{e}")
 
     if resp.status_code in (401, 419):
-        raise HTTPException(401, "nStock cookie / CSRF 已失效，請從瀏覽器重新複製 NSTOCK_COOKIE 後重啟")
+        # Cookie 失效 → 自動重登一次再試
+        if os.environ.get("NSTOCK_ADMIN_EMAIL") and os.environ.get("NSTOCK_ADMIN_PASS"):
+            try:
+                headers, cookies = _nstock_auth(force_refresh=True)
+                async with httpx.AsyncClient(timeout=30, follow_redirects=False) as retry_client:
+                    resp = await retry_client.post(url, json=payload, headers=headers, cookies=cookies)
+                if resp.status_code not in (401, 419):
+                    pass  # 繼續往下處理
+                else:
+                    raise HTTPException(401, "nStock 自動重新登入後仍失敗，請確認帳密正確")
+            except HTTPException:
+                raise
+            except Exception as e:
+                raise HTTPException(401, f"nStock 自動重新登入失敗：{e}")
+        else:
+            raise HTTPException(401, "nStock cookie / CSRF 已失效，請在 .env 設定 NSTOCK_ADMIN_EMAIL + NSTOCK_ADMIN_PASS 改用自動登入")
     if resp.status_code in (302, 401, 403) or resp.status_code >= 400:
         try:
             err = resp.json()
@@ -523,4 +616,300 @@ def check_nstock_auth(_: None = Depends(require_admin)):
         "missing": missing,
         "author_id": os.environ.get("NSTOCK_AUTHOR_ID"),
         "author_name": os.environ.get("NSTOCK_AUTHOR_NAME"),
+    }
+
+
+@router.post("/facebook")
+async def publish_facebook(body: FacebookPublishRequest, _: None = Depends(require_admin)):
+    """直接發文到 FB 粉專（給 PublishSection 使用）。
+
+    - text 中的 markdown 粗體 ** 會被剝掉（FB 不渲染）
+    - link 帶上時 FB 會抓 og: 標籤產 link card
+    """
+    text = _strip_markdown_bold(body.text)
+    result = await _fb_publish_text(text, link=body.link, picture=body.picture)
+    post_id = result.get("id")
+    return {
+        "success": bool(post_id),
+        "post_id": post_id,
+        "url": f"https://www.facebook.com/{post_id}" if post_id else None,
+        "raw": result,
+    }
+
+
+@router.get("/facebook/check")
+def check_facebook_auth(_: None = Depends(require_admin)):
+    """檢查 FB Page token 是否設定（不驗活性，僅看 env）"""
+    page_id = os.environ.get("FB_PAGE_ID", "").strip()
+    token = os.environ.get("FB_PAGE_ACCESS_TOKEN", "").strip()
+    missing = []
+    if not page_id: missing.append("FB_PAGE_ID")
+    if not token: missing.append("FB_PAGE_ACCESS_TOKEN")
+    return {
+        "configured": not missing,
+        "missing": missing,
+        "page_id": page_id or None,
+    }
+
+
+# ────────────────────────────────────────────────────────────
+# 每日 00981A × 投顧報告 自動草稿
+# ────────────────────────────────────────────────────────────
+
+class DailyEditRequest(BaseModel):
+    title: Optional[str] = None
+    content: Optional[str] = None
+
+
+def _serialize_daily(a: DailyArticle, *, include_content: bool = False) -> dict:
+    out = {
+        "id": a.id,
+        "date": a.date,
+        "topic_stock_code": a.topic_stock_code,
+        "topic_stock_name": a.topic_stock_name,
+        "title": a.title,
+        "generated_at": a.generated_at,
+        "published_at": a.published_at,
+        "nstock_article_id": a.nstock_article_id,
+        "edit_url": (
+            f"{NSTOCK_BASE}/admin#/article/{a.nstock_article_id}/edit"
+            if a.nstock_article_id else None
+        ),
+        "threads_post_id": a.threads_post_id,
+        "threads_posted_at": a.threads_posted_at,
+        "fb_post_id": a.fb_post_id,
+        "fb_posted_at": a.fb_posted_at,
+        "fb_url": (
+            f"https://www.facebook.com/{a.fb_post_id}" if a.fb_post_id else None
+        ),
+    }
+    if include_content:
+        out["content"] = a.content
+    else:
+        out["preview"] = (a.content or "")[:200]
+    return out
+
+
+def _strip_markdown_bold(text: str) -> str:
+    """純文字平台不吃 markdown，把 **xxx** 變回 xxx；其他原文保留。"""
+    return _MD_BOLD_RE.sub(r"\1", text)
+
+
+# Threads 沿用舊命名
+_strip_markdown_for_threads = _strip_markdown_bold
+
+
+def _extract_fb_summary(content: str, max_chars: int = 400) -> str:
+    """抽 FB teaser：第一段（剝粗體後）。
+    第一段太短 (<150) 時補第二段。超過 max_chars 截到最後一個句末標點。
+    """
+    plain = _strip_markdown_bold(content).strip()
+    paras = re.split(r"\n{2,}", plain)
+    if not paras:
+        return ""
+    out = paras[0].strip()
+    if len(out) < 150 and len(paras) > 1:
+        out = f"{out}\n\n{paras[1].strip()}"
+    if len(out) > max_chars:
+        cut = out[:max_chars]
+        for sep in ["。", "！", "？", ".", "!", "?"]:
+            idx = cut.rfind(sep)
+            if idx > max_chars * 0.5:
+                cut = cut[:idx + 1]
+                break
+        out = cut.rstrip() + "…"
+    return out
+
+
+@router.get("/daily")
+def list_daily(
+    limit: int = 30,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin),
+):
+    rows = (
+        db.query(DailyArticle)
+        .order_by(DailyArticle.date.desc())
+        .limit(limit).all()
+    )
+    return [_serialize_daily(r) for r in rows]
+
+
+@router.get("/daily/{article_id}")
+def get_daily(
+    article_id: int,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin),
+):
+    a = db.get(DailyArticle, article_id)
+    if not a:
+        raise HTTPException(404, "找不到草稿")
+    return _serialize_daily(a, include_content=True)
+
+
+@router.post("/daily/refresh")
+async def refresh_daily(
+    date: Optional[str] = None,
+    force: bool = True,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin),
+):
+    """手動觸發指定日期的草稿生成；不帶 date 預設今日（Asia/Taipei）。"""
+    from daily_article import generate_for_date, _today_tpe
+    target = (
+        datetime.strptime(date, "%Y-%m-%d").date() if date else _today_tpe()
+    )
+    aid = await asyncio.to_thread(generate_for_date, target, force=force)
+    if not aid:
+        raise HTTPException(
+            404,
+            "今日無素材：ETF小百科尚未發文，或 active 個股皆無投顧報告"
+        )
+    a = db.get(DailyArticle, aid)
+    return _serialize_daily(a, include_content=True)
+
+
+@router.patch("/daily/{article_id}")
+def edit_daily(
+    article_id: int,
+    body: DailyEditRequest,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin),
+):
+    a = db.get(DailyArticle, article_id)
+    if not a:
+        raise HTTPException(404, "找不到草稿")
+    if body.title is not None:
+        a.title = body.title
+    if body.content is not None:
+        a.content = body.content
+    db.commit()
+    db.refresh(a)
+    return _serialize_daily(a, include_content=True)
+
+
+@router.post("/daily/{article_id}/publish-nstock")
+async def publish_daily_to_nstock(
+    article_id: int,
+    live: bool = False,    # False=送 nStock 後台存草稿不上架；True=直接上架
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin),
+):
+    """把每日草稿送到 nStock 後台（用既有 publish_nstock 邏輯）。
+
+    預設 live=False（後台存草稿，不上架）。
+    """
+    a = db.get(DailyArticle, article_id)
+    if not a:
+        raise HTTPException(404, "找不到草稿")
+    body = NStockPublishRequest(
+        title=a.title,
+        content=a.content,
+        is_html=False,
+        status=live,
+    )
+    result = await publish_nstock(body, _)  # 重用既有 endpoint
+    if result.get("article_id"):
+        a.nstock_article_id = result["article_id"]
+        a.published_at = datetime.utcnow()
+        db.commit()
+    return result
+
+
+@router.post("/daily/{article_id}/publish-threads")
+async def publish_daily_to_threads(
+    article_id: int,
+    topic_tag: Optional[str] = None,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin),
+):
+    """把每日草稿發到 Threads（自動切段成留言鏈）。Markdown 粗體會被剝掉。"""
+    a = db.get(DailyArticle, article_id)
+    if not a:
+        raise HTTPException(404, "找不到草稿")
+    plain = _strip_markdown_bold(a.content)
+    # 標題若希望出現在第一段，可直接拼前綴
+    full_text = f"{a.title}\n\n{plain}"
+    body = PublishRequest(text=full_text, topic_tag=topic_tag)
+    result = await publish_threads(body, _)
+    if result.get("post_id"):
+        a.threads_post_id = result["post_id"]
+        a.threads_posted_at = datetime.utcnow()
+        db.commit()
+    return result
+
+
+# ────────────────────────────────────────────────────────────
+# Facebook Pages 發文
+# ────────────────────────────────────────────────────────────
+
+FB_GRAPH_BASE = "https://graph.facebook.com/v18.0"
+
+
+async def _fb_publish_text(text: str, link: Optional[str] = None, picture: Optional[str] = None) -> dict:
+    """用 Page token 發文到 FB Page。回傳 {id: 'PAGE_POST'}。"""
+    page_id = os.environ.get("FB_PAGE_ID", "").strip()
+    token = os.environ.get("FB_PAGE_ACCESS_TOKEN", "").strip()
+    if not page_id or not token:
+        raise HTTPException(
+            503, "尚未設定 FB_PAGE_ID / FB_PAGE_ACCESS_TOKEN，請在 .env 填入後重啟"
+        )
+    params = {"message": text, "access_token": token}
+    if link:
+        params["link"] = link  # FB 會自動抓 og: 標籤產 link card
+    if picture:
+        params["picture"] = picture  # 覆蓋 og:image，指定縮圖
+    async with httpx.AsyncClient(timeout=30) as client:
+        r = await client.post(f"{FB_GRAPH_BASE}/{page_id}/feed", data=params)
+    if r.status_code != 200:
+        try:
+            err = r.json()
+        except Exception:
+            err = r.text[:500]
+        raise HTTPException(502, f"FB Graph API 錯誤：{err}")
+    return r.json()
+
+
+@router.post("/daily/{article_id}/publish-facebook")
+async def publish_daily_to_facebook(
+    article_id: int,
+    summary_only: bool = True,        # True=只發標題+第一段+link card；False=整篇 + link
+    with_nstock_link: bool = True,    # 已發過 nStock 時自動帶連結（生 link card）
+    picture: Optional[str] = None,    # 覆蓋縮圖 URL
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin),
+):
+    """把每日草稿發到 Facebook 粉專。
+
+    - 預設「摘要模式」：標題 + 第一段 teaser + nStock link card（FB 演算法偏好短文 + 強連結）
+    - summary_only=False 改發整篇純文字 + link card（適合長文型實驗）
+    - Markdown 粗體 ** 一律剝掉
+    """
+    a = db.get(DailyArticle, article_id)
+    if not a:
+        raise HTTPException(404, "找不到草稿")
+
+    if summary_only:
+        teaser = _extract_fb_summary(a.content)
+        text = f"{a.title}\n\n{teaser}" if teaser else a.title
+    else:
+        text = f"{a.title}\n\n{_strip_markdown_bold(a.content)}"
+
+    link = None
+    if with_nstock_link and a.nstock_article_id:
+        # nStock 公開文章 URL pattern（用 nstock.tw 主站不是 admin）
+        link = f"https://www.nstock.tw/author/article?id={a.nstock_article_id}"
+
+    result = await _fb_publish_text(text, link=link, picture=picture or None)
+    post_id = result.get("id")
+    if post_id:
+        a.fb_post_id = post_id
+        a.fb_posted_at = datetime.utcnow()
+        db.commit()
+    return {
+        "success": bool(post_id),
+        "post_id": post_id,
+        "url": f"https://www.facebook.com/{post_id}" if post_id else None,
+        "link_card": link,
+        "raw": result,
     }

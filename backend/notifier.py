@@ -79,6 +79,27 @@ def notify_sync_done(result: dict, new_reports: list[dict]) -> None:
     send_message("\n".join(lines))
 
 
+def notify_daily_draft(article) -> None:
+    """每日 00981A × 報告 草稿生成完通知。
+
+    article: DailyArticle ORM instance
+    """
+    preview = (article.content or "")[:200].replace("\n", " ")
+    if len(article.content or "") > 200:
+        preview += "…"
+    lines = [
+        "🤖 <b>每日草稿生成完成</b>",
+        f"📅 {article.date}",
+        f"🎯 主題：<b>{article.topic_stock_code} {article.topic_stock_name or ''}</b>",
+        f"📝 {article.title}",
+        "",
+        f"<i>{preview}</i>",
+        "",
+        "進後台 → 社群發布 → 每日草稿 編輯 / 發布",
+    ]
+    send_message("\n".join(lines))
+
+
 # ── Bot 指令處理 ──────────────────────────────────────────────
 
 def _handle_command(text: str) -> str:

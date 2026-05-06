@@ -1,7 +1,10 @@
 import asyncio
 from typing import Optional
-from fastapi import APIRouter, BackgroundTasks, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, Query
+from sqlalchemy.orm import Session
 from scheduler import get_last_sync_result, get_sync_progress, cancel_sync
+from database import get_db
+from models import SyncLog
 
 router = APIRouter(prefix="/sync", tags=["sync"])
 
@@ -27,6 +30,32 @@ async def trigger_sync(
     """手動觸發立即同步（在獨立執行緒背景執行，不阻塞 API）"""
     background_tasks.add_task(_do_sync_async, since)
     return {"status": "sync_started", "since": since}
+
+
+@router.get("/history")
+def sync_history(limit: int = Query(default=20, ge=1, le=100), db: Session = Depends(get_db)):
+    """最近 N 筆同步記錄（由新到舊）"""
+    rows = (
+        db.query(SyncLog)
+        .order_by(SyncLog.started_at.desc())
+        .limit(limit)
+        .all()
+    )
+    return [
+        {
+            "id": r.id,
+            "started_at": r.started_at,
+            "finished_at": r.finished_at,
+            "trigger": r.trigger,
+            "processed": r.processed,
+            "skipped": r.skipped,
+            "errors": r.errors,
+            "new_reports": r.new_reports,
+            "status": r.status,
+            "error_message": r.error_message,
+        }
+        for r in rows
+    ]
 
 
 @router.post("/cancel")

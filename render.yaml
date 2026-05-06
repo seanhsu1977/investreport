@@ -5,6 +5,8 @@ services:
     dockerfilePath: ./Dockerfile
     plan: starter
     healthCheckPath: /healthz
+    dockerBuildArgs:
+      - VITE_GOOGLE_CLIENT_ID
     disk:
       name: data
       mountPath: /app/data

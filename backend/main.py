@@ -58,4 +58,7 @@ def health():
 # Serve React frontend — must be mounted last so API routes take priority
 _static_dir = os.path.join(os.path.dirname(__file__), "static")
 if os.path.isdir(_static_dir):
+    logging.info("Static dir found at %s — serving React app", _static_dir)
     app.mount("/", StaticFiles(directory=_static_dir, html=True), name="static")
+else:
+    logging.warning("Static dir NOT found at %s — frontend will not be served", _static_dir)

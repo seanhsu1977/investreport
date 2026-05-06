@@ -88,16 +88,41 @@ def pdf_to_images_base64(pdf_bytes: bytes, max_pages: int = 3) -> list[str]:
         return []
 
 
+import logging
+import re as _re
+
+logger = logging.getLogger(__name__)
+
+
 def parse_json_response(raw: str) -> dict | None:
+    if not raw:
+        return None
     raw = raw.strip()
-    if raw.startswith("```"):
-        raw = raw.split("```")[1]
-        if raw.startswith("json"):
-            raw = raw[4:]
+
+    # 先試直接解析
     try:
         return json.loads(raw)
     except json.JSONDecodeError:
-        return None
+        pass
+
+    # 去掉 ```json ... ``` 或 ``` ... ``` 圍欄（允許圍欄後有換行或空白）
+    fence = _re.search(r"```(?:json)?\s*([\s\S]*?)```", raw)
+    if fence:
+        try:
+            return json.loads(fence.group(1).strip())
+        except json.JSONDecodeError:
+            pass
+
+    # 找第一個 { ... } 物件（貪婪，處理前後有多餘文字的情況）
+    obj = _re.search(r"\{[\s\S]*\}", raw)
+    if obj:
+        try:
+            return json.loads(obj.group(0))
+        except json.JSONDecodeError:
+            pass
+
+    logger.warning("parse_json_response: 無法解析 Gemini 回應，前100字: %s", raw[:100])
+    return None
 
 
 def build_filename_hint(filename: str | None) -> str:

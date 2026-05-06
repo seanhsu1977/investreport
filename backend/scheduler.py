@@ -40,6 +40,7 @@ def _save_sync_log(db, log: SyncLog, result: dict | None, error: str | None = No
         log.processed = result.get("processed", 0)
         log.skipped = result.get("skipped", 0)
         log.errors = result.get("errors", 0)
+        log.no_report = result.get("no_report", 0)
     db.commit()
 
 

@@ -96,6 +96,7 @@ class SyncLog(Base):
     processed = Column(Integer, default=0)
     skipped = Column(Integer, default=0)
     errors = Column(Integer, default=0)
+    no_report = Column(Integer, default=0)   # processed but AI returned no result
     new_reports = Column(Integer, default=0)
     status = Column(String, default="running")   # "running" | "done" | "error"
     error_message = Column(Text, nullable=True)

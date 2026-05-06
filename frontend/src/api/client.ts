@@ -239,6 +239,7 @@ export interface SyncLogEntry {
   processed: number;
   skipped: number;
   errors: number;
+  no_report: number;
   new_reports: number;
   status: "running" | "done" | "error";
   error_message: string | null;

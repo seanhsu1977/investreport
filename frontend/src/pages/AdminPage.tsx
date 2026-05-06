@@ -961,6 +961,7 @@ function SyncHistorySection() {
                 <th className="px-4 py-2.5 text-left">觸發</th>
                 <th className="px-4 py-2.5 text-right">處理</th>
                 <th className="px-4 py-2.5 text-right">略過</th>
+                <th className="px-4 py-2.5 text-right">無結果</th>
                 <th className="px-4 py-2.5 text-right">新增報告</th>
                 <th className="px-4 py-2.5 text-right">錯誤</th>
                 <th className="px-4 py-2.5 text-right">耗時</th>
@@ -978,6 +979,9 @@ function SyncHistorySection() {
                   </td>
                   <td className="px-4 py-2.5 text-right text-gray-700 tabular-nums">{log.processed}</td>
                   <td className="px-4 py-2.5 text-right text-gray-400 tabular-nums">{log.skipped}</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums">
+                    <span className={(log.no_report ?? 0) > 0 ? "text-amber-500 font-medium" : "text-gray-400"}>{log.no_report ?? 0}</span>
+                  </td>
                   <td className="px-4 py-2.5 text-right tabular-nums">
                     <span className={log.new_reports > 0 ? "text-green-600 font-semibold" : "text-gray-400"}>{log.new_reports}</span>
                   </td>

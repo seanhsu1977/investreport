@@ -167,6 +167,7 @@ def sync_drive(db: Session, progress: dict | None = None, cancelled=None, since:
     processed = 0
     skipped = 0
     errors = 0
+    no_report = 0
 
     if progress is not None:
         progress["total"] = len(files)
@@ -207,7 +208,12 @@ def sync_drive(db: Session, progress: dict | None = None, cancelled=None, since:
             else:
                 result = analyze_report(file_bytes, filename=filename)
 
-            if result:
+            if not result:
+                logger.warning("No result for %s (AI returned None or invalid JSON)", filename)
+                no_report += 1
+                if progress is not None:
+                    progress["no_report"] = no_report
+            else:
                 # 將日期字串轉為 Python date 物件
                 report_date = None
                 raw_date = result.get("report_date")
@@ -257,6 +263,7 @@ def sync_drive(db: Session, progress: dict | None = None, cancelled=None, since:
                     "processed": processed,
                     "skipped": skipped,
                     "errors": errors,
+                    "no_report": no_report,
                     "synced_at": datetime.utcnow().isoformat(),
                     "warning": "Anthropic API 餘額不足，請至 console.anthropic.com 充值後再同步。",
                 }
@@ -265,5 +272,6 @@ def sync_drive(db: Session, progress: dict | None = None, cancelled=None, since:
         "processed": processed,
         "skipped": skipped,
         "errors": errors,
+        "no_report": no_report,
         "synced_at": datetime.utcnow().isoformat(),
     }

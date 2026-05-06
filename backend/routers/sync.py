@@ -4,7 +4,8 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from sqlalchemy.orm import Session
 from scheduler import get_last_sync_result, get_sync_progress, cancel_sync
 from database import get_db
-from models import SyncLog
+from models import DriveFile, Report, SyncLog
+from routers.auth import require_admin
 
 router = APIRouter(prefix="/sync", tags=["sync"])
 
@@ -50,6 +51,7 @@ def sync_history(limit: int = Query(default=20, ge=1, le=100), db: Session = Dep
             "processed": r.processed,
             "skipped": r.skipped,
             "errors": r.errors,
+            "no_report": r.no_report or 0,
             "new_reports": r.new_reports,
             "status": r.status,
             "error_message": r.error_message,
@@ -63,6 +65,111 @@ def cancel_sync_endpoint():
     """中止正在進行的同步"""
     cancel_sync()
     return {"status": "cancelling"}
+
+
+@router.get("/no-report-count")
+def no_report_count(db: Session = Depends(get_db), _=Depends(require_admin)):
+    """查詢 DriveFile 中沒有對應 Report 的檔案數量"""
+    total = db.query(DriveFile).count()
+    with_report = db.query(DriveFile).join(
+        Report, DriveFile.drive_file_id == Report.drive_file_id
+    ).count()
+    return {"total_drive_files": total, "without_report": total - with_report}
+
+
+@router.post("/reanalyze")
+async def reanalyze_missing(
+    background_tasks: BackgroundTasks,
+    limit: int = Query(default=50, ge=1, le=500),
+    db: Session = Depends(get_db),
+    _=Depends(require_admin),
+):
+    """重新分析沒有 Report 的 DriveFile（每次最多 limit 筆）"""
+    # 找出有 DriveFile 但無 Report 的 drive_file_id
+    has_report = db.query(Report.drive_file_id).distinct().subquery()
+    orphans = (
+        db.query(DriveFile)
+        .filter(DriveFile.drive_file_id.notin_(has_report))
+        .limit(limit)
+        .all()
+    )
+    file_ids = [(f.drive_file_id, f.filename) for f in orphans]
+    if not file_ids:
+        return {"queued": 0, "message": "沒有需要重新分析的檔案"}
+
+    background_tasks.add_task(_do_reanalyze_async, file_ids)
+    return {"queued": len(file_ids), "message": f"已排程重新分析 {len(file_ids)} 個檔案"}
+
+
+async def _do_reanalyze_async(file_ids: list[tuple[str, str]]):
+    await asyncio.to_thread(_do_reanalyze, file_ids)
+
+
+def _do_reanalyze(file_ids: list[tuple[str, str]]):
+    import json
+    import logging
+    from datetime import date
+    from database import SessionLocal
+    from drive_sync import get_drive_service, download_file, extract_date_from_filename, IMAGE_MIME_TYPES
+    from analyzer import analyze_report, analyze_image_file
+    from models import Report
+
+    logger = logging.getLogger(__name__)
+    db = SessionLocal()
+    reanalyzed = 0
+    try:
+        service = get_drive_service()
+        for file_id, filename in file_ids:
+            try:
+                file_bytes = download_file(service, file_id)
+                mime_type = "application/pdf"
+                # Determine mime from filename extension
+                if filename.lower().endswith((".jpg", ".jpeg")):
+                    mime_type = "image/jpeg"
+                elif filename.lower().endswith(".png"):
+                    mime_type = "image/png"
+
+                if mime_type in IMAGE_MIME_TYPES:
+                    result = analyze_image_file(file_bytes, IMAGE_MIME_TYPES[mime_type], filename=filename)
+                else:
+                    result = analyze_report(file_bytes, filename=filename)
+
+                if result:
+                    report_date = None
+                    raw_date = result.get("report_date")
+                    if raw_date:
+                        try:
+                            report_date = date.fromisoformat(str(raw_date)[:10])
+                        except (ValueError, TypeError):
+                            pass
+                    if report_date is None:
+                        report_date = extract_date_from_filename(filename)
+
+                    stock_code = result.get("stock_code") or "MARKET"
+                    db.add(Report(
+                        drive_file_id=file_id,
+                        stock_code=stock_code,
+                        stock_name=result.get("stock_name"),
+                        recommendation=result.get("recommendation") if stock_code != "MARKET" else None,
+                        target_price=result.get("target_price"),
+                        analyst=result.get("analyst"),
+                        report_date=report_date,
+                        summary=result.get("summary"),
+                        key_points=json.dumps(result.get("key_points", []), ensure_ascii=False),
+                        mentioned_stocks=json.dumps(list(dict.fromkeys(result.get("mentioned_stocks", []))), ensure_ascii=False),
+                        source_filename=filename,
+                    ))
+                    db.commit()
+                    reanalyzed += 1
+                    logger.info("Reanalyzed %s → report created", filename)
+                else:
+                    logger.warning("Reanalyze still no result for %s", filename)
+            except Exception as e:
+                db.rollback()
+                logger.error("Reanalyze error for %s: %s", filename, e)
+    finally:
+        db.close()
+    logger.info("Reanalyze done: %d/%d reports created", reanalyzed, len(file_ids))
 
 
 async def _do_sync_async(since: Optional[str] = None):

@@ -18,7 +18,7 @@ function defaultSince() {
 }
 
 export default function SyncStatus() {
-  const [status, setStatus] = useState<Record<string, unknown> | null>(null);
+  const [status, setStatus] = useState<{ synced_at?: string; processed?: number; warning?: string } | null>(null);
   const [progress, setProgress] = useState<Progress | null>(null);
   const [open, setOpen] = useState(false);
   const [since, setSince] = useState<string>(defaultSince());

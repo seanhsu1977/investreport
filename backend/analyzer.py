@@ -4,12 +4,28 @@ import json
 import os
 import pdfplumber
 from io import BytesIO
+import time
 from google import genai
 from google.genai import types
 
 
 def _get_client() -> genai.Client:
     return genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+
+
+def _generate_with_retry(client: genai.Client, model: str, contents, config, max_retries: int = 3):
+    for attempt in range(max_retries):
+        try:
+            return client.models.generate_content(model=model, contents=contents, config=config)
+        except Exception as e:
+            if attempt == max_retries - 1:
+                raise
+            msg = str(e)
+            if "503" in msg or "429" in msg or "UNAVAILABLE" in msg or "quota" in msg.lower():
+                wait = 2 ** attempt * 3  # 3s, 6s, 12s
+                time.sleep(wait)
+            else:
+                raise
 
 
 MODEL = "gemini-2.5-flash"
@@ -94,8 +110,8 @@ def analyze_image_file(image_bytes: bytes, media_type: str, filename: str | None
     filename_hint = build_filename_hint(filename)
     client = _get_client()
     prompt = EXTRACT_PROMPT_IMAGE.format(filename_hint=filename_hint, schema=_SCHEMA)
-    response = client.models.generate_content(
-        model=MODEL,
+    response = _generate_with_retry(
+        client, MODEL,
         contents=[
             types.Part.from_bytes(data=image_bytes, mime_type=media_type),
             prompt,
@@ -120,8 +136,8 @@ def analyze_report(pdf_bytes: bytes, filename: str | None = None) -> dict | None
             schema=_SCHEMA,
             text=text[:8000],
         )
-        response = client.models.generate_content(
-            model=MODEL,
+        response = _generate_with_retry(
+            client, MODEL,
             contents=prompt,
             config=types.GenerateContentConfig(
                 system_instruction=SYSTEM_PROMPT,
@@ -142,8 +158,8 @@ def analyze_report(pdf_bytes: bytes, filename: str | None = None) -> dict | None
             parts.append(types.Part.from_bytes(data=img_bytes, mime_type="image/jpeg"))
         parts.append(EXTRACT_PROMPT_IMAGE.format(filename_hint=filename_hint, schema=_SCHEMA))
 
-        response = client.models.generate_content(
-            model=MODEL,
+        response = _generate_with_retry(
+            client, MODEL,
             contents=parts,
             config=types.GenerateContentConfig(
                 system_instruction=SYSTEM_PROMPT,

@@ -41,13 +41,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(stocks.router)
-app.include_router(watchlist.router)
-app.include_router(sync.router)
-app.include_router(auth.router)
-app.include_router(admin.router)
-app.include_router(publish.router)
-app.include_router(chips.router)
+app.include_router(stocks.router, prefix="/api")
+app.include_router(watchlist.router, prefix="/api")
+app.include_router(sync.router, prefix="/api")
+app.include_router(auth.router, prefix="/api")
+app.include_router(admin.router, prefix="/api")
+app.include_router(publish.router, prefix="/api")
+app.include_router(chips.router, prefix="/api")
 
 
 @app.get("/healthz")

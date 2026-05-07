@@ -1,5 +1,5 @@
 import os
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 from dotenv import load_dotenv
 
@@ -38,17 +38,14 @@ def get_db():
 def _migrate():
     """補上新欄位（SQLite 不支援 CREATE TABLE 時自動加欄位）"""
     migrations = [
-        ("sync_logs",      "no_report",   "INTEGER DEFAULT 0"),
-        ("daily_articles", "fb_post_id",  "VARCHAR"),
-        ("daily_articles", "fb_posted_at","DATETIME"),
+        ("sync_logs",      "no_report",    "INTEGER DEFAULT 0"),
+        ("daily_articles", "fb_post_id",   "VARCHAR"),
+        ("daily_articles", "fb_posted_at", "DATETIME"),
     ]
-    with engine.connect() as conn:
-        for table, col, col_def in migrations:
+    for table, col, col_def in migrations:
+        with engine.begin() as conn:
             try:
-                conn.execute(__import__("sqlalchemy").text(
-                    f"ALTER TABLE {table} ADD COLUMN {col} {col_def}"
-                ))
-                conn.commit()
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {col_def}"))
             except Exception:
                 pass  # 欄位已存在，忽略
 

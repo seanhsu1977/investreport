@@ -35,6 +35,25 @@ def get_db():
         db.close()
 
 
+def _migrate():
+    """補上新欄位（SQLite 不支援 CREATE TABLE 時自動加欄位）"""
+    migrations = [
+        ("sync_logs",      "no_report",   "INTEGER DEFAULT 0"),
+        ("daily_articles", "fb_post_id",  "VARCHAR"),
+        ("daily_articles", "fb_posted_at","DATETIME"),
+    ]
+    with engine.connect() as conn:
+        for table, col, col_def in migrations:
+            try:
+                conn.execute(__import__("sqlalchemy").text(
+                    f"ALTER TABLE {table} ADD COLUMN {col} {col_def}"
+                ))
+                conn.commit()
+            except Exception:
+                pass  # 欄位已存在，忽略
+
+
 def init_db():
-    from models import DriveFile, Report, Watchlist, FuturesChip, Stock, DailyArticle  # noqa: F401
+    from models import DriveFile, Report, Watchlist, FuturesChip, Stock, DailyArticle, SyncLog  # noqa: F401
     Base.metadata.create_all(bind=engine)
+    _migrate()

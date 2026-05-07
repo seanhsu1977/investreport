@@ -899,11 +899,16 @@ function SyncHistorySection() {
   const [logs, setLogs] = useState<SyncLogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [reanalyzing, setReanalyzing] = useState(false);
+  const [noReportCount, setNoReportCount] = useState<number | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
 
   const load = () => {
     setLoading(true);
     syncApi.history(30).then(setLogs).finally(() => setLoading(false));
+    syncApi.noReportCount()
+      .then((d) => setNoReportCount(d.without_report))
+      .catch(() => {});
   };
 
   useEffect(() => { load(); }, []);
@@ -922,6 +927,20 @@ function SyncHistorySection() {
     }
   };
 
+  const handleReanalyze = async () => {
+    setReanalyzing(true);
+    setMsg(null);
+    try {
+      const res = await syncApi.reanalyze(50);
+      setMsg(res.message);
+      setTimeout(load, 3000);
+    } catch {
+      setMsg("重新分析啟動失敗");
+    } finally {
+      setReanalyzing(false);
+    }
+  };
+
   const fmtDt = (s: string | null) =>
     s ? new Date(s + (s.includes("+") ? "" : "Z")).toLocaleString("zh-TW", { timeZone: "Asia/Taipei", hour12: false }) : "—";
 
@@ -933,11 +952,20 @@ function SyncHistorySection() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <p className="text-sm text-gray-500">顯示最近 30 筆同步記錄</p>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {msg && <span className="text-xs text-blue-600">{msg}</span>}
           <button onClick={load} className="px-3 py-1.5 text-sm rounded-lg border border-gray-300 hover:bg-gray-50">重新整理</button>
+          {noReportCount !== null && noReportCount > 0 && (
+            <button
+              onClick={handleReanalyze}
+              disabled={reanalyzing}
+              className="px-3 py-1.5 text-sm rounded-lg bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50 flex items-center gap-1.5"
+            >
+              {reanalyzing ? "分析中…" : `重新分析 (${noReportCount} 筆無結果)`}
+            </button>
+          )}
           <button
             onClick={handleSync}
             disabled={syncing}

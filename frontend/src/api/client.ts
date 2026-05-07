@@ -253,6 +253,10 @@ export const syncApi = {
   cancel: () => api.post("/sync/cancel").then((r) => r.data),
   history: (limit = 20) =>
     api.get<SyncLogEntry[]>(`/sync/history?limit=${limit}`).then((r) => r.data),
+  noReportCount: () =>
+    api.get<{ total_drive_files: number; without_report: number }>("/sync/no-report-count").then((r) => r.data),
+  reanalyze: (limit = 50) =>
+    api.post<{ queued: number; message: string }>(`/sync/reanalyze?limit=${limit}`).then((r) => r.data),
 };
 
 export interface InstitutionPosition {

@@ -12,25 +12,28 @@ export interface AuthUser {
 interface AuthContextType {
   user: AuthUser | null;
   token: string | null;
+  loading: boolean;
   login: (credential: string) => Promise<void>;
   logout: () => void;
 }
 
 const AuthContext = createContext<AuthContextType>({
-  user: null, token: null,
+  user: null, token: null, loading: true,
   login: async () => {}, logout: () => {},
 });
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [token, setToken] = useState<string | null>(() => localStorage.getItem("auth_token"));
+  const [loading, setLoading] = useState(() => !!localStorage.getItem("auth_token"));
 
   // 啟動時用已存的 token 驗證
   useEffect(() => {
-    if (!token) return;
+    if (!token) { setLoading(false); return; }
     axios.get("/api/auth/me", { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => setUser(r.data))
-      .catch(() => { localStorage.removeItem("auth_token"); setToken(null); });
+      .catch(() => { localStorage.removeItem("auth_token"); setToken(null); })
+      .finally(() => setLoading(false));
   }, []);
 
   const login = async (credential: string) => {
@@ -47,7 +50,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, login, logout }}>
+    <AuthContext.Provider value={{ user, token, loading, login, logout }}>
       {children}
     </AuthContext.Provider>
   );

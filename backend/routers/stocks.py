@@ -2,6 +2,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import time
 import httpx
 from datetime import date, datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -515,23 +516,37 @@ async def stream_recommendation_reason(
     )
 
     def generate():
-        try:
-            client = genai.Client(api_key=api_key)
-            for chunk in client.models.generate_content_stream(
-                model=os.environ.get("RECOMMENDATION_MODEL", "gemini-2.5-flash"),
-                contents=user_msg,
-                config=genai_types.GenerateContentConfig(
-                    system_instruction=_REASON_SYSTEM,
-                    max_output_tokens=600,
-                    safety_settings=_SAFETY_OFF,
-                ),
-            ):
-                if chunk.text:
-                    yield f"data: {json.dumps({'text': chunk.text}, ensure_ascii=False)}\n\n"
-            yield "data: [DONE]\n\n"
-        except Exception as e:
-            yield f"data: {json.dumps({'error': str(e)}, ensure_ascii=False)}\n\n"
-            yield "data: [DONE]\n\n"
+        client = genai.Client(api_key=api_key)
+        model = os.environ.get("RECOMMENDATION_MODEL", "gemini-2.5-flash")
+        config = genai_types.GenerateContentConfig(
+            system_instruction=_REASON_SYSTEM,
+            max_output_tokens=600,
+            safety_settings=_SAFETY_OFF,
+        )
+        max_retries = 3
+        for attempt in range(max_retries):
+            sent_any = False
+            try:
+                for chunk in client.models.generate_content_stream(
+                    model=model, contents=user_msg, config=config,
+                ):
+                    if chunk.text:
+                        sent_any = True
+                        yield f"data: {json.dumps({'text': chunk.text}, ensure_ascii=False)}\n\n"
+                yield "data: [DONE]\n\n"
+                return
+            except Exception as e:
+                msg = str(e)
+                # 只有尚未輸出任何內容時才重試，避免重複文字
+                if not sent_any and attempt < max_retries - 1 and (
+                    "503" in msg or "429" in msg or "UNAVAILABLE" in msg or "quota" in msg.lower()
+                ):
+                    wait = 2 ** attempt * 3  # 3s, 6s
+                    time.sleep(wait)
+                    continue
+                yield f"data: {json.dumps({'error': msg}, ensure_ascii=False)}\n\n"
+                yield "data: [DONE]\n\n"
+                return
 
     return StreamingResponse(
         generate(),

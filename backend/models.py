@@ -65,6 +65,16 @@ class InviteCode(Base):
     is_active = Column(Integer, default=1)  # 0 = deactivated by admin
 
 
+class WatchlistGroup(Base):
+    __tablename__ = "watchlist_groups"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    name = Column(String, nullable=False)
+    sort_order = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class Watchlist(Base):
     __tablename__ = "watchlist"
 
@@ -72,6 +82,7 @@ class Watchlist(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     stock_code = Column(String, nullable=False)
     stock_name = Column(String)
+    group_id = Column(Integer, ForeignKey("watchlist_groups.id"), nullable=True)
     added_at = Column(DateTime, default=datetime.utcnow)
 
     __table_args__ = (

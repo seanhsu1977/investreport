@@ -41,6 +41,7 @@ def _migrate():
         ("sync_logs",      "no_report",    "INTEGER DEFAULT 0"),
         ("daily_articles", "fb_post_id",   "VARCHAR"),
         ("daily_articles", "fb_posted_at", "DATETIME"),
+        ("watchlist",      "group_id",     "INTEGER"),
     ]
     for table, col, col_def in migrations:
         with engine.begin() as conn:
@@ -61,7 +62,7 @@ def _cleanup_stale_syncs():
 
 
 def init_db():
-    from models import DriveFile, Report, Watchlist, FuturesChip, Stock, DailyArticle, SyncLog, InviteCode, RecommendationCache  # noqa: F401
+    from models import DriveFile, Report, Watchlist, WatchlistGroup, FuturesChip, Stock, DailyArticle, SyncLog, InviteCode, RecommendationCache  # noqa: F401
     Base.metadata.create_all(bind=engine)
     _migrate()
     _cleanup_stale_syncs()

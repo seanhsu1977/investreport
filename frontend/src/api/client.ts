@@ -36,8 +36,15 @@ export interface Report {
 export interface WatchlistItem {
   stock_code: string;
   stock_name: string | null;
+  group_id: number | null;
   added_at: string;
   latest_report: Report | null;
+}
+
+export interface WatchlistGroup {
+  id: number;
+  name: string;
+  sort_order: number;
 }
 
 export interface StockReportsResponse {
@@ -186,6 +193,8 @@ export const watchlistApi = {
   add: (stock_code: string, stock_name?: string) =>
     api.post("/watchlist", { stock_code, stock_name }).then((r) => r.data),
   remove: (stock_code: string) => api.delete(`/watchlist/${stock_code}`),
+  assignGroup: (stock_code: string, group_id: number | null) =>
+    api.patch(`/watchlist/${stock_code}/group`, { group_id }).then((r) => r.data),
   parseImage: (file: File) => {
     const form = new FormData();
     form.append("file", file);
@@ -193,6 +202,13 @@ export const watchlistApi = {
       "/watchlist/parse-image", form
     ).then((r) => r.data);
   },
+};
+
+export const watchlistGroupsApi = {
+  list: () => api.get<WatchlistGroup[]>("/watchlist/groups").then((r) => r.data),
+  create: (name: string) => api.post<WatchlistGroup>("/watchlist/groups", { name }).then((r) => r.data),
+  rename: (id: number, name: string) => api.patch<WatchlistGroup>(`/watchlist/groups/${id}`, { name }).then((r) => r.data),
+  delete: (id: number) => api.delete(`/watchlist/groups/${id}`),
 };
 
 export interface RevenueData {

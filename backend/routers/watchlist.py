@@ -10,7 +10,7 @@ from google import genai
 from google.genai import types as genai_types
 
 from database import get_db
-from models import Report, Watchlist
+from models import Report, Watchlist, WatchlistGroup
 from routers.auth import get_current_user, User
 from stocks_master import resolve_name
 
@@ -46,6 +46,7 @@ def get_watchlist(db: Session = Depends(get_db), user: User = Depends(get_curren
         result.append({
             "stock_code": item.stock_code,
             "stock_name": canonical,
+            "group_id": item.group_id,
             "added_at": item.added_at,
             "latest_report": {
                 "id": latest.id,
@@ -141,6 +142,73 @@ async def parse_watchlist_image(
         if code:
             result.append({"code": code, "name": name})
     return {"stocks": result}
+
+
+# ── 分組 CRUD ──────────────────────────────────────────────
+
+class GroupCreate(BaseModel):
+    name: str
+
+class GroupRename(BaseModel):
+    name: str
+
+class GroupAssign(BaseModel):
+    group_id: Optional[int] = None
+
+
+@router.get("/groups")
+def list_groups(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    groups = (
+        db.query(WatchlistGroup)
+        .filter(WatchlistGroup.user_id == user.id)
+        .order_by(WatchlistGroup.sort_order, WatchlistGroup.created_at)
+        .all()
+    )
+    return [{"id": g.id, "name": g.name, "sort_order": g.sort_order} for g in groups]
+
+
+@router.post("/groups", status_code=201)
+def create_group(body: GroupCreate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    g = WatchlistGroup(user_id=user.id, name=body.name.strip())
+    db.add(g)
+    db.commit()
+    db.refresh(g)
+    return {"id": g.id, "name": g.name, "sort_order": g.sort_order}
+
+
+@router.patch("/groups/{group_id}")
+def rename_group(group_id: int, body: GroupRename, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    g = db.query(WatchlistGroup).filter(WatchlistGroup.id == group_id, WatchlistGroup.user_id == user.id).first()
+    if not g:
+        raise HTTPException(404, "找不到此分組")
+    g.name = body.name.strip()
+    db.commit()
+    return {"id": g.id, "name": g.name}
+
+
+@router.delete("/groups/{group_id}", status_code=204)
+def delete_group(group_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    g = db.query(WatchlistGroup).filter(WatchlistGroup.id == group_id, WatchlistGroup.user_id == user.id).first()
+    if not g:
+        raise HTTPException(404, "找不到此分組")
+    # 移除所有成員的分組指定
+    db.query(Watchlist).filter(Watchlist.user_id == user.id, Watchlist.group_id == group_id).update({"group_id": None})
+    db.delete(g)
+    db.commit()
+
+
+@router.patch("/{stock_code}/group")
+def assign_group(stock_code: str, body: GroupAssign, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    item = db.query(Watchlist).filter(Watchlist.user_id == user.id, Watchlist.stock_code == stock_code).first()
+    if not item:
+        raise HTTPException(404, "Stock not found in watchlist")
+    if body.group_id is not None:
+        g = db.query(WatchlistGroup).filter(WatchlistGroup.id == body.group_id, WatchlistGroup.user_id == user.id).first()
+        if not g:
+            raise HTTPException(404, "找不到此分組")
+    item.group_id = body.group_id
+    db.commit()
+    return {"stock_code": stock_code, "group_id": item.group_id}
 
 
 @router.delete("/{stock_code}", status_code=204)

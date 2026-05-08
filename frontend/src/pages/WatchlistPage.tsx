@@ -1,12 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAutoRefresh } from "../hooks/useAutoRefresh";
-import { watchlistApi, stocksApi, fundamentalsApi, type WatchlistItem, type StockSignal, type StockPriceData, type MarketIndex, type TowerSignal, type FundamentalSummary } from "../api/client";
+import { watchlistApi, watchlistGroupsApi, stocksApi, fundamentalsApi, type WatchlistItem, type StockSignal, type StockPriceData, type MarketIndex, type TowerSignal, type FundamentalSummary } from "../api/client";
 import RecommendationBadge from "../components/RecommendationBadge";
 import StockSearch from "../components/StockSearch";
 import { useAuth } from "../contexts/AuthContext";
 
 type ViewMode = "list" | "card";
+
+interface Tab {
+  id: string;
+  name: string;
+}
 
 function SkeletonRow() {
   return (
@@ -45,7 +50,7 @@ function SkeletonCard() {
   );
 }
 
-function EmptyState() {
+function EmptyState({ tabName }: { tabName?: string }) {
   return (
     <div className="flex flex-col items-center gap-3 py-16">
       <div className="w-14 h-14 rounded-full bg-blue-50 flex items-center justify-center">
@@ -53,9 +58,13 @@ function EmptyState() {
           <path strokeLinecap="round" strokeLinejoin="round" d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.562.562 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" />
         </svg>
       </div>
-      <p className="font-semibold text-gray-700">還沒有自選股</p>
+      <p className="font-semibold text-gray-700">
+        {tabName ? `「${tabName}」還沒有股票` : "還沒有自選股"}
+      </p>
       <p className="text-sm text-gray-400 text-center">
-        在上方搜尋股票代碼或名稱，<br />點「+ 加入」即可追蹤最新報告。
+        {tabName
+          ? "在股票列上點「分組」標籤即可加入此頁籤"
+          : "在上方搜尋股票代碼或名稱，\n點「+ 加入」即可追蹤最新報告。"}
       </p>
     </div>
   );
@@ -73,6 +82,70 @@ const SUGGESTION_STYLE_MAP: Record<string, string> = {
   "跌破布林下軌，留意反彈":   "bg-indigo-50 text-indigo-600 border-indigo-200",
 };
 
+// 頁籤顏色池
+const TAB_COLORS = [
+  { pill: "bg-blue-100 text-blue-700 border-blue-200",   dot: "bg-blue-500"   },
+  { pill: "bg-green-100 text-green-700 border-green-200", dot: "bg-green-500"  },
+  { pill: "bg-purple-100 text-purple-700 border-purple-200", dot: "bg-purple-500" },
+  { pill: "bg-orange-100 text-orange-700 border-orange-200", dot: "bg-orange-400" },
+  { pill: "bg-pink-100 text-pink-700 border-pink-200",    dot: "bg-pink-500"   },
+  { pill: "bg-teal-100 text-teal-700 border-teal-200",    dot: "bg-teal-500"   },
+  { pill: "bg-indigo-100 text-indigo-700 border-indigo-200", dot: "bg-indigo-500" },
+  { pill: "bg-red-100 text-red-700 border-red-200",       dot: "bg-red-400"    },
+];
+
+function tabColor(idx: number) {
+  return TAB_COLORS[idx % TAB_COLORS.length];
+}
+
+// ── 分組選單（小浮層）──────────────────────────────────
+function AssignMenu({ code, tabs, currentTabId, onAssign, onClose, anchorRect }: {
+  code: string;
+  tabs: Tab[];
+  currentTabId: string | undefined;
+  onAssign: (code: string, tabId: string | null) => void;
+  onClose: () => void;
+  anchorRect: DOMRect;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [onClose]);
+
+  const top = anchorRect.bottom + 4;
+  const left = anchorRect.left;
+
+  return (
+    <div
+      ref={ref}
+      style={{ position: "fixed", top, left, zIndex: 200 }}
+      className="bg-white border border-gray-200 rounded-xl shadow-lg py-1 min-w-[140px]"
+    >
+      <button
+        onClick={() => { onAssign(code, null); onClose(); }}
+        className={`w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 hover:bg-gray-50 ${!currentTabId ? "text-blue-600 font-semibold" : "text-gray-500"}`}
+      >
+        <span className="w-2 h-2 rounded-full bg-gray-300 inline-block shrink-0" />
+        無分組
+      </button>
+      {tabs.map((tab, i) => (
+        <button
+          key={tab.id}
+          onClick={() => { onAssign(code, tab.id); onClose(); }}
+          className={`w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 hover:bg-gray-50 ${currentTabId === tab.id ? "text-blue-600 font-semibold" : "text-gray-700"}`}
+        >
+          <span className={`w-2 h-2 rounded-full inline-block shrink-0 ${tabColor(i).dot}`} />
+          {tab.name}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function fmtNum(v: number): string {
   if (Math.abs(v) < 10) return v.toFixed(2);
   if (Math.abs(v) < 1000) return v.toFixed(1);
@@ -82,12 +155,8 @@ function fmtNum(v: number): string {
 function MarketOverview({ data, expanded, onToggle }: { data: Record<string, MarketIndex> | null; expanded: boolean; onToggle: () => void }) {
   if (!data || Object.keys(data).length === 0) return null;
   const entries = Object.entries(data);
-  const first = entries[0]?.[1];
-  const firstUp = first ? first.change >= 0 : true;
-  const firstColor = firstUp ? "text-red-500" : "text-green-600";
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-      {/* 摺疊標題列 */}
       <button
         onClick={onToggle}
         className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-gray-50 transition"
@@ -110,7 +179,6 @@ function MarketOverview({ data, expanded, onToggle }: { data: Record<string, Mar
         </svg>
       </button>
 
-      {/* 展開詳情 */}
       {expanded && (
         <div className="border-t border-gray-100 p-3 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           {entries.map(([key, idx]) => {
@@ -177,7 +245,6 @@ function PriceCell({ data }: { data?: StockPriceData }) {
   );
 }
 
-
 function BbTag({ signal, pctB }: { signal?: string | null; pctB?: number | null }) {
   if (!signal || signal === "帶內整理") return null;
   const cls =
@@ -198,12 +265,8 @@ function TowerTag({ tower }: { tower?: TowerSignal | null }) {
   const isYang = tower.color === "陽";
   const isReversal = tower.signal === "轉陽" || tower.signal === "轉陰";
   const cls = isReversal
-    ? isYang
-      ? "bg-red-500 text-white border-red-500"
-      : "bg-green-600 text-white border-green-600"
-    : isYang
-      ? "bg-red-50 text-red-500 border-red-200"
-      : "bg-green-50 text-green-700 border-green-200";
+    ? isYang ? "bg-red-500 text-white border-red-500" : "bg-green-600 text-white border-green-600"
+    : isYang ? "bg-red-50 text-red-500 border-red-200" : "bg-green-50 text-green-700 border-green-200";
   return (
     <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs border font-medium ${cls}`}>
       寶塔 {tower.signal}{!isReversal && ` ${tower.count}根`}
@@ -230,9 +293,7 @@ function SignalDetail({ signal }: { signal: StockSignal }) {
     <div className="mt-2 space-y-1.5">
       <div className="flex items-center gap-3 flex-wrap text-xs text-gray-400">
         {changeStr && <span>5日 <span className={`font-medium ${changeColor}`}>{changeStr}</span></span>}
-        {signal.ma_position && (
-          <span className="font-medium text-gray-700">{signal.ma_position}</span>
-        )}
+        {signal.ma_position && <span className="font-medium text-gray-700">{signal.ma_position}</span>}
         <span className="text-gray-300">|</span>
         <span>MA5 <span className="text-gray-600">{signal.ma5}</span></span>
         {signal.ma10 != null && <span>MA10 <span className="text-gray-600">{signal.ma10}</span></span>}
@@ -249,9 +310,7 @@ function SignalDetail({ signal }: { signal: StockSignal }) {
             <span className="flex items-center gap-1 text-gray-400">
               壓力
               {signal.resistance.map((v) => (
-                <span key={v} className="px-1.5 py-0.5 rounded bg-red-50 text-red-500 border border-red-100 font-medium tabular-nums">
-                  {v}
-                </span>
+                <span key={v} className="px-1.5 py-0.5 rounded bg-red-50 text-red-500 border border-red-100 font-medium tabular-nums">{v}</span>
               ))}
             </span>
           )}
@@ -259,9 +318,7 @@ function SignalDetail({ signal }: { signal: StockSignal }) {
             <span className="flex items-center gap-1 text-gray-400">
               支撐
               {signal.support.map((v) => (
-                <span key={v} className="px-1.5 py-0.5 rounded bg-green-50 text-green-700 border border-green-100 font-medium tabular-nums">
-                  {v}
-                </span>
+                <span key={v} className="px-1.5 py-0.5 rounded bg-green-50 text-green-700 border border-green-100 font-medium tabular-nums">{v}</span>
               ))}
             </span>
           )}
@@ -301,13 +358,7 @@ function FundRow({ fund }: { fund?: FundamentalSummary }) {
 }
 
 function ListSignalCell({ signal, loading, fund, expanded, onToggle }: { signal?: StockSignal; loading: boolean; fund?: FundamentalSummary; expanded: boolean; onToggle: () => void }) {
-  if (loading) {
-    return (
-      <div className="space-y-1 animate-pulse">
-        <div className="bg-gray-100 rounded h-4 w-24" />
-      </div>
-    );
-  }
+  if (loading) return <div className="space-y-1 animate-pulse"><div className="bg-gray-100 rounded h-4 w-24" /></div>;
   if (!signal) return <span className="text-gray-300 text-xs">—</span>;
 
   const change = signal.price_change_5d;
@@ -326,9 +377,7 @@ function ListSignalCell({ signal, loading, fund, expanded, onToggle }: { signal?
             <TowerTag tower={signal.tower} />
             <BbTag signal={signal.bb_signal} pctB={signal.bb_pct_b} />
             {changeStr && <span className={`text-xs ${changeColor} font-medium`}>5日 {changeStr}</span>}
-            {signal.rsi !== null && (
-              <span className="text-xs text-gray-400">RSI <span className="text-gray-600">{signal.rsi}</span></span>
-            )}
+            {signal.rsi !== null && <span className="text-xs text-gray-400">RSI <span className="text-gray-600">{signal.rsi}</span></span>}
           </>}
         </div>
         <button onClick={onToggle} className="shrink-0 text-xs text-gray-300 hover:text-blue-400 transition leading-none pt-0.5">
@@ -336,9 +385,7 @@ function ListSignalCell({ signal, loading, fund, expanded, onToggle }: { signal?
         </button>
       </div>
       {expanded && <>
-        {signal.ma_position && (
-          <div className="text-xs text-gray-500">{signal.ma_position}</div>
-        )}
+        {signal.ma_position && <div className="text-xs text-gray-500">{signal.ma_position}</div>}
         {(signal.resistance.length > 0 || signal.support.length > 0) && (
           <div className="flex items-center gap-2 flex-wrap text-xs text-gray-400">
             {signal.resistance.length > 0 && (
@@ -375,7 +422,34 @@ function DragHandle() {
   );
 }
 
-function ListView({ items, onRemove, signals, signalsLoading, prices, fundamentals, expandedSignals, onToggleSignal, pinnedCodes, onTogglePin, onDragStart, onDragOver, onDragEnterEl, onDragLeaveEl, onDrop, onDragEnd }: {
+// ── 分組標籤（行內小 pill）──────────────────────────────
+function TabPill({ code, tabs, assigns, onOpen }: {
+  code: string;
+  tabs: Tab[];
+  assigns: Record<string, string>;
+  onOpen: (code: string, rect: DOMRect) => void;
+}) {
+  if (tabs.length === 0) return null;
+  const tabId = assigns[code];
+  const tabIdx = tabs.findIndex(t => t.id === tabId);
+  const tab = tabIdx >= 0 ? tabs[tabIdx] : null;
+  return (
+    <button
+      onClick={(e) => { e.stopPropagation(); onOpen(code, e.currentTarget.getBoundingClientRect()); }}
+      className="mt-0.5 w-fit"
+    >
+      {tab ? (
+        <span className={`text-xs px-1.5 py-0.5 rounded border font-medium ${tabColor(tabIdx).pill}`}>
+          {tab.name}
+        </span>
+      ) : (
+        <span className="text-xs text-gray-300 hover:text-gray-400 transition">＋分組</span>
+      )}
+    </button>
+  );
+}
+
+function ListView({ items, onRemove, signals, signalsLoading, prices, fundamentals, expandedSignals, onToggleSignal, pinnedCodes, onTogglePin, onDragStart, onDragOver, onDragEnterEl, onDragLeaveEl, onDrop, onDragEnd, tabs, assigns, onOpenAssignMenu }: {
   items: WatchlistItem[];
   onRemove: (code: string) => void;
   signals: Record<string, StockSignal>;
@@ -392,10 +466,12 @@ function ListView({ items, onRemove, signals, signalsLoading, prices, fundamenta
   onDragLeaveEl: (e: React.DragEvent) => void;
   onDrop: (e: React.DragEvent, i: number) => void;
   onDragEnd: (e: React.DragEvent) => void;
+  tabs: Tab[];
+  assigns: Record<string, string>;
+  onOpenAssignMenu: (code: string, rect: DOMRect) => void;
 }) {
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-      {/* 欄位標題：手機隱藏目標價 */}
       <div className="grid grid-cols-12 gap-x-1 px-3 py-2 bg-gray-50 border-b border-gray-100 text-xs text-gray-400 font-medium uppercase tracking-wide">
         <div className="col-span-1" />
         <div className="col-span-3 sm:col-span-2">股票</div>
@@ -440,6 +516,7 @@ function ListView({ items, onRemove, signals, signalsLoading, prices, fundamenta
               {item.stock_name && (
                 <span className="text-xs text-gray-500 truncate leading-tight">{item.stock_name}</span>
               )}
+              <TabPill code={item.stock_code} tabs={tabs} assigns={assigns} onOpen={onOpenAssignMenu} />
             </div>
             <div className="hidden sm:flex sm:col-span-2 justify-center h-7 items-center">
               <RecommendationBadge value={item.latest_report?.recommendation ?? null} compact />
@@ -468,7 +545,7 @@ function ListView({ items, onRemove, signals, signalsLoading, prices, fundamenta
   );
 }
 
-function CardView({ items, onRemove, signals, signalsLoading, prices, fundamentals, expandedSignals, onToggleSignal, pinnedCodes, onTogglePin, onDragStart, onDragOver, onDragEnterEl, onDragLeaveEl, onDrop, onDragEnd }: {
+function CardView({ items, onRemove, signals, signalsLoading, prices, fundamentals, expandedSignals, onToggleSignal, pinnedCodes, onTogglePin, onDragStart, onDragOver, onDragEnterEl, onDragLeaveEl, onDrop, onDragEnd, tabs, assigns, onOpenAssignMenu }: {
   items: WatchlistItem[];
   onRemove: (code: string) => void;
   signals: Record<string, StockSignal>;
@@ -485,108 +562,119 @@ function CardView({ items, onRemove, signals, signalsLoading, prices, fundamenta
   onDragLeaveEl: (e: React.DragEvent) => void;
   onDrop: (e: React.DragEvent, i: number) => void;
   onDragEnd: (e: React.DragEvent) => void;
+  tabs: Tab[];
+  assigns: Record<string, string>;
+  onOpenAssignMenu: (code: string, rect: DOMRect) => void;
 }) {
   return (
     <div className="space-y-3">
-      {items.map((item, idx) => (
-        <div
-          key={item.stock_code}
-          data-draggable
-          draggable
-          onDragStart={(e) => onDragStart(e, idx)}
-          onDragOver={onDragOver}
-          onDragEnter={onDragEnterEl}
-          onDragLeave={onDragLeaveEl}
-          onDrop={(e) => onDrop(e, idx)}
-          onDragEnd={onDragEnd}
-          className={`rounded-xl shadow-sm border p-5 ${pinnedCodes.has(item.stock_code) ? "bg-amber-50 border-amber-200" : "bg-white border-gray-200"}`}
-        >
-          <div className="flex items-start justify-between">
-            <div>
-              <Link
-                draggable={false}
-                to={`/stocks/${item.stock_code}`}
-                state={{ from: "/", label: "自選股" }}
-                className="font-mono font-bold text-lg text-blue-600 hover:underline"
-              >
-                {item.stock_code}
-              </Link>
-              {item.stock_name && (
-                <span className="ml-2 text-gray-600">{item.stock_name}</span>
-              )}
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => onTogglePin(item.stock_code)}
-                className={`transition ${pinnedCodes.has(item.stock_code) ? "text-amber-400" : "text-gray-300 hover:text-amber-300"}`}
-                title={pinnedCodes.has(item.stock_code) ? "取消置頂" : "置頂"}
-              >
-                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M16 1v8l2 4H6l2-4V1h8zm-4 18a2 2 0 01-2-2h4a2 2 0 01-2 2zM10 1h4"/></svg>
-              </button>
-              <DragHandle />
-              <button
-                onClick={() => onRemove(item.stock_code)}
-                className="text-xs text-gray-400 hover:text-red-500 transition"
-              >
-                移除
-              </button>
-            </div>
-          </div>
-
-          <div className="mt-3 flex flex-wrap items-center gap-3">
-            {prices[item.stock_code] && <PriceCell data={prices[item.stock_code]} />}
-            {item.latest_report ? (
-              <>
-                <RecommendationBadge value={item.latest_report.recommendation} />
-                {item.latest_report.target_price && (
-                  <span className="text-sm text-gray-500">
-                    目標 <span className="font-semibold text-gray-700">{item.latest_report.target_price}</span>
-                  </span>
-                )}
-                {item.latest_report.analyst && (
-                  <span className="text-sm text-gray-400">{item.latest_report.analyst}</span>
-                )}
-                <span className="text-xs text-gray-400 ml-auto">
-                  {(item.latest_report.report_date ?? item.latest_report.created_at)?.slice(0, 10)}
-                </span>
-              </>
-            ) : (
-              <span className="text-sm text-gray-400">尚無報告</span>
-            )}
-          </div>
-
-          {item.latest_report?.summary && (
-            <p className="mt-2 text-sm text-gray-600 line-clamp-2">
-              {item.latest_report.summary}
-            </p>
-          )}
-
-          <div className="mt-2">
-            <div className="flex items-center gap-2 flex-wrap">
-              <SignalTag signal={signals[item.stock_code]} loading={signalsLoading} />
-              {signals[item.stock_code] && (
-                <button onClick={() => onToggleSignal(item.stock_code)} className="text-xs text-gray-400 hover:text-blue-500 transition">
-                  {expandedSignals.has(item.stock_code) ? "收合 ▲" : "詳情 ▼"}
-                </button>
-              )}
-            </div>
-            {expandedSignals.has(item.stock_code) && signals[item.stock_code] && (
-              <SignalDetail signal={signals[item.stock_code]} />
-            )}
-          </div>
-
-          <FundRow fund={fundamentals[item.stock_code]} />
-
-          <Link
-            to={`/stocks/${item.stock_code}`}
-            state={{ from: "/", label: "自選股" }}
-            draggable={false}
-            className="mt-2 inline-block text-xs text-blue-500 hover:underline"
+      {items.map((item, idx) => {
+        const tabId = assigns[item.stock_code];
+        const tabIdx = tabs.findIndex(t => t.id === tabId);
+        const tab = tabIdx >= 0 ? tabs[tabIdx] : null;
+        return (
+          <div
+            key={item.stock_code}
+            data-draggable
+            draggable
+            onDragStart={(e) => onDragStart(e, idx)}
+            onDragOver={onDragOver}
+            onDragEnter={onDragEnterEl}
+            onDragLeave={onDragLeaveEl}
+            onDrop={(e) => onDrop(e, idx)}
+            onDragEnd={onDragEnd}
+            className={`rounded-xl shadow-sm border p-5 ${pinnedCodes.has(item.stock_code) ? "bg-amber-50 border-amber-200" : "bg-white border-gray-200"}`}
           >
-            查看所有報告 →
-          </Link>
-        </div>
-      ))}
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-2 flex-wrap">
+                <Link
+                  draggable={false}
+                  to={`/stocks/${item.stock_code}`}
+                  state={{ from: "/", label: "自選股" }}
+                  className="font-mono font-bold text-lg text-blue-600 hover:underline"
+                >
+                  {item.stock_code}
+                </Link>
+                {item.stock_name && <span className="text-gray-600">{item.stock_name}</span>}
+                {tab && (
+                  <button
+                    onClick={(e) => onOpenAssignMenu(item.stock_code, e.currentTarget.getBoundingClientRect())}
+                    className={`text-xs px-1.5 py-0.5 rounded border font-medium ${tabColor(tabIdx).pill}`}
+                  >
+                    {tab.name}
+                  </button>
+                )}
+                {!tab && tabs.length > 0 && (
+                  <button
+                    onClick={(e) => onOpenAssignMenu(item.stock_code, e.currentTarget.getBoundingClientRect())}
+                    className="text-xs text-gray-300 hover:text-gray-400 transition"
+                  >
+                    ＋分組
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => onTogglePin(item.stock_code)}
+                  className={`transition ${pinnedCodes.has(item.stock_code) ? "text-amber-400" : "text-gray-300 hover:text-amber-300"}`}
+                  title={pinnedCodes.has(item.stock_code) ? "取消置頂" : "置頂"}
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M16 1v8l2 4H6l2-4V1h8zm-4 18a2 2 0 01-2-2h4a2 2 0 01-2 2zM10 1h4"/></svg>
+                </button>
+                <DragHandle />
+                <button onClick={() => onRemove(item.stock_code)} className="text-xs text-gray-400 hover:text-red-500 transition">移除</button>
+              </div>
+            </div>
+
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              {prices[item.stock_code] && <PriceCell data={prices[item.stock_code]} />}
+              {item.latest_report ? (
+                <>
+                  <RecommendationBadge value={item.latest_report.recommendation} />
+                  {item.latest_report.target_price && (
+                    <span className="text-sm text-gray-500">目標 <span className="font-semibold text-gray-700">{item.latest_report.target_price}</span></span>
+                  )}
+                  {item.latest_report.analyst && <span className="text-sm text-gray-400">{item.latest_report.analyst}</span>}
+                  <span className="text-xs text-gray-400 ml-auto">
+                    {(item.latest_report.report_date ?? item.latest_report.created_at)?.slice(0, 10)}
+                  </span>
+                </>
+              ) : (
+                <span className="text-sm text-gray-400">尚無報告</span>
+              )}
+            </div>
+
+            {item.latest_report?.summary && (
+              <p className="mt-2 text-sm text-gray-600 line-clamp-2">{item.latest_report.summary}</p>
+            )}
+
+            <div className="mt-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <SignalTag signal={signals[item.stock_code]} loading={signalsLoading} />
+                {signals[item.stock_code] && (
+                  <button onClick={() => onToggleSignal(item.stock_code)} className="text-xs text-gray-400 hover:text-blue-500 transition">
+                    {expandedSignals.has(item.stock_code) ? "收合 ▲" : "詳情 ▼"}
+                  </button>
+                )}
+              </div>
+              {expandedSignals.has(item.stock_code) && signals[item.stock_code] && (
+                <SignalDetail signal={signals[item.stock_code]} />
+              )}
+            </div>
+
+            <FundRow fund={fundamentals[item.stock_code]} />
+
+            <Link
+              to={`/stocks/${item.stock_code}`}
+              state={{ from: "/", label: "自選股" }}
+              draggable={false}
+              className="mt-2 inline-block text-xs text-blue-500 hover:underline"
+            >
+              查看所有報告 →
+            </Link>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -614,13 +702,83 @@ export default function WatchlistPage() {
   const dragSrc = useRef<number | null>(null);
 
   const storageKey = user ? `watchlist_order_${user.email ?? (user as any).id ?? "default"}` : null;
-  const pinKey    = user ? `watchlist_pin_${user.email ?? (user as any).id ?? "default"}` : null;
+  const pinKey     = user ? `watchlist_pin_${user.email ?? (user as any).id ?? "default"}` : null;
 
+  // ── 頁籤狀態（後端同步）──────────────────────────────
+  const [tabs, setTabs] = useState<Tab[]>([]);
+  const [assigns, setAssigns] = useState<Record<string, string>>({});
+  const [activeTab, setActiveTab] = useState<string>("all");
+  const [addingTab, setAddingTab] = useState(false);
+  const [newTabName, setNewTabName] = useState("");
+  const [renamingTabId, setRenamingTabId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+
+  // 分組選單
+  const [assignMenu, setAssignMenu] = useState<{ code: string; rect: DOMRect } | null>(null);
+
+  const loadGroups = () => {
+    if (!user) return;
+    watchlistGroupsApi.list().then(groups => {
+      setTabs(groups.map(g => ({ id: String(g.id), name: g.name })));
+    }).catch(() => {});
+  };
+
+  const handleAddTab = async () => {
+    const name = newTabName.trim();
+    if (!name) { setAddingTab(false); setNewTabName(""); return; }
+    try {
+      const g = await watchlistGroupsApi.create(name);
+      setTabs(prev => [...prev, { id: String(g.id), name: g.name }]);
+      setActiveTab(String(g.id));
+    } catch {}
+    setNewTabName("");
+    setAddingTab(false);
+  };
+
+  const handleDeleteTab = async (tabId: string) => {
+    try {
+      await watchlistGroupsApi.delete(Number(tabId));
+      setTabs(prev => prev.filter(t => t.id !== tabId));
+      setAssigns(prev => {
+        const next = { ...prev };
+        Object.keys(next).forEach(c => { if (next[c] === tabId) delete next[c]; });
+        return next;
+      });
+      if (activeTab === tabId) setActiveTab("all");
+    } catch {}
+  };
+
+  const handleRenameTab = async (tabId: string) => {
+    const name = renameValue.trim();
+    setRenamingTabId(null);
+    if (!name) return;
+    try {
+      await watchlistGroupsApi.rename(Number(tabId), name);
+      setTabs(prev => prev.map(t => t.id === tabId ? { ...t, name } : t));
+    } catch {}
+  };
+
+  const handleAssign = async (code: string, tabId: string | null) => {
+    // 樂觀更新
+    setAssigns(prev => {
+      const next = { ...prev };
+      if (tabId) next[code] = tabId; else delete next[code];
+      return next;
+    });
+    try {
+      await watchlistApi.assignGroup(code, tabId ? Number(tabId) : null);
+    } catch {}
+  };
+
+  const openAssignMenu = (code: string, rect: DOMRect) => {
+    setAssignMenu({ code, rect });
+  };
+
+  // ── 置頂 ──────────────────────────────────────────────
   const [pinnedCodes, setPinnedCodes] = useState<Set<string>>(() => {
     if (!pinKey) return new Set();
     try { return new Set(JSON.parse(localStorage.getItem(pinKey) ?? "[]")); } catch { return new Set(); }
   });
-
   const togglePin = (code: string) => {
     setPinnedCodes(prev => {
       const s = new Set(prev);
@@ -633,25 +791,17 @@ export default function WatchlistPage() {
   const loadSignals = (codes: string[]) => {
     if (codes.length === 0) return;
     setSignalsLoading(true);
-    stocksApi.batch_signals(codes)
-      .then(setSignals)
-      .catch(() => {})
-      .finally(() => setSignalsLoading(false));
+    stocksApi.batch_signals(codes).then(setSignals).catch(() => {}).finally(() => setSignalsLoading(false));
   };
-
   const loadPrices = (codes: string[]) => {
     if (codes.length === 0) return;
     stocksApi.batch_prices(codes).then(setPrices).catch(() => {});
   };
-
   const loadFundamentals = (codes: string[]) => {
     if (codes.length === 0) return;
     fundamentalsApi.batch(codes).then(setFundamentals).catch(() => {});
   };
-
-  const loadMarket = () => {
-    stocksApi.market_overview().then(setMarketData).catch(() => {});
-  };
+  const loadMarket = () => { stocksApi.market_overview().then(setMarketData).catch(() => {}); };
 
   const load = () => {
     setLoading(true);
@@ -681,6 +831,9 @@ export default function WatchlistPage() {
     ...baseItems.filter(i => pinnedCodes.has(i.stock_code)),
     ...baseItems.filter(i => !pinnedCodes.has(i.stock_code)),
   ];
+  const filteredItems = activeTab === "all"
+    ? displayItems
+    : displayItems.filter(i => assigns[i.stock_code] === activeTab);
 
   const handleDragStart = (e: React.DragEvent, i: number) => {
     dragSrc.current = i;
@@ -688,13 +841,8 @@ export default function WatchlistPage() {
     e.dataTransfer.setData("text/plain", String(i));
     (e.currentTarget as HTMLElement).style.opacity = "0.4";
   };
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-  };
-  const handleDragEnterEl = (e: React.DragEvent) => {
-    (e.currentTarget as HTMLElement).style.borderTop = "2px solid #3b82f6";
-  };
+  const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; };
+  const handleDragEnterEl = (e: React.DragEvent) => { (e.currentTarget as HTMLElement).style.borderTop = "2px solid #3b82f6"; };
   const handleDragLeaveEl = (e: React.DragEvent) => {
     if (!e.currentTarget.contains(e.relatedTarget as Node))
       (e.currentTarget as HTMLElement).style.borderTop = "";
@@ -719,9 +867,16 @@ export default function WatchlistPage() {
     document.querySelectorAll<HTMLElement>("[data-draggable]").forEach((el) => { el.style.borderTop = ""; });
   };
 
+  // items 載入後同步 assigns
+  useEffect(() => {
+    const map: Record<string, string> = {};
+    items.forEach(i => { if (i.group_id != null) map[i.stock_code] = String(i.group_id); });
+    setAssigns(map);
+  }, [items]);
+
   useAutoRefresh(load, 10000);
   useEffect(() => { loadMarket(); }, []);
-  useEffect(() => { if (user) load(); else setLoading(false); }, [user]);
+  useEffect(() => { if (user) { load(); loadGroups(); } else setLoading(false); }, [user]);
 
   const handleRemove = async (code: string) => {
     await watchlistApi.remove(code);
@@ -759,6 +914,19 @@ export default function WatchlistPage() {
     load();
   };
 
+  const activeTabName = activeTab === "all" ? undefined : tabs.find(t => t.id === activeTab)?.name;
+
+  const sharedViewProps = {
+    onRemove: handleRemove,
+    signals, signalsLoading, prices, fundamentals,
+    expandedSignals, onToggleSignal: toggleSignal,
+    pinnedCodes, onTogglePin: togglePin,
+    onDragStart: handleDragStart, onDragOver: handleDragOver,
+    onDragEnterEl: handleDragEnterEl, onDragLeaveEl: handleDragLeaveEl,
+    onDrop: handleDrop, onDragEnd: handleDragEnd,
+    tabs, assigns, onOpenAssignMenu: openAssignMenu,
+  };
+
   if (!user) {
     return (
       <div className="max-w-4xl mx-auto py-8 px-4 space-y-6">
@@ -774,34 +942,131 @@ export default function WatchlistPage() {
 
   return (
     <div className="max-w-4xl mx-auto py-8 px-4 space-y-4">
-      <div className="sticky top-16 z-10 bg-gray-50 -mx-4 px-4 py-2 flex items-center justify-between border-b border-gray-200">
-        <h1 className="text-lg font-bold text-gray-800">
-          我的自選股
-          {!loading && items.length > 0 && (
-            <span className="ml-2 text-sm font-normal text-gray-400">{items.length} 支</span>
-          )}
-        </h1>
-        {/* 工具列 */}
-        {items.length > 0 && (
-          <div className="flex items-center gap-2">
-            <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs">
-              <button
-                onClick={() => setViewMode("list")}
-                className={`px-2.5 py-1.5 flex items-center gap-1 transition ${viewMode === "list" ? "bg-blue-600 text-white" : "bg-white text-gray-500 hover:bg-gray-50"}`}
-              >
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" /></svg>
-                列表
-              </button>
-              <button
-                onClick={() => setViewMode("card")}
-                className={`px-2.5 py-1.5 flex items-center gap-1 transition ${viewMode === "card" ? "bg-blue-600 text-white" : "bg-white text-gray-500 hover:bg-gray-50"}`}
-              >
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /></svg>
-                卡片
-              </button>
+      {/* 分組選單浮層 */}
+      {assignMenu && (
+        <AssignMenu
+          code={assignMenu.code}
+          tabs={tabs}
+          currentTabId={assigns[assignMenu.code]}
+          onAssign={handleAssign}
+          onClose={() => setAssignMenu(null)}
+          anchorRect={assignMenu.rect}
+        />
+      )}
+
+      {/* 黏性標題列 */}
+      <div className="sticky top-16 z-10 bg-gray-50 -mx-4 px-4 border-b border-gray-200">
+        <div className="py-2 flex items-center justify-between">
+          <h1 className="text-lg font-bold text-gray-800">
+            我的自選股
+            {!loading && items.length > 0 && (
+              <span className="ml-2 text-sm font-normal text-gray-400">{items.length} 支</span>
+            )}
+          </h1>
+          {items.length > 0 && (
+            <div className="flex items-center gap-2">
+              <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs">
+                <button
+                  onClick={() => setViewMode("list")}
+                  className={`px-2.5 py-1.5 flex items-center gap-1 transition ${viewMode === "list" ? "bg-blue-600 text-white" : "bg-white text-gray-500 hover:bg-gray-50"}`}
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" /></svg>
+                  列表
+                </button>
+                <button
+                  onClick={() => setViewMode("card")}
+                  className={`px-2.5 py-1.5 flex items-center gap-1 transition ${viewMode === "card" ? "bg-blue-600 text-white" : "bg-white text-gray-500 hover:bg-gray-50"}`}
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /></svg>
+                  卡片
+                </button>
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
+
+        {/* 頁籤列 */}
+        <div className="flex items-center gap-1 overflow-x-auto pb-2 -mx-1 px-1" style={{ scrollbarWidth: "none" }}>
+          {/* 全部 */}
+          <button
+            onClick={() => setActiveTab("all")}
+            className={`flex-shrink-0 px-3 py-1 rounded-full text-sm font-medium transition ${
+              activeTab === "all" ? "bg-gray-800 text-white" : "text-gray-500 hover:text-gray-700 hover:bg-gray-100"
+            }`}
+          >
+            全部{items.length > 0 && <span className="ml-1 opacity-60 text-xs">{items.length}</span>}
+          </button>
+
+          {/* 自訂頁籤 */}
+          {tabs.map((tab, i) => {
+            const count = items.filter(it => assigns[it.stock_code] === tab.id).length;
+            const isActive = activeTab === tab.id;
+            const color = tabColor(i);
+            return (
+              <div key={tab.id} className="flex-shrink-0 flex items-center">
+                {renamingTabId === tab.id ? (
+                  <input
+                    autoFocus
+                    value={renameValue}
+                    onChange={e => setRenameValue(e.target.value)}
+                    onBlur={() => handleRenameTab(tab.id)}
+                    onKeyDown={e => {
+                      if (e.key === "Enter") handleRenameTab(tab.id);
+                      if (e.key === "Escape") setRenamingTabId(null);
+                    }}
+                    className="text-sm px-2 py-0.5 rounded border border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400 w-24 bg-white"
+                    onClick={e => e.stopPropagation()}
+                  />
+                ) : (
+                  <button
+                    onClick={() => setActiveTab(tab.id)}
+                    onDoubleClick={() => { setRenamingTabId(tab.id); setRenameValue(tab.name); }}
+                    className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium transition ${
+                      isActive ? "bg-gray-800 text-white" : "text-gray-500 hover:text-gray-700 hover:bg-gray-100"
+                    }`}
+                  >
+                    <span className={`w-1.5 h-1.5 rounded-full inline-block ${isActive ? "bg-white opacity-70" : color.dot}`} />
+                    {tab.name}
+                    {count > 0 && <span className="opacity-60 text-xs">{count}</span>}
+                  </button>
+                )}
+                {isActive && renamingTabId !== tab.id && (
+                  <button
+                    onClick={() => handleDeleteTab(tab.id)}
+                    className="ml-0.5 text-gray-400 hover:text-red-400 transition text-xs px-0.5"
+                    title="刪除此頁籤"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+            );
+          })}
+
+          {/* 新增頁籤 */}
+          {addingTab ? (
+            <input
+              autoFocus
+              value={newTabName}
+              onChange={e => setNewTabName(e.target.value)}
+              onBlur={handleAddTab}
+              onKeyDown={e => {
+                if (e.key === "Enter") handleAddTab();
+                if (e.key === "Escape") { setAddingTab(false); setNewTabName(""); }
+              }}
+              placeholder="頁籤名稱"
+              className="flex-shrink-0 text-sm px-2 py-0.5 rounded border border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400 w-24 bg-white"
+            />
+          ) : (
+            <button
+              onClick={() => setAddingTab(true)}
+              className="flex-shrink-0 px-2 py-1 text-sm text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition"
+              title="新增頁籤"
+            >
+              ＋
+            </button>
+          )}
+        </div>
       </div>
 
       <MarketOverview data={marketData} expanded={marketExpanded} onToggle={() => setMarketExpanded(v => !v)} />
@@ -812,16 +1077,14 @@ export default function WatchlistPage() {
             {[...Array(4)].map((_, i) => <SkeletonRow key={i} />)}
           </div>
         ) : (
-          <div className="space-y-3">
-            {[...Array(3)].map((_, i) => <SkeletonCard key={i} />)}
-          </div>
+          <div className="space-y-3">{[...Array(3)].map((_, i) => <SkeletonCard key={i} />)}</div>
         )
-      ) : items.length === 0 ? (
-        <EmptyState />
+      ) : filteredItems.length === 0 ? (
+        <EmptyState tabName={activeTabName} />
       ) : viewMode === "list" ? (
-        <ListView items={displayItems} onRemove={handleRemove} signals={signals} signalsLoading={signalsLoading} prices={prices} fundamentals={fundamentals} expandedSignals={expandedSignals} onToggleSignal={toggleSignal} pinnedCodes={pinnedCodes} onTogglePin={togglePin} onDragStart={handleDragStart} onDragOver={handleDragOver} onDragEnterEl={handleDragEnterEl} onDragLeaveEl={handleDragLeaveEl} onDrop={handleDrop} onDragEnd={handleDragEnd} />
+        <ListView items={filteredItems} {...sharedViewProps} />
       ) : (
-        <CardView items={displayItems} onRemove={handleRemove} signals={signals} signalsLoading={signalsLoading} prices={prices} fundamentals={fundamentals} expandedSignals={expandedSignals} onToggleSignal={toggleSignal} pinnedCodes={pinnedCodes} onTogglePin={togglePin} onDragStart={handleDragStart} onDragOver={handleDragOver} onDragEnterEl={handleDragEnterEl} onDragLeaveEl={handleDragLeaveEl} onDrop={handleDrop} onDragEnd={handleDragEnd} />
+        <CardView items={filteredItems} {...sharedViewProps} />
       )}
 
       {/* 浮動操作按鈕 */}
@@ -836,7 +1099,6 @@ export default function WatchlistPage() {
         </svg>
       </button>
 
-      {/* 新增面板 */}
       {showAddPanel && (
         <div className="fixed z-50 w-80 bg-white rounded-2xl shadow-2xl border border-gray-200 p-4 space-y-3" style={{ bottom: "5rem", left: "1.5rem" }}>
           <p className="text-sm font-semibold text-gray-700">新增自選股</p>
@@ -878,9 +1140,7 @@ export default function WatchlistPage() {
                 >
                   {adding ? "加入中…" : `加入 ${parsedStocks.filter(s => !watchedCodes.has(s.code)).length} 檔`}
                 </button>
-                <button onClick={() => setParsedStocks(null)} className="px-3 py-1.5 text-sm text-gray-400 hover:text-gray-600">
-                  清除
-                </button>
+                <button onClick={() => setParsedStocks(null)} className="px-3 py-1.5 text-sm text-gray-400 hover:text-gray-600">清除</button>
               </div>
             </div>
           )}

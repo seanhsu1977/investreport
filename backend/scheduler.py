@@ -113,6 +113,37 @@ def _daily_article_job():
         logger.exception("Daily article job failed: %s", e)
 
 
+def _recommendations_warmup_job():
+    """每天 07:00 Asia/Taipei 預算投顧精選快取，使用者開頁面不需等待"""
+    import asyncio
+    import json
+    logger.info("Starting recommendations warmup...")
+    db = SessionLocal()
+    try:
+        # 預算最常用的 6 種組合
+        combos = [
+            (30, 1, "all", 20),
+            (30, 2, "all", 20),
+            (60, 1, "all", 20),
+            (60, 2, "all", 20),
+            (30, 1, "all", 50),
+            (90, 1, "all", 20),
+        ]
+        from routers.stocks import get_recommendations
+        for days, min_rep, rec_filter, limit in combos:
+            try:
+                result = asyncio.run(get_recommendations(
+                    days=days, min_reports=min_rep,
+                    rec_filter=rec_filter, limit=limit, db=db
+                ))
+                logger.info("Warmup done: days=%d min=%d → %d items", days, min_rep, len(result.get("items", [])))
+            except Exception as e:
+                logger.warning("Warmup combo (%d,%d,%s,%d) failed: %s", days, min_rep, rec_filter, limit, e)
+    finally:
+        db.close()
+    logger.info("Recommendations warmup complete")
+
+
 def start_scheduler():
     scheduler.add_job(_sync_job, "cron", hour=20, minute=0, id="drive_sync")
     # 期交所三大法人 ~15:00 公布；保險點 15:45 (Asia/Taipei) Mon-Fri
@@ -127,8 +158,14 @@ def start_scheduler():
         day_of_week="mon-fri", hour=19, minute=45, timezone="Asia/Taipei",
         id="daily_article",
     )
+    # 投顧精選預算快取：每天 07:00 Asia/Taipei（含六日，因用戶週末也會看）
+    scheduler.add_job(
+        _recommendations_warmup_job, "cron",
+        hour=7, minute=0, timezone="Asia/Taipei",
+        id="rec_warmup",
+    )
     scheduler.start()
-    logger.info("Scheduler started (drive 20:00, chips 15:45, daily_article 19:45 Mon-Fri)")
+    logger.info("Scheduler started (drive 20:00, chips 15:45, daily_article 19:45 Mon-Fri, rec_warmup 07:00 daily)")
 
 
 def stop_scheduler():

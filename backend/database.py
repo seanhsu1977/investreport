@@ -61,7 +61,7 @@ def _cleanup_stale_syncs():
 
 
 def init_db():
-    from models import DriveFile, Report, Watchlist, FuturesChip, Stock, DailyArticle, SyncLog, InviteCode  # noqa: F401
+    from models import DriveFile, Report, Watchlist, FuturesChip, Stock, DailyArticle, SyncLog, InviteCode, RecommendationCache  # noqa: F401
     Base.metadata.create_all(bind=engine)
     _migrate()
     _cleanup_stale_syncs()

@@ -114,6 +114,15 @@ class SyncLog(Base):
     error_message = Column(Text, nullable=True)
 
 
+class RecommendationCache(Base):
+    """投顧精選預算快取（每天 07:00 Asia/Taipei 更新）"""
+    __tablename__ = "recommendation_cache"
+
+    cache_key = Column(String, primary_key=True)   # e.g. "30_1_all_20"
+    payload = Column(Text, nullable=False)          # JSON
+    computed_at = Column(DateTime, nullable=False)
+
+
 class DailyArticle(Base):
     """每日 00981A × 投顧報告 自動生成的草稿文章。"""
     __tablename__ = "daily_articles"

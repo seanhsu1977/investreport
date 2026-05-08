@@ -71,6 +71,5 @@ if os.path.isdir(_static_dir):
             return FileResponse(asset)
         return FileResponse(index)
 
-    app.mount("/assets", StaticFiles(directory=os.path.join(_static_dir, "assets")), name="assets")
 else:
     logging.warning("Static dir NOT found at %s — frontend will not be served", _static_dir)

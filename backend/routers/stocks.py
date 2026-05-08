@@ -26,9 +26,10 @@ from stocks_master import resolve_name
 
 router = APIRouter(prefix="/stocks", tags=["stocks"])
 
-# Server-side cache for recommendations（TTL 10 分鐘）
+# Server-side in-memory cache for recommendations（TTL 10 分鐘）
 _rec_cache: dict[str, tuple[dict, float]] = {}
 _REC_CACHE_TTL = 10 * 60
+_REC_DB_CACHE_TTL = 12 * 3600  # DB 快取 12 小時
 
 
 def _serialize_report(r: Report, include_mentioned: bool = False) -> dict:
@@ -256,10 +257,22 @@ async def get_recommendations(
 ):
     """投顧精選排行：依共識度 + 籌碼 + 量價綜合評分。"""
     import time
+    from models import RecommendationCache
     cache_key = f"{days}_{min_reports}_{rec_filter}_{limit}"
+
+    # 1. in-memory cache（最快）
     cached = _rec_cache.get(cache_key)
     if cached and (time.time() - cached[1]) < _REC_CACHE_TTL:
         return cached[0]
+
+    # 2. DB cache（跨重啟持久，TTL 12h）
+    db_row = db.get(RecommendationCache, cache_key)
+    if db_row:
+        age = (datetime.utcnow() - db_row.computed_at).total_seconds()
+        if age < _REC_DB_CACHE_TTL:
+            result = json.loads(db_row.payload)
+            _rec_cache[cache_key] = (result, time.time())
+            return result
 
     cutoff = datetime.utcnow() - timedelta(days=days)
     rows = (
@@ -402,6 +415,21 @@ async def get_recommendations(
     }
     import time
     _rec_cache[cache_key] = (result, time.time())
+
+    # 寫入 DB 快取（upsert）
+    try:
+        from models import RecommendationCache
+        existing = db.get(RecommendationCache, cache_key)
+        payload_str = json.dumps(result, ensure_ascii=False, default=str)
+        if existing:
+            existing.payload = payload_str
+            existing.computed_at = datetime.utcnow()
+        else:
+            db.add(RecommendationCache(cache_key=cache_key, payload=payload_str, computed_at=datetime.utcnow()))
+        db.commit()
+    except Exception:
+        db.rollback()
+
     return result
 
 

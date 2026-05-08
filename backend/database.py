@@ -50,7 +50,18 @@ def _migrate():
                 pass  # 欄位已存在，忽略
 
 
+def _cleanup_stale_syncs():
+    """服務啟動時，把殘留的 running 同步標記為 error（避免重啟後 UI 一直顯示同步中）"""
+    from datetime import datetime
+    with engine.begin() as conn:
+        conn.execute(text(
+            "UPDATE sync_logs SET status='error', finished_at=:now, error_message='服務重啟，同步中斷'"
+            " WHERE status='running'"
+        ), {"now": datetime.utcnow()})
+
+
 def init_db():
     from models import DriveFile, Report, Watchlist, FuturesChip, Stock, DailyArticle, SyncLog, InviteCode  # noqa: F401
     Base.metadata.create_all(bind=engine)
     _migrate()
+    _cleanup_stale_syncs()

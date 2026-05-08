@@ -261,6 +261,15 @@ export const syncApi = {
     ).then((r) => r.data),
   reanalyze: (limit = 50) =>
     api.post<{ queued: number; message: string }>(`/sync/reanalyze?limit=${limit}`).then((r) => r.data),
+  driveFiles: (status: "all" | "synced" | "no_result" = "all", q = "", limit = 50, offset = 0) =>
+    api.get<{
+      total: number; offset: number; limit: number;
+      files: {
+        drive_file_id: string; filename: string; processed_at: string | null;
+        has_report: boolean; stock_code: string | null; stock_name: string | null;
+        recommendation: string | null; report_date: string | null;
+      }[]
+    }>(`/sync/drive-files`, { params: { status, q, limit, offset } }).then((r) => r.data),
 };
 
 export interface InstitutionPosition {

@@ -107,6 +107,64 @@ def no_report_files(
     }
 
 
+@router.get("/drive-files")
+def drive_files_list(
+    status: str = Query(default="all"),   # all | synced | no_result
+    q: str = Query(default=""),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+    _=Depends(require_admin),
+):
+    """列出雲端硬碟所有檔案及同步狀態（已分析 / 無結果），可搜尋、篩選、分頁。"""
+    from sqlalchemy import func, case, String
+    from sqlalchemy.orm import aliased
+
+    # 每個 drive_file_id 對應的第一筆 Report（取最早 id）
+    rep_sub = (
+        db.query(
+            Report.drive_file_id,
+            func.min(Report.id).label("min_id"),
+        )
+        .group_by(Report.drive_file_id)
+        .subquery()
+    )
+    rep = aliased(Report)
+
+    q_base = (
+        db.query(DriveFile, rep)
+        .outerjoin(rep_sub, DriveFile.drive_file_id == rep_sub.c.drive_file_id)
+        .outerjoin(rep, rep.id == rep_sub.c.min_id)
+    )
+
+    if status == "synced":
+        q_base = q_base.filter(rep_sub.c.min_id.isnot(None))
+    elif status == "no_result":
+        q_base = q_base.filter(rep_sub.c.min_id.is_(None))
+
+    keyword = q.strip()
+    if keyword:
+        q_base = q_base.filter(DriveFile.filename.ilike(f"%{keyword}%"))
+
+    total = q_base.count()
+    rows = q_base.order_by(DriveFile.id.desc()).offset(offset).limit(limit).all()
+
+    files = []
+    for df, rp in rows:
+        files.append({
+            "drive_file_id": df.drive_file_id,
+            "filename": df.filename,
+            "processed_at": df.processed_at,
+            "has_report": rp is not None,
+            "stock_code": rp.stock_code if rp else None,
+            "stock_name": rp.stock_name if rp else None,
+            "recommendation": rp.recommendation if rp else None,
+            "report_date": rp.report_date if rp else None,
+        })
+
+    return {"total": total, "offset": offset, "limit": limit, "files": files}
+
+
 @router.post("/reanalyze")
 async def reanalyze_missing(
     background_tasks: BackgroundTasks,

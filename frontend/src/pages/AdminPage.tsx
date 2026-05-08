@@ -1072,28 +1072,31 @@ function SyncHistorySection() {
     }
   };
 
-  const [showFileList, setShowFileList] = useState(false);
-  const [fileList, setFileList] = useState<{ drive_file_id: string; filename: string; modified_at: string | null }[]>([]);
-  const [fileListTotal, setFileListTotal] = useState(0);
-  const [fileOffset, setFileOffset] = useState(0);
-  const [fileLoading, setFileLoading] = useState(false);
-  const FILE_PAGE = 100;
+  const [showDriveFiles, setShowDriveFiles] = useState(false);
+  type DriveFileRow = { drive_file_id: string; filename: string; processed_at: string | null; has_report: boolean; stock_code: string | null; stock_name: string | null; recommendation: string | null; report_date: string | null };
+  const [driveFiles, setDriveFiles] = useState<DriveFileRow[]>([]);
+  const [driveTotal, setDriveTotal] = useState(0);
+  const [driveOffset, setDriveOffset] = useState(0);
+  const [driveStatus, setDriveStatus] = useState<"all" | "synced" | "no_result">("all");
+  const [driveQ, setDriveQ] = useState("");
+  const [driveLoading, setDriveLoading] = useState(false);
+  const DRIVE_PAGE = 50;
 
-  const loadFileList = async (offset = 0) => {
-    setFileLoading(true);
+  const loadDriveFiles = async (offset = 0, status = driveStatus, q = driveQ) => {
+    setDriveLoading(true);
     try {
-      const d = await syncApi.noReportFiles(FILE_PAGE, offset);
-      setFileList(d.files);
-      setFileListTotal(d.total);
-      setFileOffset(offset);
+      const d = await syncApi.driveFiles(status, q, DRIVE_PAGE, offset);
+      setDriveFiles(d.files);
+      setDriveTotal(d.total);
+      setDriveOffset(offset);
     } finally {
-      setFileLoading(false);
+      setDriveLoading(false);
     }
   };
 
-  const toggleFileList = () => {
-    if (!showFileList && fileList.length === 0) loadFileList(0);
-    setShowFileList((v) => !v);
+  const toggleDriveFiles = () => {
+    if (!showDriveFiles && driveFiles.length === 0) loadDriveFiles(0);
+    setShowDriveFiles((v) => !v);
   };
 
   const load = () => {
@@ -1157,22 +1160,20 @@ function SyncHistorySection() {
             {importing ? "匯入中…" : "匯入資料"}
             <input ref={importRef} type="file" accept=".json" className="hidden" onChange={handleImportFile} />
           </label>
+          <button
+            onClick={toggleDriveFiles}
+            className="px-3 py-1.5 text-sm rounded-lg border border-blue-400 text-blue-600 hover:bg-blue-50"
+          >
+            {showDriveFiles ? "收起明細" : "雲端檔案明細"}
+          </button>
           {noReportCount !== null && noReportCount > 0 && (
-            <>
-              <button
-                onClick={toggleFileList}
-                className="px-3 py-1.5 text-sm rounded-lg border border-amber-400 text-amber-600 hover:bg-amber-50"
-              >
-                {showFileList ? "收起清單" : `查看清單 (${noReportCount} 筆)`}
-              </button>
-              <button
-                onClick={handleReanalyze}
-                disabled={reanalyzing}
-                className="px-3 py-1.5 text-sm rounded-lg bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50 flex items-center gap-1.5"
-              >
-                {reanalyzing ? "分析中…" : `重新分析 (${noReportCount} 筆無結果)`}
-              </button>
-            </>
+            <button
+              onClick={handleReanalyze}
+              disabled={reanalyzing}
+              className="px-3 py-1.5 text-sm rounded-lg bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50 flex items-center gap-1.5"
+            >
+              {reanalyzing ? "分析中…" : `重新分析 (${noReportCount} 筆無結果)`}
+            </button>
           )}
           <button
             onClick={handleSync}
@@ -1241,53 +1242,96 @@ function SyncHistorySection() {
         )}
       </section>
 
-      {showFileList && (
-        <section className="bg-white rounded-xl border border-amber-200 overflow-hidden">
-          <div className="px-5 py-3 border-b border-amber-100 flex items-center justify-between bg-amber-50">
-            <h3 className="text-sm font-semibold text-amber-800">無結果檔案清單（共 {fileListTotal} 筆）</h3>
-            <span className="text-xs text-amber-600">這些檔案在 Drive 中有記錄，但 AI 分析未能產出報告</span>
+      {showDriveFiles && (
+        <section className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              {(["all", "synced", "no_result"] as const).map((s) => (
+                <button
+                  key={s}
+                  onClick={() => { setDriveStatus(s); loadDriveFiles(0, s, driveQ); }}
+                  className={`px-2.5 py-1 text-xs rounded-full border transition ${driveStatus === s ? "bg-blue-500 text-white border-blue-500" : "border-gray-300 text-gray-600 hover:bg-gray-50"}`}
+                >
+                  {s === "all" ? `全部（${driveTotal}）` : s === "synced" ? "已分析" : "無結果"}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={driveQ}
+                onChange={(e) => setDriveQ(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && loadDriveFiles(0, driveStatus, driveQ)}
+                placeholder="搜尋檔名…"
+                className="px-3 py-1 text-xs border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-300 w-44"
+              />
+              <button
+                onClick={() => loadDriveFiles(0, driveStatus, driveQ)}
+                className="px-2.5 py-1 text-xs rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600"
+              >搜尋</button>
+            </div>
           </div>
-          {fileLoading ? (
+          {driveLoading ? (
             <p className="px-5 py-4 text-sm text-gray-400">載入中…</p>
+          ) : driveFiles.length === 0 ? (
+            <p className="px-5 py-4 text-sm text-gray-400">沒有符合的檔案</p>
           ) : (
             <>
-              <div className="max-h-80 overflow-y-auto">
+              <div className="max-h-[480px] overflow-y-auto">
                 <table className="w-full text-xs">
-                  <thead className="bg-gray-50 text-gray-400 sticky top-0">
+                  <thead className="bg-gray-50 text-gray-400 sticky top-0 z-10">
                     <tr>
-                      <th className="px-4 py-2 text-left font-medium">#</th>
+                      <th className="px-4 py-2 text-left font-medium">狀態</th>
                       <th className="px-4 py-2 text-left font-medium">檔名</th>
-                      <th className="px-4 py-2 text-left font-medium">修改時間</th>
+                      <th className="px-4 py-2 text-left font-medium">股票</th>
+                      <th className="px-4 py-2 text-left font-medium hidden sm:table-cell">評等</th>
+                      <th className="px-4 py-2 text-left font-medium hidden sm:table-cell">報告日期</th>
+                      <th className="px-4 py-2 text-left font-medium hidden sm:table-cell">同步時間</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {fileList.map((f, i) => (
+                    {driveFiles.map((f) => (
                       <tr key={f.drive_file_id} className="hover:bg-gray-50">
-                        <td className="px-4 py-1.5 text-gray-400 tabular-nums">{fileOffset + i + 1}</td>
-                        <td className="px-4 py-1.5 text-gray-700 font-mono">{f.filename}</td>
-                        <td className="px-4 py-1.5 text-gray-400 whitespace-nowrap">
-                          {f.modified_at ? new Date(f.modified_at).toLocaleDateString("zh-TW") : "—"}
+                        <td className="px-4 py-1.5 whitespace-nowrap">
+                          {f.has_report ? (
+                            <span className="inline-flex items-center gap-1 text-green-600 font-medium">
+                              <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />已分析
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-amber-500">
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block" />無結果
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-1.5 text-gray-700 font-mono max-w-[220px] sm:max-w-xs truncate" title={f.filename}>{f.filename}</td>
+                        <td className="px-4 py-1.5 whitespace-nowrap">
+                          {f.stock_code ? (
+                            <span className="font-medium text-blue-600">{f.stock_code}{f.stock_name ? ` ${f.stock_name}` : ""}</span>
+                          ) : <span className="text-gray-300">—</span>}
+                        </td>
+                        <td className="px-4 py-1.5 hidden sm:table-cell text-gray-600">{f.recommendation ?? <span className="text-gray-300">—</span>}</td>
+                        <td className="px-4 py-1.5 hidden sm:table-cell text-gray-400 whitespace-nowrap">{f.report_date ?? "—"}</td>
+                        <td className="px-4 py-1.5 hidden sm:table-cell text-gray-400 whitespace-nowrap">
+                          {f.processed_at ? new Date(f.processed_at + "Z").toLocaleDateString("zh-TW") : "—"}
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-              {fileListTotal > FILE_PAGE && (
-                <div className="px-4 py-2 border-t border-gray-100 flex items-center gap-3 text-xs text-gray-500">
-                  <span>{fileOffset + 1}–{Math.min(fileOffset + FILE_PAGE, fileListTotal)} / {fileListTotal}</span>
-                  <button
-                    onClick={() => loadFileList(Math.max(0, fileOffset - FILE_PAGE))}
-                    disabled={fileOffset === 0}
-                    className="px-2 py-0.5 rounded border border-gray-200 hover:bg-gray-50 disabled:opacity-40"
-                  >上一頁</button>
-                  <button
-                    onClick={() => loadFileList(fileOffset + FILE_PAGE)}
-                    disabled={fileOffset + FILE_PAGE >= fileListTotal}
-                    className="px-2 py-0.5 rounded border border-gray-200 hover:bg-gray-50 disabled:opacity-40"
-                  >下一頁</button>
-                </div>
-              )}
+              <div className="px-4 py-2 border-t border-gray-100 flex items-center gap-3 text-xs text-gray-500">
+                <span>{driveOffset + 1}–{Math.min(driveOffset + DRIVE_PAGE, driveTotal)} / {driveTotal} 筆</span>
+                <button
+                  onClick={() => loadDriveFiles(Math.max(0, driveOffset - DRIVE_PAGE))}
+                  disabled={driveOffset === 0}
+                  className="px-2 py-0.5 rounded border border-gray-200 hover:bg-gray-50 disabled:opacity-40"
+                >上一頁</button>
+                <button
+                  onClick={() => loadDriveFiles(driveOffset + DRIVE_PAGE)}
+                  disabled={driveOffset + DRIVE_PAGE >= driveTotal}
+                  className="px-2 py-0.5 rounded border border-gray-200 hover:bg-gray-50 disabled:opacity-40"
+                >下一頁</button>
+              </div>
             </>
           )}
         </section>

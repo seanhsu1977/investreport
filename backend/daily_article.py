@@ -61,7 +61,8 @@ SYSTEM_PROMPT = """你是一位財經議題分析寫手，文風參考 Newtalk �
 
 # 結構與長度
 - 800–1500 字
-- 標題：吸睛但不浮誇，可用「？」製造懸念，例如「ETF小百科今日重押 XXX，投顧 N 家目標價 Y 元，背後在押什麼？」
+- 標題：吸睛但不浮誇，可用「？」製造懸念，例如「00981A 今日重押 XXX，投顧 N 家目標價 Y 元，背後在押什麼？」
+- 文中一律使用「00981A」稱呼此 ETF，禁止出現「ETF小百科」
 - 第一段：勾子 + 點題（誰買了什麼）
 - 中段 2~4 段：分別串接「投顧觀點」「籌碼面」「量價/技術面」「同 ETF 其他動作對照」中的至少 2~3 個面向
 - 最後一段：埋懸念 + 觀察重點
@@ -198,7 +199,7 @@ def _gather_context(db, topic: dict, etf_data: dict, target_date: date) -> dict:
         },
         "etf": {
             "name": "00981A",
-            "manager": "ETF小百科",
+            "manager": "00981A",
             "source_url": etf_data["source_url"],
             "date": etf_data["date"],
             "other_active": other_active,

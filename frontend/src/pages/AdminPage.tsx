@@ -1025,6 +1025,30 @@ function SyncHistorySection() {
   const [noReportCount, setNoReportCount] = useState<number | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
 
+  const [showFileList, setShowFileList] = useState(false);
+  const [fileList, setFileList] = useState<{ drive_file_id: string; filename: string; modified_at: string | null }[]>([]);
+  const [fileListTotal, setFileListTotal] = useState(0);
+  const [fileOffset, setFileOffset] = useState(0);
+  const [fileLoading, setFileLoading] = useState(false);
+  const FILE_PAGE = 100;
+
+  const loadFileList = async (offset = 0) => {
+    setFileLoading(true);
+    try {
+      const d = await syncApi.noReportFiles(FILE_PAGE, offset);
+      setFileList(d.files);
+      setFileListTotal(d.total);
+      setFileOffset(offset);
+    } finally {
+      setFileLoading(false);
+    }
+  };
+
+  const toggleFileList = () => {
+    if (!showFileList && fileList.length === 0) loadFileList(0);
+    setShowFileList((v) => !v);
+  };
+
   const load = () => {
     setLoading(true);
     syncApi.history(30).then(setLogs).finally(() => setLoading(false));
@@ -1082,13 +1106,21 @@ function SyncHistorySection() {
           {msg && <span className="text-xs text-blue-600">{msg}</span>}
           <button onClick={load} className="px-3 py-1.5 text-sm rounded-lg border border-gray-300 hover:bg-gray-50">重新整理</button>
           {noReportCount !== null && noReportCount > 0 && (
-            <button
-              onClick={handleReanalyze}
-              disabled={reanalyzing}
-              className="px-3 py-1.5 text-sm rounded-lg bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50 flex items-center gap-1.5"
-            >
-              {reanalyzing ? "分析中…" : `重新分析 (${noReportCount} 筆無結果)`}
-            </button>
+            <>
+              <button
+                onClick={toggleFileList}
+                className="px-3 py-1.5 text-sm rounded-lg border border-amber-400 text-amber-600 hover:bg-amber-50"
+              >
+                {showFileList ? "收起清單" : `查看清單 (${noReportCount} 筆)`}
+              </button>
+              <button
+                onClick={handleReanalyze}
+                disabled={reanalyzing}
+                className="px-3 py-1.5 text-sm rounded-lg bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50 flex items-center gap-1.5"
+              >
+                {reanalyzing ? "分析中…" : `重新分析 (${noReportCount} 筆無結果)`}
+              </button>
+            </>
           )}
           <button
             onClick={handleSync}
@@ -1156,6 +1188,58 @@ function SyncHistorySection() {
           </table>
         )}
       </section>
+
+      {showFileList && (
+        <section className="bg-white rounded-xl border border-amber-200 overflow-hidden">
+          <div className="px-5 py-3 border-b border-amber-100 flex items-center justify-between bg-amber-50">
+            <h3 className="text-sm font-semibold text-amber-800">無結果檔案清單（共 {fileListTotal} 筆）</h3>
+            <span className="text-xs text-amber-600">這些檔案在 Drive 中有記錄，但 AI 分析未能產出報告</span>
+          </div>
+          {fileLoading ? (
+            <p className="px-5 py-4 text-sm text-gray-400">載入中…</p>
+          ) : (
+            <>
+              <div className="max-h-80 overflow-y-auto">
+                <table className="w-full text-xs">
+                  <thead className="bg-gray-50 text-gray-400 sticky top-0">
+                    <tr>
+                      <th className="px-4 py-2 text-left font-medium">#</th>
+                      <th className="px-4 py-2 text-left font-medium">檔名</th>
+                      <th className="px-4 py-2 text-left font-medium">修改時間</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {fileList.map((f, i) => (
+                      <tr key={f.drive_file_id} className="hover:bg-gray-50">
+                        <td className="px-4 py-1.5 text-gray-400 tabular-nums">{fileOffset + i + 1}</td>
+                        <td className="px-4 py-1.5 text-gray-700 font-mono">{f.filename}</td>
+                        <td className="px-4 py-1.5 text-gray-400 whitespace-nowrap">
+                          {f.modified_at ? new Date(f.modified_at).toLocaleDateString("zh-TW") : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {fileListTotal > FILE_PAGE && (
+                <div className="px-4 py-2 border-t border-gray-100 flex items-center gap-3 text-xs text-gray-500">
+                  <span>{fileOffset + 1}–{Math.min(fileOffset + FILE_PAGE, fileListTotal)} / {fileListTotal}</span>
+                  <button
+                    onClick={() => loadFileList(Math.max(0, fileOffset - FILE_PAGE))}
+                    disabled={fileOffset === 0}
+                    className="px-2 py-0.5 rounded border border-gray-200 hover:bg-gray-50 disabled:opacity-40"
+                  >上一頁</button>
+                  <button
+                    onClick={() => loadFileList(fileOffset + FILE_PAGE)}
+                    disabled={fileOffset + FILE_PAGE >= fileListTotal}
+                    className="px-2 py-0.5 rounded border border-gray-200 hover:bg-gray-50 disabled:opacity-40"
+                  >下一頁</button>
+                </div>
+              )}
+            </>
+          )}
+        </section>
+      )}
     </div>
   );
 }

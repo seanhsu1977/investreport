@@ -255,6 +255,10 @@ export const syncApi = {
     api.get<SyncLogEntry[]>(`/sync/history?limit=${limit}`).then((r) => r.data),
   noReportCount: () =>
     api.get<{ total_drive_files: number; without_report: number }>("/sync/no-report-count").then((r) => r.data),
+  noReportFiles: (limit = 100, offset = 0) =>
+    api.get<{ total: number; offset: number; limit: number; files: { drive_file_id: string; filename: string; modified_at: string | null }[] }>(
+      `/sync/no-report-files?limit=${limit}&offset=${offset}`
+    ).then((r) => r.data),
   reanalyze: (limit = 50) =>
     api.post<{ queued: number; message: string }>(`/sync/reanalyze?limit=${limit}`).then((r) => r.data),
 };

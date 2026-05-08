@@ -80,6 +80,33 @@ def no_report_count(db: Session = Depends(get_db), _=Depends(require_admin)):
     return {"total_drive_files": total, "without_report": total - with_report}
 
 
+@router.get("/no-report-files")
+def no_report_files(
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+    _=Depends(require_admin),
+):
+    """列出沒有對應 Report 的 DriveFile（分頁）"""
+    has_report = db.query(Report.drive_file_id).distinct().subquery()
+    q = db.query(DriveFile).filter(DriveFile.drive_file_id.notin_(has_report))
+    total = q.count()
+    rows = q.order_by(DriveFile.id.desc()).offset(offset).limit(limit).all()
+    return {
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+        "files": [
+            {
+                "drive_file_id": f.drive_file_id,
+                "filename": f.filename,
+                "modified_at": f.modified_at,
+            }
+            for f in rows
+        ],
+    }
+
+
 @router.post("/reanalyze")
 async def reanalyze_missing(
     background_tasks: BackgroundTasks,

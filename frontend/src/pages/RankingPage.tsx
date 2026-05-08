@@ -656,7 +656,12 @@ function RecommendationsSection() {
 
       {warnings.length > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-amber-800 text-xs space-y-1">
-          {warnings.map((w, i) => (<div key={i}>⚠️ {w}</div>))}
+          <div className="flex items-start justify-between gap-3">
+            <div className="space-y-1">{warnings.map((w, i) => (<div key={i}>⚠️ {w}</div>))}</div>
+            {items.length === 0 && (
+              <button onClick={() => fetchData(true)} className="text-xs px-2 py-1 rounded border border-amber-400 hover:bg-amber-100 whitespace-nowrap shrink-0">重試</button>
+            )}
+          </div>
         </div>
       )}
 

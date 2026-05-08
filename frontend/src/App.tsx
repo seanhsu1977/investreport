@@ -8,7 +8,6 @@ import SearchPage from "./pages/SearchPage";
 import AdminPage from "./pages/AdminPage";
 import RankingPage from "./pages/RankingPage";
 import ChipsPage from "./pages/ChipsPage";
-import SyncStatus from "./components/SyncStatus";
 import LoginButton from "./components/LoginButton";
 import PostMaterialsBar from "./components/PostMaterialsBar";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
@@ -127,7 +126,6 @@ function AppInner() {
           </nav>
 
           <div className="flex items-center gap-2 shrink-0">
-            <SyncStatus />
             <LoginButton />
             <HamburgerMenu />
           </div>

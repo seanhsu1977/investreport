@@ -356,14 +356,12 @@ async def get_recommendations(
                 return code, None
 
     async def fetch_inst(code):
-        from fundamental_analysis import get_institutional, is_t86_blocked
-        if is_t86_blocked():
-            return code, None
+        from fundamental_analysis import get_institutional
         async with sem_inst:
             try:
-                # T86 超時就快速放棄，不卡住整體
+                # nstock API 為主（≤3s），T86 fallback 內部已有封鎖機制
                 return code, await asyncio.wait_for(
-                    asyncio.to_thread(get_institutional, code, 5), timeout=5
+                    asyncio.to_thread(get_institutional, code, 5), timeout=10
                 )
             except Exception:
                 return code, None

@@ -1336,7 +1336,75 @@ function SyncHistorySection() {
           )}
         </section>
       )}
+
+      {/* 籌碼歷史補抓 */}
+      <ChipsBackfillSection />
     </div>
+  );
+}
+
+function ChipsBackfillSection() {
+  const [chipsCount, setChipsCount] = useState<number | null>(null);
+  const [backfilling, setBackfilling] = useState(false);
+  const [chipMsg, setChipMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const token = localStorage.getItem("auth_token");
+  const headers = { Authorization: `Bearer ${token}` };
+
+  useEffect(() => {
+    axios.get("/api/chips/history?days=90", { headers })
+      .then((r) => setChipsCount(r.data.length))
+      .catch(() => setChipsCount(0));
+  }, []);
+
+  const handleBackfill = async (days: number) => {
+    setBackfilling(true);
+    setChipMsg(null);
+    const end = new Date();
+    const start = new Date(end);
+    start.setDate(start.getDate() - days);
+    const fmt = (d: Date) => d.toISOString().slice(0, 10);
+    try {
+      const r = await axios.post(
+        `/api/chips/backfill?start=${fmt(start)}&end=${fmt(end)}`, {},
+        { headers, timeout: 120000 }
+      );
+      const { saved, missing } = r.data;
+      setChipMsg({ ok: true, text: `補抓完成：新增 ${saved.length} 筆，無資料 ${missing.length} 筆` });
+      axios.get("/api/chips/history?days=90", { headers })
+        .then((r2) => setChipsCount(r2.data.length))
+        .catch(() => {});
+    } catch {
+      setChipMsg({ ok: false, text: "補抓失敗，請稍後再試" });
+    } finally {
+      setBackfilling(false);
+    }
+  };
+
+  return (
+    <section className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <h3 className="text-sm font-semibold text-gray-700">籌碼歷史資料</h3>
+          <p className="text-xs text-gray-400 mt-0.5">
+            資料庫目前有 <span className={`font-medium ${(chipsCount ?? 0) < 3 ? "text-red-500" : "text-green-600"}`}>{chipsCount ?? "…"}</span> 筆
+            {(chipsCount ?? 0) < 3 && " ⚠️ 不足 3 筆，折線圖不會顯示"}
+          </p>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          {chipMsg && <span className={`text-xs ${chipMsg.ok ? "text-green-600" : "text-red-500"}`}>{chipMsg.text}</span>}
+          {[14, 30, 60].map((d) => (
+            <button
+              key={d}
+              onClick={() => handleBackfill(d)}
+              disabled={backfilling}
+              className="px-3 py-1.5 text-xs rounded-lg border border-gray-300 hover:bg-gray-50 disabled:opacity-50"
+            >
+              {backfilling ? "補抓中…" : `補抓近 ${d} 天`}
+            </button>
+          ))}
+        </div>
+      </div>
+    </section>
   );
 }
 

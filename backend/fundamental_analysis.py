@@ -52,18 +52,19 @@ def _fetch_t86(date_str: str) -> list:
         f"?response=json&date={date_str}&selectType=ALL"
     )
     try:
-        with httpx.Client(timeout=10, headers=_HEADERS, follow_redirects=True) as c:
+        with httpx.Client(timeout=6, headers=_HEADERS, follow_redirects=True) as c:
             r = c.get(url)
         ctype = r.headers.get("content-type", "")
         if "json" not in ctype:
-            # TWSE 擋掉時回 HTML 錯誤頁
-            _T86_BLOCKED_UNTIL = time.time() + 300
+            # TWSE 擋掉時回 HTML 錯誤頁（雲端 IP 常被封，1 小時內不重打）
+            _T86_BLOCKED_UNTIL = time.time() + 3600
             return []
         d = r.json()
         if d.get("stat") == "OK":
             return d.get("data", [])
     except Exception:
-        pass
+        # timeout 也當作被封，1 小時內略過
+        _T86_BLOCKED_UNTIL = time.time() + 3600
     return []
 
 

@@ -316,8 +316,10 @@ async def get_recommendations(
     if not candidates:
         return {"items": [], "warnings": [], "computed_at": datetime.utcnow().isoformat()}
 
-    # 並行抓現價、訊號、籌碼
-    semaphore = asyncio.Semaphore(8)
+    # 並行抓現價、訊號、籌碼（各自獨立 semaphore，避免互相阻塞）
+    sem_price = asyncio.Semaphore(10)
+    sem_signal = asyncio.Semaphore(6)
+    sem_inst = asyncio.Semaphore(6)
 
     def _fetch_price_sync(code: str):
         url = f"https://www.nstock.tw/api/v2/real-time-quotes/data?stock_id={code}"
@@ -336,7 +338,7 @@ async def get_recommendations(
             return code, None
 
     async def fetch_price(code):
-        async with semaphore:
+        async with sem_price:
             try:
                 return await asyncio.to_thread(_fetch_price_sync, code)
             except Exception:
@@ -344,17 +346,25 @@ async def get_recommendations(
 
     async def fetch_signal(code):
         from price_analysis import get_signals
-        async with semaphore:
+        async with sem_signal:
             try:
-                return code, await asyncio.to_thread(get_signals, code)
+                # 每支股票最多等 8 秒，Render 上 nstock 可能慢
+                return code, await asyncio.wait_for(
+                    asyncio.to_thread(get_signals, code), timeout=8
+                )
             except Exception:
                 return code, None
 
     async def fetch_inst(code):
-        from fundamental_analysis import get_institutional
-        async with semaphore:
+        from fundamental_analysis import get_institutional, is_t86_blocked
+        if is_t86_blocked():
+            return code, None
+        async with sem_inst:
             try:
-                return code, await asyncio.to_thread(get_institutional, code, 5)
+                # T86 超時就快速放棄，不卡住整體
+                return code, await asyncio.wait_for(
+                    asyncio.to_thread(get_institutional, code, 5), timeout=5
+                )
             except Exception:
                 return code, None
 

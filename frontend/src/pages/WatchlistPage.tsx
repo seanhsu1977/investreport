@@ -469,8 +469,8 @@ function ListView({ items, onRemove, signals, signalsLoading, prices, fundamenta
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
       <div className="grid grid-cols-12 gap-x-1 px-3 py-2 bg-gray-50 border-b border-gray-100 text-xs text-gray-400 font-medium uppercase tracking-wide">
-        <div className="col-span-1" />
-        <div className="col-span-4 sm:col-span-2">股票</div>
+        <div className="col-span-2 sm:col-span-1" />
+        <div className="col-span-3 sm:col-span-2">股票</div>
         <div className="hidden sm:block sm:col-span-2 text-center">評等</div>
         <div className="col-span-3 sm:col-span-2">現價</div>
         <div className="hidden sm:block sm:col-span-2">目標價</div>
@@ -491,27 +491,24 @@ function ListView({ items, onRemove, signals, signalsLoading, prices, fundamenta
             onDragEnd={onDragEnd}
             className={`grid grid-cols-12 gap-x-1 px-3 py-2 items-center hover:bg-gray-50 transition group ${pinnedCodes.has(item.stock_code) ? "bg-amber-50" : ""}`}
           >
-            <div className="col-span-1 flex items-center gap-0.5 self-start pt-1.5">
+            <div className="col-span-2 sm:col-span-1 flex items-center gap-1">
               <button
                 onClick={() => onTogglePin(item.stock_code)}
-                className={`transition ${pinnedCodes.has(item.stock_code) ? "text-amber-400" : "text-gray-300 hover:text-amber-300 sm:opacity-0 sm:group-hover:opacity-100"}`}
+                className={`p-1 rounded transition ${pinnedCodes.has(item.stock_code) ? "text-amber-400" : "text-gray-300 hover:text-amber-300 sm:opacity-0 sm:group-hover:opacity-100"}`}
                 title={pinnedCodes.has(item.stock_code) ? "取消置頂" : "置頂"}
               >
-                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M16 1v8l2 4H6l2-4V1h8zm-4 18a2 2 0 01-2-2h4a2 2 0 01-2 2zM10 1h4"/></svg>
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M16 1v8l2 4H6l2-4V1h8zm-4 18a2 2 0 01-2-2h4a2 2 0 01-2 2zM10 1h4"/></svg>
               </button>
               <DragHandle />
             </div>
-            <div className="col-span-4 sm:col-span-2 flex flex-col justify-center min-w-0">
-              <div className="flex items-center gap-1 min-w-0">
-                <Link
-                  to={`/stocks/${item.stock_code}`}
-                  state={{ from: "/", label: "自選股" }}
-                  className="font-mono font-bold text-sm text-blue-600 hover:underline leading-tight shrink-0"
-                >
-                  {item.stock_code}
-                </Link>
-                <TabPill code={item.stock_code} tabs={tabs} assigns={assigns} onOpen={onOpenAssignMenu} />
-              </div>
+            <div className="col-span-3 sm:col-span-2 flex flex-col justify-center min-w-0">
+              <Link
+                to={`/stocks/${item.stock_code}`}
+                state={{ from: "/", label: "自選股" }}
+                className="font-mono font-bold text-sm text-blue-600 hover:underline leading-tight"
+              >
+                {item.stock_code}
+              </Link>
               {item.stock_name && (
                 <span className="text-xs text-gray-500 truncate leading-tight">{item.stock_name}</span>
               )}

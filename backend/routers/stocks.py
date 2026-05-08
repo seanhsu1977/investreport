@@ -591,7 +591,8 @@ async def stream_recommendation_reason(
         model = os.environ.get("RECOMMENDATION_MODEL", "gemini-2.5-flash")
         config = genai_types.GenerateContentConfig(
             system_instruction=_REASON_SYSTEM,
-            max_output_tokens=600,
+            max_output_tokens=1024,
+            thinking_config=genai_types.ThinkingConfig(thinking_budget=0),
             safety_settings=_SAFETY_OFF,
         )
         max_retries = 3

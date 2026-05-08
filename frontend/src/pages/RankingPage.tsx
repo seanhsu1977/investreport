@@ -498,8 +498,18 @@ function RecommendationsSection() {
         },
       });
       if (!resp.ok) {
-        const detail = await resp.text();
-        throw new Error(detail || `HTTP ${resp.status}`);
+        if (resp.status === 502 || resp.status === 503 || resp.status === 504) {
+          throw new Error("後端暫時無法回應，請稍後再試");
+        }
+        let detail = `HTTP ${resp.status}`;
+        try {
+          const ct = resp.headers.get("content-type") ?? "";
+          if (ct.includes("json")) {
+            const j = await resp.json();
+            detail = j.detail ?? detail;
+          }
+        } catch {}
+        throw new Error(detail);
       }
       const reader = resp.body!.getReader();
       const decoder = new TextDecoder();

@@ -493,11 +493,11 @@ async def publish_nstock(body: NStockPublishRequest, _: None = Depends(require_a
     publish_time = body.publish_time or datetime.now(TPE).strftime("%Y-%m-%d %H:%M:%S")
     content_html = body.content if body.is_html else text_to_html(body.content)
 
-    # 若 caller 沒指定 stock_ids，從內文自動掃描（標題 + 內文都掃，逗號分隔）
-    stock_ids = body.stock_ids
-    if stock_ids is None or stock_ids.strip() == "":
-        codes = extract_stock_codes(f"{body.title}\n{body.content}")
-        stock_ids = ",".join(codes) if codes else None
+    # 以 caller 指定的 stock_ids 為種子，再從內文掃描並合併（去重保序）
+    seed = [s.strip() for s in (body.stock_ids or "").split(",") if s.strip()]
+    scanned = extract_stock_codes(f"{body.title}\n{body.content}")
+    merged = list(dict.fromkeys(seed + scanned))  # 保序去重，種子優先
+    stock_ids = ",".join(merged) if merged else None
 
     payload = {
         "title": body.title,
@@ -804,6 +804,7 @@ async def publish_daily_to_nstock(
     a = db.get(DailyArticle, article_id)
     if not a:
         raise HTTPException(404, "找不到草稿")
+    # 以 topic_stock_code 為基礎，publish_nstock 還會再從內文掃更多股號
     body = NStockPublishRequest(
         title=a.title,
         content=a.content,
@@ -811,6 +812,7 @@ async def publish_daily_to_nstock(
         status=live,
         img_path=img_path or None,
         auth_name=auth_name or None,
+        stock_ids=a.topic_stock_code or None,
     )
     result = await publish_nstock(body, _)  # 重用既有 endpoint
     if result.get("article_id"):

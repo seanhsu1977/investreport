@@ -36,11 +36,11 @@ async def _warmup_recommendations():
     """服務啟動後非同步預熱投顧精選快取（若 DB 快取已存在且未過期則略過）"""
     import asyncio
     import logging
+    from datetime import datetime
     await asyncio.sleep(5)  # 等其他初始化完成
     logger = logging.getLogger("warmup")
     from database import SessionLocal
     from models import RecommendationCache
-    from datetime import datetime
     db = SessionLocal()
     try:
         key = "30_1_all_20"
@@ -51,8 +51,8 @@ async def _warmup_recommendations():
                 logger.info("Warmup skipped — DB cache age=%.0fs", age)
                 return
         logger.info("Warming up recommendations cache...")
-        from routers.stocks import get_recommendations
-        await get_recommendations(days=30, min_reports=1, rec_filter="all", limit=20, db=db)
+        from routers.stocks import _compute_recommendations_bg
+        await _compute_recommendations_bg("30_1_all_20", 30, 1, "all", 20)
         logger.info("Recommendations warmup done")
     except Exception as e:
         logger.warning("Warmup failed (non-fatal): %s", e)

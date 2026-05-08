@@ -30,6 +30,7 @@ router = APIRouter(prefix="/stocks", tags=["stocks"])
 _rec_cache: dict[str, tuple[dict, float]] = {}
 _REC_CACHE_TTL = 10 * 60
 _REC_DB_CACHE_TTL = 12 * 3600  # DB 快取 12 小時
+_computing_keys: set[str] = set()  # 正在背景計算中的 key，防重複觸發
 
 
 def _serialize_report(r: Report, include_mentioned: bool = False) -> dict:
@@ -247,35 +248,8 @@ def _compute_score(item: dict) -> tuple[float, dict]:
     return total, breakdown
 
 
-@router.get("/recommendations")
-async def get_recommendations(
-    days: int = Query(default=30, ge=1, le=180),
-    min_reports: int = Query(default=1, ge=1, le=10),
-    rec_filter: str = Query(default="all"),   # "all" | "buy_only"
-    limit: int = Query(default=20, ge=1, le=50),
-    db: Session = Depends(get_db),
-):
-    """投顧精選排行：依共識度 + 籌碼 + 量價綜合評分。"""
-    import logging as _log
-    import time
-    from models import RecommendationCache
-    _logger = _log.getLogger(__name__)
-    cache_key = f"{days}_{min_reports}_{rec_filter}_{limit}"
-
-    # 1. in-memory cache（最快）
-    cached = _rec_cache.get(cache_key)
-    if cached and (time.time() - cached[1]) < _REC_CACHE_TTL:
-        return cached[0]
-
-    # 2. DB cache（跨重啟持久，TTL 12h）
-    db_row = db.get(RecommendationCache, cache_key)
-    if db_row:
-        age = (datetime.utcnow() - db_row.computed_at).total_seconds()
-        if age < _REC_DB_CACHE_TTL:
-            result = json.loads(db_row.payload)
-            _rec_cache[cache_key] = (result, time.time())
-            return result
-
+async def _compute_candidates(days: int, min_reports: int, rec_filter: str, db) -> list[dict]:
+    """從 DB 查詢候選股，回傳 candidates list（純 CPU，無 IO）。"""
     cutoff = datetime.utcnow() - timedelta(days=days)
     rows = (
         db.query(Report)
@@ -286,18 +260,14 @@ async def get_recommendations(
         )
         .all()
     )
-
-    # group by stock_code
     by_stock: dict[str, list[Report]] = {}
     for r in rows:
         by_stock.setdefault(r.stock_code, []).append(r)
 
-    # 過濾報告數
     candidates: list[dict] = []
     for code, reports in by_stock.items():
         if len(reports) < min_reports:
             continue
-        # 取最新一篇當代表（含目標價、最新評等、analyst）
         latest = max(reports, key=lambda r: (r.report_date or date.min, r.id))
         rec_scores = [_REC_SCORE.get(r.recommendation, 0) for r in reports if r.recommendation]
         rec_avg = sum(rec_scores) / len(rec_scores) if rec_scores else 0
@@ -314,11 +284,11 @@ async def get_recommendations(
             "rec_avg": round(rec_avg, 2),
             "rec_max_score": max(rec_scores) if rec_scores else 0,
         })
+    return candidates
 
-    if not candidates:
-        return {"items": [], "warnings": [], "computed_at": datetime.utcnow().isoformat()}
 
-    # 並行抓現價、訊號、籌碼（各自獨立 semaphore，避免互相阻塞）
+async def _fetch_all_market_data(candidates: list[dict]) -> tuple[dict, dict, dict]:
+    """並行抓所有候選股的價格、技術訊號、法人籌碼。回傳三個 map。"""
     sem_price = asyncio.Semaphore(10)
     sem_signal = asyncio.Semaphore(6)
     sem_inst = asyncio.Semaphore(6)
@@ -350,7 +320,6 @@ async def get_recommendations(
         from price_analysis import get_signals
         async with sem_signal:
             try:
-                # 每支股票最多等 8 秒，Render 上 nstock 可能慢
                 return code, await asyncio.wait_for(
                     asyncio.to_thread(get_signals, code), timeout=8
                 )
@@ -361,7 +330,6 @@ async def get_recommendations(
         from fundamental_analysis import get_institutional
         async with sem_inst:
             try:
-                # nstock API 為主（≤3s），T86 fallback 內部已有封鎖機制
                 return code, await asyncio.wait_for(
                     asyncio.to_thread(get_institutional, code, 5), timeout=10
                 )
@@ -369,30 +337,16 @@ async def get_recommendations(
                 return code, None
 
     codes = [c["code"] for c in candidates]
-    try:
-        prices, signals, insts = await asyncio.wait_for(
-            asyncio.gather(
-                asyncio.gather(*[fetch_price(c) for c in codes]),
-                asyncio.gather(*[fetch_signal(c) for c in codes]),
-                asyncio.gather(*[fetch_inst(c) for c in codes]),
-            ),
-            timeout=25,
-        )
-    except asyncio.TimeoutError:
-        import logging as _log
-        _log.getLogger(__name__).warning(
-            "recommendations gather timed out for %d stocks — returning DB/partial cache", len(codes)
-        )
-        # 超時：回傳 DB 快取（即使已過 TTL）或空結果
-        db_row = db.get(RecommendationCache, cache_key)
-        if db_row:
-            return json.loads(db_row.payload)
-        return {"items": [], "warnings": ["資料載入逾時，請稍後再試（系統正在預熱中）"], "computed_at": datetime.utcnow().isoformat()}
-    price_map = dict(prices)
-    signal_map = dict(signals)
-    inst_map = dict(insts)
+    prices, signals, insts = await asyncio.gather(
+        asyncio.gather(*[fetch_price(c) for c in codes]),
+        asyncio.gather(*[fetch_signal(c) for c in codes]),
+        asyncio.gather(*[fetch_inst(c) for c in codes]),
+    )
+    return dict(prices), dict(signals), dict(insts)
 
-    # 補資料 + 算分
+
+def _build_result(candidates: list[dict], price_map: dict, signal_map: dict, inst_map: dict, limit: int) -> dict:
+    """合併市場資料、算分、排序，回傳最終 result dict。"""
     items: list[dict] = []
     for c in candidates:
         code = c["code"]
@@ -407,54 +361,100 @@ async def get_recommendations(
             c["upside_pct"] = None
 
         sig = signal_map.get(code)
-        if sig:
-            c["ma_signal"] = sig.get("ma_signal")
-            c["volume_signal"] = sig.get("volume_signal")
-            c["rsi"] = sig.get("rsi")
-        else:
-            c["ma_signal"] = None
-            c["volume_signal"] = None
-            c["rsi"] = None
+        c["ma_signal"] = sig.get("ma_signal") if sig else None
+        c["volume_signal"] = sig.get("volume_signal") if sig else None
+        c["rsi"] = sig.get("rsi") if sig else None
 
         inst_rows = inst_map.get(code) or []
         c["inst_5d_net"] = int(sum((d.get("total") or 0) for d in inst_rows))
-
         c["score"], c["score_breakdown"] = _compute_score(c)
         items.append(c)
 
     items.sort(key=lambda x: x["score"], reverse=True)
-
-    warnings: list[str] = []
-    try:
-        from fundamental_analysis import is_t86_blocked
-        if is_t86_blocked():
-            warnings.append("TWSE T86 暫時無法存取（被 rate-limit），籌碼面分數本次未列入計算。")
-    except Exception:
-        pass
-
-    result = {
+    return {
         "items": items[:limit],
-        "warnings": warnings,
+        "warnings": [],
         "computed_at": datetime.utcnow().isoformat(),
     }
-    import time
-    _rec_cache[cache_key] = (result, time.time())
 
-    # 寫入 DB 快取（upsert）
+
+async def _compute_recommendations_bg(
+    cache_key: str, days: int, min_reports: int, rec_filter: str, limit: int
+):
+    """背景計算投顧精選，完成後寫入記憶體與 DB 快取。"""
+    import logging as _log
+    import time as _time
+    from database import SessionLocal
+    from models import RecommendationCache
+    _logger = _log.getLogger(__name__)
+
+    if cache_key in _computing_keys:
+        return
+    _computing_keys.add(cache_key)
+    _logger.info("Background compute started for %s", cache_key)
+    db = SessionLocal()
     try:
-        from models import RecommendationCache
-        existing = db.get(RecommendationCache, cache_key)
+        candidates = await _compute_candidates(days, min_reports, rec_filter, db)
+        if not candidates:
+            result: dict = {"items": [], "warnings": [], "computed_at": datetime.utcnow().isoformat()}
+        else:
+            price_map, signal_map, inst_map = await _fetch_all_market_data(candidates)
+            result = _build_result(candidates, price_map, signal_map, inst_map, limit)
+
+        _rec_cache[cache_key] = (result, _time.time())
         payload_str = json.dumps(result, ensure_ascii=False, default=str)
+        existing = db.get(RecommendationCache, cache_key)
         if existing:
             existing.payload = payload_str
             existing.computed_at = datetime.utcnow()
         else:
             db.add(RecommendationCache(cache_key=cache_key, payload=payload_str, computed_at=datetime.utcnow()))
         db.commit()
-    except Exception:
+        _logger.info("Background compute done for %s (%d items)", cache_key, len(result.get("items", [])))
+    except Exception as e:
+        _logger.warning("Background compute failed for %s: %s", cache_key, e)
         db.rollback()
+    finally:
+        _computing_keys.discard(cache_key)
+        db.close()
 
-    return result
+
+@router.get("/recommendations")
+async def get_recommendations(
+    days: int = Query(default=30, ge=1, le=180),
+    min_reports: int = Query(default=1, ge=1, le=10),
+    rec_filter: str = Query(default="all"),   # "all" | "buy_only"
+    limit: int = Query(default=20, ge=1, le=50),
+    db: Session = Depends(get_db),
+):
+    """投顧精選排行：永遠從快取立即回傳，背景非同步更新。"""
+    import logging as _log
+    import time as _time
+    from models import RecommendationCache
+    _logger = _log.getLogger(__name__)
+    cache_key = f"{days}_{min_reports}_{rec_filter}_{limit}"
+
+    # 1. in-memory cache（最快，10 分鐘 TTL）
+    cached = _rec_cache.get(cache_key)
+    if cached and (_time.time() - cached[1]) < _REC_CACHE_TTL:
+        return cached[0]
+
+    # 2. DB cache（跨重啟持久）— 不論過不過期都先回傳，過期則背景更新
+    db_row = db.get(RecommendationCache, cache_key)
+    if db_row:
+        result = json.loads(db_row.payload)
+        _rec_cache[cache_key] = (result, _time.time())
+        age = (datetime.utcnow() - db_row.computed_at).total_seconds()
+        if age >= _REC_DB_CACHE_TTL and cache_key not in _computing_keys:
+            _logger.info("DB cache stale (%.0fs), triggering background recompute for %s", age, cache_key)
+            asyncio.create_task(_compute_recommendations_bg(cache_key, days, min_reports, rec_filter, limit))
+        return result
+
+    # 3. 完全沒有快取：立即回空，背景計算
+    if cache_key not in _computing_keys:
+        _logger.info("No cache for %s, triggering background compute", cache_key)
+        asyncio.create_task(_compute_recommendations_bg(cache_key, days, min_reports, rec_filter, limit))
+    return {"items": [], "warnings": ["正在計算中，請稍後重新整理"], "computed_at": datetime.utcnow().isoformat()}
 
 
 _REASON_SYSTEM = """你是資深投資編輯。根據提供的投顧報告 + 量價/籌碼/基本面資料，為一檔個股寫一段「為什麼值得關注」的推薦理由。

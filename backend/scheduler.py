@@ -116,31 +116,25 @@ def _daily_article_job():
 def _recommendations_warmup_job():
     """每天 07:00 Asia/Taipei 預算投顧精選快取，使用者開頁面不需等待"""
     import asyncio
-    import json
     logger.info("Starting recommendations warmup...")
-    db = SessionLocal()
-    try:
-        # 預算最常用的 6 種組合
-        combos = [
-            (30, 1, "all", 20),
-            (30, 2, "all", 20),
-            (60, 1, "all", 20),
-            (60, 2, "all", 20),
-            (30, 1, "all", 50),
-            (90, 1, "all", 20),
+    combos = [
+        (30, 1, "all", 20),
+        (30, 2, "all", 20),
+        (60, 1, "all", 20),
+        (60, 2, "all", 20),
+        (30, 1, "all", 50),
+        (90, 1, "all", 20),
+    ]
+
+    async def _run_all():
+        from routers.stocks import _compute_recommendations_bg
+        tasks = [
+            _compute_recommendations_bg(f"{d}_{m}_{f}_{l}", d, m, f, l)
+            for d, m, f, l in combos
         ]
-        from routers.stocks import get_recommendations
-        for days, min_rep, rec_filter, limit in combos:
-            try:
-                result = asyncio.run(get_recommendations(
-                    days=days, min_reports=min_rep,
-                    rec_filter=rec_filter, limit=limit, db=db
-                ))
-                logger.info("Warmup done: days=%d min=%d → %d items", days, min_rep, len(result.get("items", [])))
-            except Exception as e:
-                logger.warning("Warmup combo (%d,%d,%s,%d) failed: %s", days, min_rep, rec_filter, limit, e)
-    finally:
-        db.close()
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+    asyncio.run(_run_all())
     logger.info("Recommendations warmup complete")
 
 

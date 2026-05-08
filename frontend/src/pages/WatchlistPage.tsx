@@ -417,20 +417,22 @@ function DragHandle() {
 }
 
 // ── 分組標籤（行內小 pill）──────────────────────────────
-function TabPill({ code, tabs, assigns, onOpen }: {
+function TabPill({ code, tabs, assigns, onOpen, showAdd = false }: {
   code: string;
   tabs: Tab[];
   assigns: Record<string, string>;
   onOpen: (code: string, rect: DOMRect) => void;
+  showAdd?: boolean;
 }) {
   if (tabs.length === 0) return null;
   const tabId = assigns[code];
   const tabIdx = tabs.findIndex(t => t.id === tabId);
   const tab = tabIdx >= 0 ? tabs[tabIdx] : null;
+  if (!tab && !showAdd) return null;
   return (
     <button
       onClick={(e) => { e.stopPropagation(); onOpen(code, e.currentTarget.getBoundingClientRect()); }}
-      className="mt-0.5 w-fit"
+      className="shrink-0"
     >
       {tab ? (
         <span className={`text-xs px-1.5 py-0.5 rounded border font-medium ${tabColor(tabIdx).pill}`}>
@@ -468,11 +470,11 @@ function ListView({ items, onRemove, signals, signalsLoading, prices, fundamenta
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
       <div className="grid grid-cols-12 gap-x-1 px-3 py-2 bg-gray-50 border-b border-gray-100 text-xs text-gray-400 font-medium uppercase tracking-wide">
         <div className="col-span-1" />
-        <div className="col-span-3 sm:col-span-2">股票</div>
+        <div className="col-span-4 sm:col-span-2">股票</div>
         <div className="hidden sm:block sm:col-span-2 text-center">評等</div>
-        <div className="col-span-2">現價</div>
+        <div className="col-span-3 sm:col-span-2">現價</div>
         <div className="hidden sm:block sm:col-span-2">目標價</div>
-        <div className="col-span-5 sm:col-span-2">價量訊號</div>
+        <div className="col-span-3 sm:col-span-2">價量訊號</div>
         <div className="col-span-1" />
       </div>
       <div className="divide-y divide-gray-50">
@@ -487,9 +489,9 @@ function ListView({ items, onRemove, signals, signalsLoading, prices, fundamenta
             onDragLeave={onDragLeaveEl}
             onDrop={(e) => onDrop(e, idx)}
             onDragEnd={onDragEnd}
-            className={`grid grid-cols-12 gap-x-1 px-3 py-2 items-start hover:bg-gray-50 transition group ${pinnedCodes.has(item.stock_code) ? "bg-amber-50" : ""}`}
+            className={`grid grid-cols-12 gap-x-1 px-3 py-2 items-center hover:bg-gray-50 transition group ${pinnedCodes.has(item.stock_code) ? "bg-amber-50" : ""}`}
           >
-            <div className="col-span-1 flex items-center h-7 gap-0.5">
+            <div className="col-span-1 flex items-center gap-0.5 self-start pt-1.5">
               <button
                 onClick={() => onTogglePin(item.stock_code)}
                 className={`transition ${pinnedCodes.has(item.stock_code) ? "text-amber-400" : "text-gray-300 hover:text-amber-300 sm:opacity-0 sm:group-hover:opacity-100"}`}
@@ -499,32 +501,34 @@ function ListView({ items, onRemove, signals, signalsLoading, prices, fundamenta
               </button>
               <DragHandle />
             </div>
-            <div className="col-span-3 sm:col-span-2 flex flex-col justify-center min-w-0 py-0.5">
-              <Link
-                to={`/stocks/${item.stock_code}`}
-                state={{ from: "/", label: "自選股" }}
-                className="font-mono font-bold text-sm text-blue-600 hover:underline leading-tight"
-              >
-                {item.stock_code}
-              </Link>
+            <div className="col-span-4 sm:col-span-2 flex flex-col justify-center min-w-0">
+              <div className="flex items-center gap-1 min-w-0">
+                <Link
+                  to={`/stocks/${item.stock_code}`}
+                  state={{ from: "/", label: "自選股" }}
+                  className="font-mono font-bold text-sm text-blue-600 hover:underline leading-tight shrink-0"
+                >
+                  {item.stock_code}
+                </Link>
+                <TabPill code={item.stock_code} tabs={tabs} assigns={assigns} onOpen={onOpenAssignMenu} />
+              </div>
               {item.stock_name && (
                 <span className="text-xs text-gray-500 truncate leading-tight">{item.stock_name}</span>
               )}
-              <TabPill code={item.stock_code} tabs={tabs} assigns={assigns} onOpen={onOpenAssignMenu} />
             </div>
-            <div className="hidden sm:flex sm:col-span-2 justify-center h-7 items-center">
+            <div className="hidden sm:flex sm:col-span-2 justify-center">
               <RecommendationBadge value={item.latest_report?.recommendation ?? null} compact />
             </div>
-            <div className="col-span-2 flex items-center">
+            <div className="col-span-3 sm:col-span-2 flex items-center">
               <PriceCell data={prices[item.stock_code]} />
             </div>
-            <div className="hidden sm:flex sm:col-span-2 tabular-nums text-sm text-gray-600 h-7 items-center">
+            <div className="hidden sm:flex sm:col-span-2 tabular-nums text-sm text-gray-600 items-center">
               {item.latest_report?.target_price ?? <span className="text-gray-300">—</span>}
             </div>
-            <div className="col-span-5 sm:col-span-2 overflow-hidden">
+            <div className="col-span-3 sm:col-span-2 overflow-hidden">
               <ListSignalCell signal={signals[item.stock_code]} loading={signalsLoading} fund={fundamentals[item.stock_code]} expanded={expandedSignals.has(item.stock_code)} onToggle={() => onToggleSignal(item.stock_code)} />
             </div>
-            <div className="col-span-1 flex justify-end h-7 items-center">
+            <div className="col-span-1 flex justify-end self-start pt-1.5">
               <button
                 onClick={() => onRemove(item.stock_code)}
                 className="text-xs text-gray-300 hover:text-red-400 transition sm:opacity-0 sm:group-hover:opacity-100"

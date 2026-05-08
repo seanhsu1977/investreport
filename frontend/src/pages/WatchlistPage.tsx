@@ -429,16 +429,16 @@ function ListView({ items, onRemove, signals, signalsLoading, prices, fundamenta
               </button>
               <DragHandle />
             </div>
-            <div className="col-span-3 sm:col-span-2 flex items-center gap-1.5 h-7 min-w-0">
+            <div className="col-span-3 sm:col-span-2 flex flex-col justify-center min-w-0 py-0.5">
               <Link
                 to={`/stocks/${item.stock_code}`}
                 state={{ from: "/", label: "自選股" }}
-                className="font-mono font-bold text-sm text-blue-600 hover:underline shrink-0"
+                className="font-mono font-bold text-sm text-blue-600 hover:underline leading-tight"
               >
                 {item.stock_code}
               </Link>
               {item.stock_name && (
-                <span className="text-xs text-gray-500 truncate hidden sm:block">{item.stock_name}</span>
+                <span className="text-xs text-gray-500 truncate leading-tight">{item.stock_name}</span>
               )}
             </div>
             <div className="hidden sm:flex sm:col-span-2 justify-center h-7 items-center">

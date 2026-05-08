@@ -147,7 +147,8 @@ def drive_files_list(
         q_base = q_base.filter(DriveFile.filename.ilike(f"%{keyword}%"))
 
     total = q_base.count()
-    rows = q_base.order_by(DriveFile.id.desc()).offset(offset).limit(limit).all()
+    from sqlalchemy import nullslast
+    rows = q_base.order_by(nullslast(rep.report_date.desc()), DriveFile.id.desc()).offset(offset).limit(limit).all()
 
     files = []
     for df, rp in rows:

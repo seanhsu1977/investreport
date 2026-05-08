@@ -32,6 +32,22 @@ _REC_CACHE_TTL = 10 * 60
 _REC_DB_CACHE_TTL = 12 * 3600  # DB 快取 12 小時
 _computing_keys: set[str] = set()  # 正在背景計算中的 key，防重複觸發
 
+# 全域 semaphore：限制跨任務的並發，避免 512MB OOM
+# 在第一次使用時初始化（需在 event loop 內建立）
+_SEM_SIGNAL: asyncio.Semaphore | None = None
+_SEM_INST: asyncio.Semaphore | None = None
+
+_MAX_CANDIDATES = 25  # 每次最多處理支數，保護記憶體
+
+
+def _get_sems() -> tuple[asyncio.Semaphore, asyncio.Semaphore]:
+    global _SEM_SIGNAL, _SEM_INST
+    if _SEM_SIGNAL is None:
+        _SEM_SIGNAL = asyncio.Semaphore(3)
+    if _SEM_INST is None:
+        _SEM_INST = asyncio.Semaphore(3)
+    return _SEM_SIGNAL, _SEM_INST
+
 
 def _serialize_report(r: Report, include_mentioned: bool = False) -> dict:
     d = {
@@ -289,9 +305,8 @@ async def _compute_candidates(days: int, min_reports: int, rec_filter: str, db) 
 
 async def _fetch_all_market_data(candidates: list[dict]) -> tuple[dict, dict, dict]:
     """並行抓所有候選股的價格、技術訊號、法人籌碼。回傳三個 map。"""
-    sem_price = asyncio.Semaphore(10)
-    sem_signal = asyncio.Semaphore(6)
-    sem_inst = asyncio.Semaphore(6)
+    sem_price = asyncio.Semaphore(8)
+    sem_signal, sem_inst = _get_sems()  # 全域 semaphore，跨任務限制並發
 
     def _fetch_price_sync(code: str):
         url = f"https://www.nstock.tw/api/v2/real-time-quotes/data?stock_id={code}"
@@ -398,6 +413,10 @@ async def _compute_recommendations_bg(
         if not candidates:
             result: dict = {"items": [], "warnings": [], "computed_at": datetime.utcnow().isoformat()}
         else:
+            # 記憶體保護：限制最多處理 _MAX_CANDIDATES 支，優先取共識分高的
+            if len(candidates) > _MAX_CANDIDATES:
+                candidates.sort(key=lambda c: c["rec_avg"] * c["report_count"], reverse=True)
+                candidates = candidates[:_MAX_CANDIDATES]
             price_map, signal_map, inst_map = await _fetch_all_market_data(candidates)
             result = _build_result(candidates, price_map, signal_map, inst_map, limit)
 

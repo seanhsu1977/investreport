@@ -126,15 +126,15 @@ def _recommendations_warmup_job():
         (90, 1, "all", 20),
     ]
 
-    async def _run_all():
+    async def _run_sequential():
         from routers.stocks import _compute_recommendations_bg
-        tasks = [
-            _compute_recommendations_bg(f"{d}_{m}_{f}_{l}", d, m, f, l)
-            for d, m, f, l in combos
-        ]
-        await asyncio.gather(*tasks, return_exceptions=True)
+        for d, m, f, l in combos:
+            try:
+                await _compute_recommendations_bg(f"{d}_{m}_{f}_{l}", d, m, f, l)
+            except Exception as e:
+                logger.warning("Warmup combo (%d,%d,%s,%d) failed: %s", d, m, f, l, e)
 
-    asyncio.run(_run_all())
+    asyncio.run(_run_sequential())
     logger.info("Recommendations warmup complete")
 
 

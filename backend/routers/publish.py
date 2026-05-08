@@ -792,6 +792,8 @@ def edit_daily(
 async def publish_daily_to_nstock(
     article_id: int,
     live: bool = False,    # False=送 nStock 後台存草稿不上架；True=直接上架
+    img_path: Optional[str] = None,   # 封面圖片路徑（覆蓋 NSTOCK_DEFAULT_IMG）
+    auth_name: Optional[str] = None,  # 作者名稱（覆蓋 NSTOCK_AUTHOR_NAME）
     db: Session = Depends(get_db),
     _: None = Depends(require_admin),
 ):
@@ -807,6 +809,8 @@ async def publish_daily_to_nstock(
         content=a.content,
         is_html=False,
         status=live,
+        img_path=img_path or None,
+        auth_name=auth_name or None,
     )
     result = await publish_nstock(body, _)  # 重用既有 endpoint
     if result.get("article_id"):

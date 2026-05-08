@@ -66,6 +66,8 @@ function DailySection({ token }: { token: string }) {
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [publishLive, setPublishLive] = useState(false);  // 預設送 nStock 草稿區不上架
+  const [nstockAuthName, setNstockAuthName] = useState("");
+  const [nstockImgPath, setNstockImgPath] = useState("");
   const [postingThreads, setPostingThreads] = useState(false);
   const [threadsTag, setThreadsTag] = useState("");
   const [postingFb, setPostingFb] = useState(false);
@@ -149,9 +151,12 @@ function DailySection({ token }: { token: string }) {
         { title: active.title, content: active.content },
         { headers }
       );
+      const nstockParams: Record<string, string | boolean> = { live: publishLive };
+      if (nstockAuthName.trim()) nstockParams.auth_name = nstockAuthName.trim();
+      if (nstockImgPath.trim()) nstockParams.img_path = nstockImgPath.trim();
       const r = await axios.post(
         `/api/publish/daily/${active.id}/publish-nstock`, null,
-        { headers, params: { live: publishLive } }
+        { headers, params: nstockParams }
       );
       const aid = r.data?.article_id;
       if (aid) {
@@ -386,6 +391,20 @@ function DailySection({ token }: { token: string }) {
                   <span className="text-xs text-gray-400">已送 {fmtDateTime(active.published_at)}</span>
                 )}
               </div>
+              <input
+                type="text"
+                value={nstockAuthName}
+                onChange={(e) => setNstockAuthName(e.target.value)}
+                placeholder="作者名稱（留空=用環境變數預設值）"
+                className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-400"
+              />
+              <input
+                type="text"
+                value={nstockImgPath}
+                onChange={(e) => setNstockImgPath(e.target.value)}
+                placeholder="封面圖片路徑（留空=用環境變數預設值）"
+                className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-400"
+              />
               <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer select-none">
                 <input
                   type="checkbox"

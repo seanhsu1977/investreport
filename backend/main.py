@@ -24,9 +24,40 @@ async def lifespan(app: FastAPI):
     start_scheduler()
     from notifier import start_polling, stop_polling
     start_polling()
+    # 啟動後背景預熱投顧精選快取（不阻塞啟動）
+    import asyncio as _asyncio
+    _asyncio.create_task(_warmup_recommendations())
     yield
     stop_polling()
     stop_scheduler()
+
+
+async def _warmup_recommendations():
+    """服務啟動後非同步預熱投顧精選快取（若 DB 快取已存在且未過期則略過）"""
+    import asyncio
+    import logging
+    await asyncio.sleep(5)  # 等其他初始化完成
+    logger = logging.getLogger("warmup")
+    from database import SessionLocal
+    from models import RecommendationCache
+    from datetime import datetime
+    db = SessionLocal()
+    try:
+        key = "30_1_all_20"
+        row = db.get(RecommendationCache, key)
+        if row:
+            age = (datetime.utcnow() - row.computed_at).total_seconds()
+            if age < 12 * 3600:
+                logger.info("Warmup skipped — DB cache age=%.0fs", age)
+                return
+        logger.info("Warming up recommendations cache...")
+        from routers.stocks import get_recommendations
+        await get_recommendations(days=30, min_reports=1, rec_filter="all", limit=20, db=db)
+        logger.info("Recommendations warmup done")
+    except Exception as e:
+        logger.warning("Warmup failed (non-fatal): %s", e)
+    finally:
+        db.close()
 
 
 app = FastAPI(title="投顧報告系統", lifespan=lifespan)

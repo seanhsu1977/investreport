@@ -648,7 +648,10 @@ function RecommendationsSection() {
       </section>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700 text-sm">{error}</div>
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700 text-sm flex items-center justify-between gap-3">
+          <span>{error}</span>
+          <button onClick={() => fetchData(true)} className="text-xs px-2 py-1 rounded border border-red-300 hover:bg-red-100 whitespace-nowrap">重試</button>
+        </div>
       )}
 
       {warnings.length > 0 && (

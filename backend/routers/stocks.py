@@ -359,11 +359,25 @@ async def get_recommendations(
                 return code, None
 
     codes = [c["code"] for c in candidates]
-    prices, signals, insts = await asyncio.gather(
-        asyncio.gather(*[fetch_price(c) for c in codes]),
-        asyncio.gather(*[fetch_signal(c) for c in codes]),
-        asyncio.gather(*[fetch_inst(c) for c in codes]),
-    )
+    try:
+        prices, signals, insts = await asyncio.wait_for(
+            asyncio.gather(
+                asyncio.gather(*[fetch_price(c) for c in codes]),
+                asyncio.gather(*[fetch_signal(c) for c in codes]),
+                asyncio.gather(*[fetch_inst(c) for c in codes]),
+            ),
+            timeout=25,
+        )
+    except asyncio.TimeoutError:
+        import logging as _log
+        _log.getLogger(__name__).warning(
+            "recommendations gather timed out for %d stocks — returning DB/partial cache", len(codes)
+        )
+        # 超時：回傳 DB 快取（即使已過 TTL）或空結果
+        db_row = db.get(RecommendationCache, cache_key)
+        if db_row:
+            return json.loads(db_row.payload)
+        return {"items": [], "warnings": ["資料載入逾時，請稍後再試（系統正在預熱中）"], "computed_at": datetime.utcnow().isoformat()}
     price_map = dict(prices)
     signal_map = dict(signals)
     inst_map = dict(insts)

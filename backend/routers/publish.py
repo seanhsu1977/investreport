@@ -812,7 +812,7 @@ async def publish_daily_to_nstock(
         status=live,
         img_path=img_path or None,
         auth_name=auth_name or None,
-        stock_ids=a.topic_stock_code or None,
+        stock_ids="0000",
     )
     result = await publish_nstock(body, _)  # 重用既有 endpoint
     if result.get("article_id"):

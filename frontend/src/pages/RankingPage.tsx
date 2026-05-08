@@ -823,17 +823,38 @@ function RecommendationsSection() {
             <div className="px-5 py-3 border-b border-gray-100 text-xs space-y-1.5">
               <div className="text-gray-500 mb-1">評分分解</div>
               {([
-                ["Upside 空間", reasonOpen.score_breakdown.upside, 30, "bg-blue-400"],
-                ["投顧共識", reasonOpen.score_breakdown.consensus, 35, "bg-purple-400"],
-                ["籌碼配合", reasonOpen.score_breakdown.institutional, 15, "bg-amber-400"],
-                ["技術面", reasonOpen.score_breakdown.technical, 20, "bg-green-400"],
-              ] as const).map(([label, val, max, color]) => (
+                [
+                  "Upside 空間",
+                  reasonOpen.score_breakdown.upside, 30, "bg-blue-400",
+                  reasonOpen.upside_pct != null ? `${reasonOpen.upside_pct > 0 ? "+" : ""}${reasonOpen.upside_pct}%` : "—",
+                ],
+                [
+                  "投顧共識",
+                  reasonOpen.score_breakdown.consensus, 35, "bg-purple-400",
+                  `${reasonOpen.report_count} 篇・${reasonOpen.rec_avg?.toFixed(1) ?? "—"}/3`,
+                ],
+                [
+                  "籌碼配合",
+                  reasonOpen.score_breakdown.institutional, 15, "bg-amber-400",
+                  reasonOpen.inst_5d_net != null
+                    ? (reasonOpen.inst_5d_net >= 0
+                        ? `買超 +${reasonOpen.inst_5d_net.toLocaleString()}張`
+                        : `賣超 ${reasonOpen.inst_5d_net.toLocaleString()}張`)
+                    : "無資料",
+                ],
+                [
+                  "技術面",
+                  reasonOpen.score_breakdown.technical, 20, "bg-green-400",
+                  [reasonOpen.ma_signal, reasonOpen.volume_signal].filter(Boolean).join("・") || "無資料",
+                ],
+              ] as const).map(([label, val, max, color, hint]) => (
                 <div key={label} className="flex items-center gap-2">
-                  <span className="w-20 text-gray-600">{label}</span>
+                  <span className="w-20 shrink-0 text-gray-600">{label}</span>
                   <div className="flex-1 h-2 bg-gray-100 rounded overflow-hidden">
                     <div className={`h-full ${color}`} style={{ width: `${(val / max) * 100}%` }} />
                   </div>
-                  <span className="w-14 text-right tabular-nums text-gray-600">{val.toFixed(1)}/{max}</span>
+                  <span className="w-14 shrink-0 text-right tabular-nums text-gray-600">{val.toFixed(1)}/{max}</span>
+                  <span className="w-32 shrink-0 text-gray-400 truncate">{hint}</span>
                 </div>
               ))}
             </div>

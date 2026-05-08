@@ -107,42 +107,36 @@ function AssignMenu({ code, tabs, currentTabId, onAssign, onClose, anchorRect }:
   onClose: () => void;
   anchorRect: DOMRect;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [onClose]);
-
   const top = anchorRect.bottom + 4;
   const left = anchorRect.left;
 
   return (
-    <div
-      ref={ref}
-      style={{ position: "fixed", top, left, zIndex: 200 }}
-      className="bg-white border border-gray-200 rounded-xl shadow-lg py-1 min-w-[140px]"
-    >
-      <button
-        onClick={() => { onAssign(code, null); onClose(); }}
-        className={`w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 hover:bg-gray-50 ${!currentTabId ? "text-blue-600 font-semibold" : "text-gray-500"}`}
+    <>
+      {/* 透明遮罩：點選選單外部關閉 */}
+      <div className="fixed inset-0" style={{ zIndex: 199 }} onClick={onClose} />
+      <div
+        style={{ position: "fixed", top, left, zIndex: 200 }}
+        className="bg-white border border-gray-200 rounded-xl shadow-lg py-1 min-w-[140px]"
       >
-        <span className="w-2 h-2 rounded-full bg-gray-300 inline-block shrink-0" />
-        無分組
-      </button>
-      {tabs.map((tab, i) => (
         <button
-          key={tab.id}
-          onClick={() => { onAssign(code, tab.id); onClose(); }}
-          className={`w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 hover:bg-gray-50 ${currentTabId === tab.id ? "text-blue-600 font-semibold" : "text-gray-700"}`}
+          onClick={() => { onAssign(code, null); onClose(); }}
+          className={`w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 hover:bg-gray-50 ${!currentTabId ? "text-blue-600 font-semibold" : "text-gray-500"}`}
         >
-          <span className={`w-2 h-2 rounded-full inline-block shrink-0 ${tabColor(i).dot}`} />
-          {tab.name}
+          <span className="w-2 h-2 rounded-full bg-gray-300 inline-block shrink-0" />
+          無分組
         </button>
-      ))}
-    </div>
+        {tabs.map((tab, i) => (
+          <button
+            key={tab.id}
+            onClick={() => { onAssign(code, tab.id); onClose(); }}
+            className={`w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 hover:bg-gray-50 ${currentTabId === tab.id ? "text-blue-600 font-semibold" : "text-gray-700"}`}
+          >
+            <span className={`w-2 h-2 rounded-full inline-block shrink-0 ${tabColor(i).dot}`} />
+            {tab.name}
+          </button>
+        ))}
+      </div>
+    </>
   );
 }
 

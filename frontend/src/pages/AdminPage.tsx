@@ -895,6 +895,128 @@ function PublishSection({ token, initialIds }: { token: string; initialIds?: num
 }
 
 // ── 主頁面 ────────────────────────────────────────────────
+// ── 邀請碼管理 ────────────────────────────────────────────────
+interface InviteCodeItem {
+  id: number;
+  code: string;
+  created_at: string;
+  is_active: boolean;
+  used: boolean;
+  used_at: string | null;
+  used_by_name: string | null;
+}
+
+function InviteCodesSection({ token }: { token: string }) {
+  const headers = { Authorization: `Bearer ${token}` };
+  const [list, setList] = useState<InviteCodeItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const load = () => {
+    setLoading(true);
+    axios.get("/api/admin/invite-codes", { headers })
+      .then((r) => setList(r.data))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const handleCreate = async () => {
+    setCreating(true);
+    setMsg(null);
+    try {
+      await axios.post("/api/admin/invite-codes", {}, { headers });
+      load();
+    } catch {
+      setMsg("建立失敗");
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleDeactivate = async (id: number) => {
+    await axios.delete(`/api/admin/invite-codes/${id}`, { headers });
+    setList((prev) => prev.map((c) => c.id === id ? { ...c, is_active: false } : c));
+  };
+
+  const fmtDt = (s: string | null) =>
+    s ? new Date(s + "Z").toLocaleString("zh-TW", { timeZone: "Asia/Taipei", hour12: false }) : "—";
+
+  const active = list.filter((c) => c.is_active && !c.used);
+  const used = list.filter((c) => c.used);
+  const inactive = list.filter((c) => !c.is_active && !c.used);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-gray-500">可用 {active.length} 個 · 已使用 {used.length} 個</p>
+        <div className="flex items-center gap-2">
+          {msg && <span className="text-xs text-red-500">{msg}</span>}
+          <button
+            onClick={handleCreate}
+            disabled={creating}
+            className="px-3 py-1.5 text-sm rounded-lg bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-50"
+          >
+            {creating ? "建立中…" : "+ 產生邀請碼"}
+          </button>
+        </div>
+      </div>
+
+      {loading ? (
+        <p className="text-sm text-gray-400">載入中…</p>
+      ) : list.length === 0 ? (
+        <p className="text-sm text-gray-400">尚無邀請碼，點「產生邀請碼」建立第一個。</p>
+      ) : (
+        <section className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
+              <tr>
+                <th className="px-4 py-2.5 text-left">邀請碼</th>
+                <th className="px-4 py-2.5 text-left">建立時間</th>
+                <th className="px-4 py-2.5 text-left">狀態</th>
+                <th className="px-4 py-2.5 text-left">使用者</th>
+                <th className="px-4 py-2.5 text-left">使用時間</th>
+                <th className="px-4 py-2.5 text-left"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {list.map((c) => (
+                <tr key={c.id} className="hover:bg-gray-50">
+                  <td className="px-4 py-2.5 font-mono text-gray-800">{c.code}</td>
+                  <td className="px-4 py-2.5 text-gray-500 whitespace-nowrap">{fmtDt(c.created_at)}</td>
+                  <td className="px-4 py-2.5">
+                    {c.used ? (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">已使用</span>
+                    ) : c.is_active ? (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-green-50 text-green-600 font-medium">可用</span>
+                    ) : (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-red-50 text-red-500">已停用</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-2.5 text-gray-600">{c.used_by_name ?? "—"}</td>
+                  <td className="px-4 py-2.5 text-gray-400 whitespace-nowrap">{fmtDt(c.used_at)}</td>
+                  <td className="px-4 py-2.5">
+                    {c.is_active && !c.used && (
+                      <button
+                        onClick={() => handleDeactivate(c.id)}
+                        className="text-xs text-red-400 hover:text-red-600 transition"
+                      >
+                        停用
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
+    </div>
+  );
+}
+
+
 function SyncHistorySection() {
   const [logs, setLogs] = useState<SyncLogEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1040,7 +1162,7 @@ export default function AdminPage() {
   const { user, token } = useAuth();
   const location = useLocation();
   const locState = location.state as { tab?: "publish" | "daily" | "users"; selectedIds?: number[] } | null;
-  const [tab, setTab] = useState<"publish" | "daily" | "users" | "sync">(locState?.tab ?? "publish");
+  const [tab, setTab] = useState<"publish" | "daily" | "users" | "sync" | "invites">(locState?.tab ?? "publish");
   const [users, setUsers] = useState<UserRecord[]>([]);
   const [selectedUser, setSelectedUser] = useState<UserRecord | null>(null);
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -1077,6 +1199,7 @@ export default function AdminPage() {
     { id: "daily",   label: "每日草稿" },
     { id: "sync",    label: "同步記錄" },
     { id: "users",   label: "帳號管理" },
+    { id: "invites", label: "邀請碼" },
   ] as const;
 
   return (
@@ -1105,6 +1228,8 @@ export default function AdminPage() {
       {tab === "daily" && <DailySection token={token ?? ""} />}
 
       {tab === "sync" && <SyncHistorySection />}
+
+      {tab === "invites" && <InviteCodesSection token={token ?? ""} />}
 
       {tab === "users" && (
         <>{/* 使用者列表 */}

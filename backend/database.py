@@ -51,6 +51,6 @@ def _migrate():
 
 
 def init_db():
-    from models import DriveFile, Report, Watchlist, FuturesChip, Stock, DailyArticle, SyncLog  # noqa: F401
+    from models import DriveFile, Report, Watchlist, FuturesChip, Stock, DailyArticle, SyncLog, InviteCode  # noqa: F401
     Base.metadata.create_all(bind=engine)
     _migrate()

@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import User, LoginSession
+from models import User, LoginSession, InviteCode
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -51,6 +51,7 @@ def require_admin(user: User = Depends(get_current_user)) -> User:
 
 class GoogleLoginRequest(BaseModel):
     credential: str  # Google ID token
+    invite_code: str = ""
 
 
 class GoogleUserinfoRequest(BaseModel):
@@ -58,16 +59,13 @@ class GoogleUserinfoRequest(BaseModel):
     email: str
     name: str = ""
     picture: str = ""
+    invite_code: str = ""
 
 
 @router.post("/google/userinfo")
 def google_login_userinfo(body: GoogleUserinfoRequest, request: Request, db: Session = Depends(get_db)):
     """接收前端從 Google userinfo API 取得的資料，建立/更新使用者"""
-    google_id = body.sub
-    email = body.email
-    name = body.name
-    picture = body.picture
-    return _upsert_user_and_session(google_id, email, name, picture, request, db)
+    return _upsert_user_and_session(body.sub, body.email, body.name, body.picture, body.invite_code, request, db)
 
 
 @router.post("/google")
@@ -88,17 +86,28 @@ def google_login(body: GoogleLoginRequest, request: Request, db: Session = Depen
     email = idinfo.get("email", "")
     name = idinfo.get("name", "")
     picture = idinfo.get("picture", "")
-    return _upsert_user_and_session(google_id, email, name, picture, request, db)
+    return _upsert_user_and_session(google_id, email, name, picture, body.invite_code, request, db)
 
 
-def _upsert_user_and_session(google_id: str, email: str, name: str, picture: str, request: Request, db: Session):
+def _upsert_user_and_session(google_id: str, email: str, name: str, picture: str, invite_code: str, request: Request, db: Session):
     user = db.query(User).filter(User.google_id == google_id).first()
-    if user:
-        user.name = name
-        user.picture = picture
-        user.last_login = datetime.utcnow()
-    else:
+    is_new = user is None
+
+    if is_new:
         is_first = db.query(User).count() == 0
+        if not is_first:
+            # 非第一位用戶（第一位自動成為管理員）需要有效邀請碼
+            code = invite_code.strip()
+            if not code:
+                raise HTTPException(status_code=403, detail="需要邀請碼才能註冊")
+            invite = (
+                db.query(InviteCode)
+                .filter(InviteCode.code == code, InviteCode.is_active == 1, InviteCode.used_by == None)  # noqa: E711
+                .first()
+            )
+            if not invite:
+                raise HTTPException(status_code=403, detail="邀請碼無效或已使用")
+
         user = User(
             google_id=google_id,
             email=email,
@@ -108,6 +117,15 @@ def _upsert_user_and_session(google_id: str, email: str, name: str, picture: str
         )
         db.add(user)
         db.flush()
+
+        # 標記邀請碼已使用
+        if not is_first:
+            invite.used_by = user.id
+            invite.used_at = datetime.utcnow()
+    else:
+        user.name = name
+        user.picture = picture
+        user.last_login = datetime.utcnow()
 
     session = LoginSession(
         user_id=user.id,

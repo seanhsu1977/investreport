@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Float, DateTime, Date, Text, ForeignKey, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Float, DateTime, Date, Text, ForeignKey, UniqueConstraint, Boolean
 from database import Base
 
 
@@ -51,6 +51,18 @@ class LoginSession(Base):
     logged_in_at = Column(DateTime, default=datetime.utcnow)
     ip_address = Column(String)
     user_agent = Column(String)
+
+
+class InviteCode(Base):
+    __tablename__ = "invite_codes"
+
+    id = Column(Integer, primary_key=True)
+    code = Column(String, unique=True, nullable=False, index=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    used_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    used_at = Column(DateTime, nullable=True)
+    is_active = Column(Integer, default=1)  # 0 = deactivated by admin
 
 
 class Watchlist(Base):

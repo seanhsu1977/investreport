@@ -7,6 +7,7 @@ load_dotenv(override=True)
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from database import init_db
@@ -59,6 +60,17 @@ def health():
 _static_dir = os.path.join(os.path.dirname(__file__), "static")
 if os.path.isdir(_static_dir):
     logging.info("Static dir found at %s — serving React app", _static_dir)
-    app.mount("/", StaticFiles(directory=_static_dir, html=True), name="static")
+
+    # Catch-all: serve index.html for any non-API path (SPA client-side routing)
+    @app.get("/{full_path:path}", include_in_schema=False)
+    def spa_fallback(full_path: str):
+        index = os.path.join(_static_dir, "index.html")
+        asset = os.path.join(_static_dir, full_path)
+        # 有對應實體檔案（JS/CSS/圖片）就直接回傳，否則回傳 index.html
+        if full_path and os.path.isfile(asset):
+            return FileResponse(asset)
+        return FileResponse(index)
+
+    app.mount("/assets", StaticFiles(directory=os.path.join(_static_dir, "assets")), name="assets")
 else:
     logging.warning("Static dir NOT found at %s — frontend will not be served", _static_dir)

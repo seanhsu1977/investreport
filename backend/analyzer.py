@@ -169,12 +169,16 @@ def analyze_report(pdf_bytes: bytes, filename: str | None = None) -> dict | None
                 max_output_tokens=1024,
             ),
         )
-        return parse_json_response(response.text)
+        result = parse_json_response(response.text)
+        if result is None:
+            logger.warning("[%s] text-path parse failed. raw[:120]: %s", filename, response.text[:120])
+        return result
 
     else:
         # 掃描圖片型 PDF → Gemini Vision
         images_b64 = pdf_to_images_base64(pdf_bytes, max_pages=3)
         if not images_b64:
+            logger.warning("[%s] no text and pdf_to_images returned empty — skipping", filename)
             return None
 
         parts: list = []

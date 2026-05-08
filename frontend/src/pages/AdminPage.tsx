@@ -1042,8 +1042,10 @@ function SyncHistorySection() {
       await syncApi.trigger();
       setMsg("同步已啟動，稍後重新整理查看結果");
       setTimeout(load, 5000);
-    } catch {
-      setMsg("啟動失敗");
+    } catch (e: unknown) {
+      const status = (e as { response?: { status?: number; data?: { detail?: string } } })?.response?.status;
+      const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setMsg(status === 409 ? (detail ?? "已有同步進行中") : "啟動失敗");
     } finally {
       setSyncing(false);
     }

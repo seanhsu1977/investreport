@@ -29,6 +29,9 @@ async def trigger_sync(
     since: Optional[str] = Query(None, description="只同步此日期後的檔案，格式 YYYY-MM-DD"),
 ):
     """手動觸發立即同步（在獨立執行緒背景執行，不阻塞 API）"""
+    from fastapi import HTTPException
+    if get_sync_progress().get("running"):
+        raise HTTPException(status_code=409, detail="已有同步在進行中，請等待完成後再試")
     background_tasks.add_task(_do_sync_async, since)
     return {"status": "sync_started", "since": since}
 

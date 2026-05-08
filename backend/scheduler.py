@@ -46,6 +46,9 @@ def _save_sync_log(db, log: SyncLog, result: dict | None, error: str | None = No
 
 def _sync_job():
     global _last_sync_result, _sync_progress, _sync_cancelled
+    if _sync_progress.get("running"):
+        logger.warning("Scheduled sync skipped — another sync is already running")
+        return
     logger.info("Starting scheduled Drive sync...")
     _sync_cancelled = False
     _sync_progress = {"running": True, "current": "", "processed": 0, "skipped": 0, "errors": 0, "total": 0}
@@ -142,6 +145,8 @@ def get_sync_progress() -> dict:
 
 def run_sync_now(db, since: str | None = None) -> dict:
     global _sync_progress, _sync_cancelled
+    if _sync_progress.get("running"):
+        raise RuntimeError("已有同步在進行中，請等待完成後再試")
     _sync_cancelled = False
     _sync_progress = {"running": True, "current": "", "processed": 0, "skipped": 0, "errors": 0, "total": 0}
     sync_start = datetime.now(timezone.utc).replace(tzinfo=None)

@@ -103,13 +103,27 @@ function DailySection({ token }: { token: string }) {
       const params: Record<string, string | boolean> = { force: true };
       if (generateDate) params.date = generateDate;
       const r = await axios.post<DailyDraftDetail>(
-        "/api/publish/daily/refresh", null, { headers, params }
+        "/api/publish/daily/refresh", null, { headers, params, timeout: 120000 }
       );
       setActive(r.data);
       await refreshList();
       setMsg({ ok: true, text: `✅ 生成完成：${r.data.title}` });
     } catch (e: any) {
-      setMsg({ ok: false, text: `❌ ${e.response?.data?.detail ?? "生成失敗"}` });
+      const status = e.response?.status;
+      const ct = e.response?.headers?.["content-type"] ?? "";
+      let detail = "生成失敗";
+      if (e.response?.data) {
+        if (ct.includes("json") || typeof e.response.data === "object") {
+          detail = e.response.data?.detail ?? JSON.stringify(e.response.data).slice(0, 200);
+        } else if (typeof e.response.data === "string" && !e.response.data.startsWith("<")) {
+          detail = e.response.data.slice(0, 200);
+        } else if (status) {
+          detail = `HTTP ${status}`;
+        }
+      } else if (e.code === "ECONNABORTED" || e.message?.includes("timeout")) {
+        detail = "請求逾時（Gemini 回應太慢），請稍後再試";
+      }
+      setMsg({ ok: false, text: `❌ ${detail}` });
     } finally {
       setGenerating(false);
     }

@@ -559,7 +559,8 @@ function RecommendationsSection() {
       setWarnings(data.warnings ?? []);
       setLastFetched(fetchedAt);
     } catch (e: any) {
-      setError("載入失敗，請稍後再試。");
+      const detail = e?.response?.data?.detail ?? e?.message ?? "未知錯誤";
+      setError(`載入失敗：${detail}`);
     } finally {
       setLoading(false);
     }

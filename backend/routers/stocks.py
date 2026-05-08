@@ -256,8 +256,10 @@ async def get_recommendations(
     db: Session = Depends(get_db),
 ):
     """投顧精選排行：依共識度 + 籌碼 + 量價綜合評分。"""
+    import logging as _log
     import time
     from models import RecommendationCache
+    _logger = _log.getLogger(__name__)
     cache_key = f"{days}_{min_reports}_{rec_filter}_{limit}"
 
     # 1. in-memory cache（最快）

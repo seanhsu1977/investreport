@@ -769,10 +769,12 @@ export default function WatchlistPage() {
   };
 
   // ── 置頂 ──────────────────────────────────────────────
-  const [pinnedCodes, setPinnedCodes] = useState<Set<string>>(() => {
-    if (!pinKey) return new Set();
-    try { return new Set(JSON.parse(localStorage.getItem(pinKey) ?? "[]")); } catch { return new Set(); }
-  });
+  const [pinnedCodes, setPinnedCodes] = useState<Set<string>>(new Set());
+  // user 載入後才能讀到正確的 pinKey
+  useEffect(() => {
+    if (!pinKey) return;
+    try { setPinnedCodes(new Set(JSON.parse(localStorage.getItem(pinKey) ?? "[]"))); } catch {}
+  }, [pinKey]);
   const togglePin = (code: string) => {
     setPinnedCodes(prev => {
       const s = new Set(prev);
@@ -841,16 +843,23 @@ export default function WatchlistPage() {
     if (!e.currentTarget.contains(e.relatedTarget as Node))
       (e.currentTarget as HTMLElement).style.borderTop = "";
   };
-  const handleDrop = (e: React.DragEvent, i: number) => {
+  const handleDrop = (e: React.DragEvent, targetIdx: number) => {
     e.preventDefault();
     (e.currentTarget as HTMLElement).style.borderTop = "";
-    const from = dragSrc.current;
+    const fromIdx = dragSrc.current;
     dragSrc.current = null;
-    if (from === null || from === i) return;
+    if (fromIdx === null || fromIdx === targetIdx) return;
+    const fromCode = filteredItems[fromIdx]?.stock_code;
+    const toCode = filteredItems[targetIdx]?.stock_code;
+    if (!fromCode || !toCode) return;
     setOrderedCodes((prev) => {
-      const next = [...prev];
-      const [moved] = next.splice(from, 1);
-      next.splice(i, 0, moved);
+      const allCodes = prev.length ? prev : items.map(i => i.stock_code);
+      const next = [...allCodes];
+      const fromPos = next.indexOf(fromCode);
+      const toPos = next.indexOf(toCode);
+      if (fromPos === -1 || toPos === -1) return prev;
+      const [moved] = next.splice(fromPos, 1);
+      next.splice(toPos, 0, moved);
       if (storageKey) localStorage.setItem(storageKey, JSON.stringify(next));
       return next;
     });

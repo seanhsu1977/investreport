@@ -1023,7 +1023,54 @@ function SyncHistorySection() {
   const [syncing, setSyncing] = useState(false);
   const [reanalyzing, setReanalyzing] = useState(false);
   const [noReportCount, setNoReportCount] = useState<number | null>(null);
-  const [msg, setMsg] = useState<string | null>(null);
+  const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const importRef = useRef<HTMLInputElement>(null);
+  const [importing, setImporting] = useState(false);
+
+  const handleExport = async () => {
+    try {
+      const res = await fetch("/api/admin/export", {
+        headers: { Authorization: `Bearer ${localStorage.getItem("auth_token")}` },
+      });
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "investreport_export.json";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      setMsg({ ok: false, text: "匯出失敗" });
+    }
+  };
+
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    setMsg(null);
+    try {
+      const text = await file.text();
+      const payload = JSON.parse(text);
+      const res = await fetch("/api/admin/import", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+        },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail ?? "匯入失敗");
+      setMsg({ ok: true, text: `匯入完成：DriveFile +${data.drive_files_added}（略過 ${data.drive_files_skipped}）、Report +${data.reports_added}（略過 ${data.reports_skipped}）` });
+      load();
+    } catch (err: unknown) {
+      setMsg({ ok: false, text: err instanceof Error ? err.message : "匯入失敗" });
+    } finally {
+      setImporting(false);
+      if (importRef.current) importRef.current.value = "";
+    }
+  };
 
   const [showFileList, setShowFileList] = useState(false);
   const [fileList, setFileList] = useState<{ drive_file_id: string; filename: string; modified_at: string | null }[]>([]);
@@ -1064,12 +1111,12 @@ function SyncHistorySection() {
     setMsg(null);
     try {
       await syncApi.trigger();
-      setMsg("同步已啟動，稍後重新整理查看結果");
+      setMsg({ ok: true, text: "同步已啟動，稍後重新整理查看結果" });
       setTimeout(load, 5000);
     } catch (e: unknown) {
       const status = (e as { response?: { status?: number; data?: { detail?: string } } })?.response?.status;
       const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setMsg(status === 409 ? (detail ?? "已有同步進行中") : "啟動失敗");
+      setMsg({ ok: false, text: status === 409 ? (detail ?? "已有同步進行中") : "啟動失敗" });
     } finally {
       setSyncing(false);
     }
@@ -1080,10 +1127,10 @@ function SyncHistorySection() {
     setMsg(null);
     try {
       const res = await syncApi.reanalyze(50);
-      setMsg(res.message);
+      setMsg({ ok: true, text: res.message });
       setTimeout(load, 3000);
     } catch {
-      setMsg("重新分析啟動失敗");
+      setMsg({ ok: false, text: "重新分析啟動失敗" });
     } finally {
       setReanalyzing(false);
     }
@@ -1103,8 +1150,13 @@ function SyncHistorySection() {
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <p className="text-sm text-gray-500">顯示最近 30 筆同步記錄</p>
         <div className="flex items-center gap-2 flex-wrap">
-          {msg && <span className="text-xs text-blue-600">{msg}</span>}
+          {msg && <span className={`text-xs ${msg.ok ? "text-green-600" : "text-red-500"}`}>{msg.text}</span>}
           <button onClick={load} className="px-3 py-1.5 text-sm rounded-lg border border-gray-300 hover:bg-gray-50">重新整理</button>
+          <button onClick={handleExport} className="px-3 py-1.5 text-sm rounded-lg border border-gray-300 hover:bg-gray-50">匯出資料</button>
+          <label className={`px-3 py-1.5 text-sm rounded-lg border border-gray-300 hover:bg-gray-50 cursor-pointer ${importing ? "opacity-50 pointer-events-none" : ""}`}>
+            {importing ? "匯入中…" : "匯入資料"}
+            <input ref={importRef} type="file" accept=".json" className="hidden" onChange={handleImportFile} />
+          </label>
           {noReportCount !== null && noReportCount > 0 && (
             <>
               <button

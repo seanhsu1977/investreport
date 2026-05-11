@@ -57,8 +57,11 @@ def _sync_job():
     log = SyncLog(started_at=sync_start, trigger="scheduled", status="running")
     db.add(log)
     db.commit()
+    # 只同步最近 30 天的新檔案，避免遞迴掃全部資料夾觸發 Drive API rate limit
+    from datetime import timedelta
+    since = (sync_start - timedelta(days=30)).strftime("%Y-%m-%d")
     try:
-        _last_sync_result = sync_drive(db, progress=_sync_progress, cancelled=lambda: _sync_cancelled)
+        _last_sync_result = sync_drive(db, progress=_sync_progress, cancelled=lambda: _sync_cancelled, since=since)
         logger.info(f"Sync completed: {_last_sync_result}")
         from notifier import notify_sync_done
         new_reports = _fetch_new_reports(db, sync_start)

@@ -1259,11 +1259,16 @@ function SyncHistorySection() {
                     <span className={log.errors > 0 ? "text-red-500 font-medium" : "text-gray-400"}>{log.errors}</span>
                   </td>
                   <td className="px-4 py-2.5 text-right text-gray-500 whitespace-nowrap">{duration(log)}</td>
-                  <td className="px-4 py-2.5">
+                  <td className="px-4 py-2.5 max-w-xs">
                     {log.status === "running" ? (
                       <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-50 text-yellow-600 font-medium animate-pulse">同步中</span>
                     ) : log.status === "error" ? (
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-red-50 text-red-600 font-medium" title={log.error_message ?? ""}>失敗</span>
+                      <div>
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-red-50 text-red-600 font-medium">失敗</span>
+                        {log.error_message && (
+                          <p className="text-xs text-red-400 mt-1 break-all">{log.error_message}</p>
+                        )}
+                      </div>
                     ) : (
                       <span className="text-xs px-2 py-0.5 rounded-full bg-green-50 text-green-600 font-medium">完成</span>
                     )}

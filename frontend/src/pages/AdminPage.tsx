@@ -1059,6 +1059,7 @@ function SyncHistorySection() {
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const importRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
+  const [sinceDate, setSinceDate] = useState("");
 
   const handleExport = async () => {
     try {
@@ -1142,12 +1143,12 @@ function SyncHistorySection() {
 
   useEffect(() => { load(); }, []);
 
-  const handleSync = async () => {
+  const handleSync = async (since?: string) => {
     setSyncing(true);
     setMsg(null);
     try {
-      await syncApi.trigger();
-      setMsg({ ok: true, text: "同步已啟動，稍後重新整理查看結果" });
+      await syncApi.trigger(since || undefined);
+      setMsg({ ok: true, text: since ? `同步已啟動（從 ${since} 起）` : "全量同步已啟動，稍後重新整理查看結果" });
       setTimeout(load, 5000);
     } catch (e: unknown) {
       const status = (e as { response?: { status?: number; data?: { detail?: string } } })?.response?.status;
@@ -1208,13 +1209,22 @@ function SyncHistorySection() {
               {reanalyzing ? "分析中…" : `重新分析 (${noReportCount} 筆無結果)`}
             </button>
           )}
-          <button
-            onClick={handleSync}
-            disabled={syncing}
-            className="px-3 py-1.5 text-sm rounded-lg bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-50"
-          >
-            {syncing ? "啟動中…" : "立即同步"}
-          </button>
+          <div className="flex items-center gap-1.5">
+            <input
+              type="date"
+              value={sinceDate}
+              onChange={e => setSinceDate(e.target.value)}
+              className="text-sm px-2 py-1.5 rounded-lg border border-gray-300 text-gray-600 focus:outline-none focus:border-blue-400"
+              title="留空=全量掃描，填日期=只掃該日之後的新檔"
+            />
+            <button
+              onClick={() => handleSync(sinceDate || undefined)}
+              disabled={syncing}
+              className="px-3 py-1.5 text-sm rounded-lg bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-50 whitespace-nowrap"
+            >
+              {syncing ? "啟動中…" : sinceDate ? `從 ${sinceDate} 同步` : "全量同步"}
+            </button>
+          </div>
         </div>
       </div>
 

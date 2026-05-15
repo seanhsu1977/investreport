@@ -93,15 +93,17 @@ SUPPORTED_MIME_QUERY = (
 
 
 def list_pdf_files(service, folder_id: str, since: str | None = None) -> list[dict]:
-    """遞迴掃描資料夾及所有子資料夾中的 PDF 與圖片
+    """掃描資料夾（含所有子資料夾）中的 PDF 與圖片。
+
+    使用 Drive API 的 `in ancestors` 語法，一次 query 搜尋整棵資料夾樹，
+    避免遞迴呼叫 API（舊做法每個子資料夾需一次 API call，100 個子資料夾 = 100 次 call）。
 
     Args:
         since: RFC-3339 日期字串（如 "2024-01-01T00:00:00"），只列出此時間之後建立的檔案
     """
     results = []
-
-    # 取得當前資料夾中的 PDF + 圖片
-    query = f"'{folder_id}' in parents and ({SUPPORTED_MIME_QUERY}) and trashed=false"
+    # 用 'FOLDER_ID' in ancestors 一次搜尋整棵子樹，不需要遞迴
+    query = f"'{folder_id}' in ancestors and ({SUPPORTED_MIME_QUERY}) and trashed=false"
     if since:
         query += f" and createdTime >= '{since}'"
     page_token = None
@@ -110,22 +112,12 @@ def list_pdf_files(service, folder_id: str, since: str | None = None) -> list[di
             q=query,
             fields="nextPageToken, files(id, name, mimeType, createdTime)",
             pageToken=page_token,
-            pageSize=100,
+            pageSize=1000,
         ).execute()
         results.extend(resp.get("files", []))
         page_token = resp.get("nextPageToken")
         if not page_token:
             break
-
-    # 遞迴處理子資料夾
-    subfolders_query = f"'{folder_id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
-    resp = service.files().list(
-        q=subfolders_query,
-        fields="files(id, name)",
-        pageSize=100,
-    ).execute()
-    for subfolder in resp.get("files", []):
-        results.extend(list_pdf_files(service, subfolder["id"], since=since))
 
     return results
 

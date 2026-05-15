@@ -92,32 +92,67 @@ SUPPORTED_MIME_QUERY = (
 )
 
 
+def _collect_all_folder_ids(service, folder_id: str) -> list[str]:
+    """BFS 收集 folder_id 及其所有子資料夾的 ID。"""
+    all_ids = [folder_id]
+    to_scan = [folder_id]
+    while to_scan:
+        current = to_scan.pop(0)
+        page_token = None
+        while True:
+            resp = service.files().list(
+                q=f"'{current}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false",
+                fields="nextPageToken, files(id)",
+                pageSize=1000,
+            ).execute()
+            for sf in resp.get("files", []):
+                all_ids.append(sf["id"])
+                to_scan.append(sf["id"])
+            page_token = resp.get("nextPageToken")
+            if not page_token:
+                break
+    return all_ids
+
+
 def list_pdf_files(service, folder_id: str, since: str | None = None) -> list[dict]:
     """掃描資料夾（含所有子資料夾）中的 PDF 與圖片。
 
-    使用 Drive API 的 `in ancestors` 語法，一次 query 搜尋整棵資料夾樹，
-    避免遞迴呼叫 API（舊做法每個子資料夾需一次 API call，100 個子資料夾 = 100 次 call）。
+    兩階段策略：
+    Phase 1 — BFS 收集所有子資料夾 ID（一次 API call per folder）
+    Phase 2 — 批次查詢檔案（每批 50 個 folder，用 OR 合併成一個 query）
+              100 個子資料夾只需 2 次檔案查詢（舊做法需 100 次）
 
     Args:
         since: RFC-3339 日期字串（如 "2024-01-01T00:00:00"），只列出此時間之後建立的檔案
     """
-    results = []
-    # 用 'FOLDER_ID' in ancestors 一次搜尋整棵子樹，不需要遞迴
-    query = f"'{folder_id}' in ancestors and ({SUPPORTED_MIME_QUERY}) and trashed=false"
-    if since:
-        query += f" and createdTime >= '{since}'"
-    page_token = None
-    while True:
-        resp = service.files().list(
-            q=query,
-            fields="nextPageToken, files(id, name, mimeType, createdTime)",
-            pageToken=page_token,
-            pageSize=1000,
-        ).execute()
-        results.extend(resp.get("files", []))
-        page_token = resp.get("nextPageToken")
-        if not page_token:
-            break
+    # Phase 1: 收集所有 folder ID
+    all_folder_ids = _collect_all_folder_ids(service, folder_id)
+
+    # Phase 2: 批次查詢檔案（每批 50 個 folder，避免 query string 過長）
+    results: list[dict] = []
+    seen: set[str] = set()
+    BATCH = 50
+    for i in range(0, len(all_folder_ids), BATCH):
+        batch = all_folder_ids[i:i + BATCH]
+        parents_clause = " or ".join(f"'{fid}' in parents" for fid in batch)
+        query = f"({parents_clause}) and ({SUPPORTED_MIME_QUERY}) and trashed=false"
+        if since:
+            query += f" and createdTime >= '{since}'"
+        page_token = None
+        while True:
+            resp = service.files().list(
+                q=query,
+                fields="nextPageToken, files(id, name, mimeType, createdTime)",
+                pageToken=page_token,
+                pageSize=1000,
+            ).execute()
+            for f in resp.get("files", []):
+                if f["id"] not in seen:
+                    results.append(f)
+                    seen.add(f["id"])
+            page_token = resp.get("nextPageToken")
+            if not page_token:
+                break
 
     return results
 

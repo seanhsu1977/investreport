@@ -142,7 +142,9 @@ def _recommendations_warmup_job():
 
 
 def start_scheduler():
-    scheduler.add_job(_sync_job, "cron", hour=20, minute=0, id="drive_sync")
+    # Drive 同步：每天 4 次（台北時間 04:00 / 09:00 / 14:00 / 20:00）
+    # 04:00 → 抓凌晨上傳；09:00 → 抓早盤前投顧報告；14:00 → 抓午間；20:00 → 抓盤後
+    scheduler.add_job(_sync_job, "cron", hour="20,1,6,12", minute=0, timezone="Asia/Taipei", id="drive_sync")
     # 期交所三大法人 ~15:00 公布；保險點 15:45 (Asia/Taipei) Mon-Fri
     scheduler.add_job(
         _chips_job, "cron",
@@ -162,7 +164,7 @@ def start_scheduler():
         id="rec_warmup",
     )
     scheduler.start()
-    logger.info("Scheduler started (drive 20:00, chips 15:45, daily_article 19:45 Mon-Fri, rec_warmup 07:00 daily)")
+    logger.info("Scheduler started (drive sync 04:00/09:00/14:00/20:00 Taipei, chips 15:45, daily_article 19:45 Mon-Fri, rec_warmup 07:00 daily)")
 
 
 def stop_scheduler():

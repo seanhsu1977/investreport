@@ -64,14 +64,16 @@ EXTRACT_PROMPT_IMAGE = """請從這份投資報告或財經新聞圖片中提取
 注意：mentioned_stocks 只在 stock_code 為 null 時填入，格式為「代碼 公司名稱」（如 "2330 台積電"），若只知道公司名稱無代碼則只填名稱。"""
 
 
-def extract_text_from_pdf(pdf_bytes: bytes) -> str:
+def extract_text_from_pdf(pdf_bytes: bytes, max_pages: int = 20) -> tuple[str, int]:
+    """從 PDF 抽取文字，回傳 (text, total_pages)。"""
     with pdfplumber.open(BytesIO(pdf_bytes)) as pdf:
+        total = len(pdf.pages)
         pages = []
-        for page in pdf.pages[:20]:
+        for page in pdf.pages[:max_pages]:
             text = page.extract_text()
             if text:
                 pages.append(text)
-    return "\n\n".join(pages)
+    return "\n\n".join(pages), total
 
 
 def pdf_to_images_base64(pdf_bytes: bytes, max_pages: int = 3) -> list[str]:
@@ -153,13 +155,30 @@ def analyze_report(pdf_bytes: bytes, filename: str | None = None) -> dict | None
     filename_hint = build_filename_hint(filename)
     client = _get_client()
 
-    text = extract_text_from_pdf(pdf_bytes)
+    # 大型 PDF（報紙/早報）只讀前 5 頁避免浪費；一般報告讀前 20 頁
+    # 先嘗試取 total_pages 判斷是否為超大 PDF
+    text, total_pages = extract_text_from_pdf(pdf_bytes, max_pages=20)
 
     if text.strip():
+        # 多頁 PDF（> 10 頁）通常是報紙、晨會彙整：
+        #   - 只取前 5 頁文字，避免把全份報紙丟給 Gemini
+        # 少頁 PDF（個股報告）：
+        #   - 跳過第一頁（封面/免責聲明多），從第二頁開始；字數上限拉高到 12000
+        if total_pages > 10:
+            # 大型文件：只取前 5 頁
+            text_short, _ = extract_text_from_pdf(pdf_bytes, max_pages=5)
+            text_to_send = text_short[:10000]
+        else:
+            # 個股報告：嘗試跳過第一頁（通常是封面）
+            text_pages, _ = extract_text_from_pdf(pdf_bytes, max_pages=20)
+            # 如果頁數 > 1，丟掉第一段（以雙換行分頁）
+            parts_split = text_pages.split("\n\n", 1)
+            text_to_send = (parts_split[1] if len(parts_split) > 1 else text_pages)[:12000]
+
         prompt = EXTRACT_PROMPT_TEXT.format(
             filename_hint=filename_hint,
             schema=_SCHEMA,
-            text=text[:8000],
+            text=text_to_send,
         )
         response = _generate_with_retry(
             client, MODEL,
@@ -171,11 +190,12 @@ def analyze_report(pdf_bytes: bytes, filename: str | None = None) -> dict | None
         )
         result = parse_json_response(response.text)
         if result is None:
-            logger.warning("[%s] text-path parse failed. raw[:120]: %s", filename, response.text[:120])
+            logger.warning("[%s] text-path parse failed (pages=%d). raw[:120]: %s",
+                           filename, total_pages, response.text[:120])
         return result
 
     else:
-        # 掃描圖片型 PDF → Gemini Vision
+        # 掃描圖片型 PDF → Gemini Vision（最多 3 頁）
         images_b64 = pdf_to_images_base64(pdf_bytes, max_pages=3)
         if not images_b64:
             logger.warning("[%s] no text and pdf_to_images returned empty — skipping", filename)

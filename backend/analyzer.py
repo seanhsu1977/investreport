@@ -64,12 +64,14 @@ EXTRACT_PROMPT_IMAGE = """請從這份投資報告或財經新聞圖片中提取
 注意：mentioned_stocks 只在 stock_code 為 null 時填入，格式為「代碼 公司名稱」（如 "2330 台積電"），若只知道公司名稱無代碼則只填名稱。"""
 
 
-def extract_text_from_pdf(pdf_bytes: bytes, max_pages: int = 20) -> tuple[str, int]:
-    """從 PDF 抽取文字，回傳 (text, total_pages)。"""
+def extract_text_from_pdf(pdf_bytes: bytes, max_pages: int = 20, skip_pages: int = 0) -> tuple[str, int]:
+    """從 PDF 抽取文字，回傳 (text, total_pages)。
+    skip_pages: 跳過前幾頁（用於有封面的早報/彙整報告）。
+    """
     with pdfplumber.open(BytesIO(pdf_bytes)) as pdf:
         total = len(pdf.pages)
         pages = []
-        for page in pdf.pages[:max_pages]:
+        for page in pdf.pages[skip_pages: skip_pages + max_pages]:
             text = page.extract_text()
             if text:
                 pages.append(text)
@@ -160,10 +162,10 @@ def analyze_report(pdf_bytes: bytes, filename: str | None = None) -> dict | None
     text, total_pages = extract_text_from_pdf(pdf_bytes, max_pages=20)
 
     if text.strip():
-        # 大型 PDF（報紙/晨會彙整，> 10 頁）：只取前 5 頁，避免把全份報紙丟給 Gemini
-        # 個股報告（≤ 10 頁）：第 1 頁通常就是評等/目標價，字數上限拉高到 12000
+        # 大型 PDF（早報/報紙/晨會彙整，> 10 頁）：有封面，跳過第 1 頁，取第 2-6 頁
+        # 個股投顧報告（≤ 10 頁）：沒有封面，第 1 頁就是評等/目標價，字數上限拉高到 12000
         if total_pages > 10:
-            text_short, _ = extract_text_from_pdf(pdf_bytes, max_pages=5)
+            text_short, _ = extract_text_from_pdf(pdf_bytes, max_pages=5, skip_pages=1)
             text_to_send = text_short[:10000]
         else:
             text_to_send = text[:12000]

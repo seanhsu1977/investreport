@@ -5,30 +5,34 @@ import os
 import pdfplumber
 from io import BytesIO
 import time
-from google import genai
-from google.genai import types
+import anthropic
 
 
-def _get_client() -> genai.Client:
-    return genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+def _get_client() -> anthropic.Anthropic:
+    return anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
 
-def _generate_with_retry(client: genai.Client, model: str, contents, config, max_retries: int = 3):
+def _generate_with_retry(client: anthropic.Anthropic, model: str, system: str, messages: list, max_tokens: int = 1024, max_retries: int = 3):
     for attempt in range(max_retries):
         try:
-            return client.models.generate_content(model=model, contents=contents, config=config)
+            return client.messages.create(
+                model=model,
+                system=system,
+                messages=messages,
+                max_tokens=max_tokens,
+            )
         except Exception as e:
             if attempt == max_retries - 1:
                 raise
             msg = str(e)
-            if "503" in msg or "429" in msg or "UNAVAILABLE" in msg or "quota" in msg.lower():
+            if "529" in msg or "429" in msg or "overloaded" in msg.lower() or "rate_limit" in msg.lower():
                 wait = 2 ** attempt * 3  # 3s, 6s, 12s
                 time.sleep(wait)
             else:
                 raise
 
 
-MODEL = "gemini-2.5-flash"
+MODEL = "claude-haiku-4-5"
 
 SYSTEM_PROMPT = """你是一位專業的投資報告分析師。
 請從投資研究報告或財經新聞中提取結構化資訊，並以 JSON 格式回傳。
@@ -125,7 +129,7 @@ def parse_json_response(raw: str) -> dict | None:
         except json.JSONDecodeError:
             pass
 
-    logger.warning("parse_json_response: 無法解析 Gemini 回應，前100字: %s", raw[:100])
+    logger.warning("parse_json_response: 無法解析回應，前100字: %s", raw[:100])
     return None
 
 
@@ -139,18 +143,26 @@ def analyze_image_file(image_bytes: bytes, media_type: str, filename: str | None
     filename_hint = build_filename_hint(filename)
     client = _get_client()
     prompt = EXTRACT_PROMPT_IMAGE.format(filename_hint=filename_hint, schema=_SCHEMA)
+    img_b64 = base64.b64encode(image_bytes).decode()
     response = _generate_with_retry(
         client, MODEL,
-        contents=[
-            types.Part.from_bytes(data=image_bytes, mime_type=media_type),
-            prompt,
-        ],
-        config=types.GenerateContentConfig(
-            system_instruction=SYSTEM_PROMPT,
-            max_output_tokens=1024,
-        ),
+        system=SYSTEM_PROMPT,
+        messages=[{
+            "role": "user",
+            "content": [
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": media_type,
+                        "data": img_b64,
+                    },
+                },
+                {"type": "text", "text": prompt},
+            ],
+        }],
     )
-    return parse_json_response(response.text)
+    return parse_json_response(response.content[0].text)
 
 
 def analyze_report(pdf_bytes: bytes, filename: str | None = None) -> dict | None:
@@ -177,39 +189,40 @@ def analyze_report(pdf_bytes: bytes, filename: str | None = None) -> dict | None
         )
         response = _generate_with_retry(
             client, MODEL,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                system_instruction=SYSTEM_PROMPT,
-                max_output_tokens=1024,
-                response_mime_type="application/json",
-            ),
+            system=SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": prompt}],
         )
-        result = parse_json_response(response.text)
+        result = parse_json_response(response.content[0].text)
         if result is None:
             logger.warning("[%s] text-path parse failed (pages=%d). raw[:120]: %s",
-                           filename, total_pages, response.text[:120])
+                           filename, total_pages, response.content[0].text[:120])
         return result
 
     else:
-        # 掃描圖片型 PDF → Gemini Vision（最多 3 頁）
+        # 掃描圖片型 PDF → Claude Vision（最多 3 頁）
         images_b64 = pdf_to_images_base64(pdf_bytes, max_pages=3)
         if not images_b64:
             logger.warning("[%s] no text and pdf_to_images returned empty — skipping", filename)
             return None
 
-        parts: list = []
+        content: list = []
         for img_b64 in images_b64:
-            img_bytes = base64.b64decode(img_b64)
-            parts.append(types.Part.from_bytes(data=img_bytes, mime_type="image/jpeg"))
-        parts.append(EXTRACT_PROMPT_IMAGE.format(filename_hint=filename_hint, schema=_SCHEMA))
+            content.append({
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": "image/jpeg",
+                    "data": img_b64,
+                },
+            })
+        content.append({
+            "type": "text",
+            "text": EXTRACT_PROMPT_IMAGE.format(filename_hint=filename_hint, schema=_SCHEMA),
+        })
 
         response = _generate_with_retry(
             client, MODEL,
-            contents=parts,
-            config=types.GenerateContentConfig(
-                system_instruction=SYSTEM_PROMPT,
-                max_output_tokens=1024,
-                response_mime_type="application/json",
-            ),
+            system=SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": content}],
         )
-        return parse_json_response(response.text)
+        return parse_json_response(response.content[0].text)

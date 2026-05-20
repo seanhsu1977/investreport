@@ -181,6 +181,7 @@ def analyze_report(pdf_bytes: bytes, filename: str | None = None) -> dict | None
             config=types.GenerateContentConfig(
                 system_instruction=SYSTEM_PROMPT,
                 max_output_tokens=1024,
+                response_mime_type="application/json",
             ),
         )
         result = parse_json_response(response.text)
@@ -208,6 +209,7 @@ def analyze_report(pdf_bytes: bytes, filename: str | None = None) -> dict | None
             config=types.GenerateContentConfig(
                 system_instruction=SYSTEM_PROMPT,
                 max_output_tokens=1024,
+                response_mime_type="application/json",
             ),
         )
         return parse_json_response(response.text)

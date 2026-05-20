@@ -169,7 +169,7 @@ def drive_files_list(
 @router.post("/reanalyze")
 async def reanalyze_missing(
     background_tasks: BackgroundTasks,
-    limit: int = Query(default=50, ge=1, le=500),
+    limit: int = Query(default=200, ge=1, le=500),
     db: Session = Depends(get_db),
     _=Depends(require_admin),
 ):

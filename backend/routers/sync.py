@@ -261,6 +261,45 @@ def _do_reanalyze(file_ids: list[tuple[str, str]]):
     logger.info("Reanalyze done: %d/%d reports created", reanalyzed, len(file_ids))
 
 
+@router.post("/reanalyze-test")
+async def reanalyze_test(
+    db: Session = Depends(get_db),
+    _=Depends(require_admin),
+):
+    """同步分析 1 個無結果檔案，直接回傳結果供 debug"""
+    from drive_sync import get_drive_service, download_file, extract_date_from_filename, IMAGE_MIME_TYPES
+    from analyzer import analyze_report, analyze_image_file
+    import traceback
+
+    has_report = db.query(Report.drive_file_id).distinct().subquery()
+    orphan = (
+        db.query(DriveFile)
+        .filter(DriveFile.drive_file_id.notin_(has_report))
+        .first()
+    )
+    if not orphan:
+        return {"status": "no_orphans"}
+
+    file_id, filename = orphan.drive_file_id, orphan.filename
+    try:
+        service = get_drive_service()
+        file_bytes = download_file(service, file_id)
+        mime_type = "application/pdf"
+        if filename.lower().endswith((".jpg", ".jpeg")):
+            mime_type = "image/jpeg"
+        elif filename.lower().endswith(".png"):
+            mime_type = "image/png"
+
+        if mime_type in IMAGE_MIME_TYPES:
+            result = analyze_image_file(file_bytes, IMAGE_MIME_TYPES[mime_type], filename=filename)
+        else:
+            result = analyze_report(file_bytes, filename=filename)
+
+        return {"filename": filename, "result": result, "status": "ok" if result else "no_result"}
+    except Exception as e:
+        return {"filename": filename, "error": str(e), "traceback": traceback.format_exc(), "status": "error"}
+
+
 async def _do_sync_async(since: Optional[str] = None):
     """在執行緒池跑同步，避免 block FastAPI 事件迴圈"""
     await asyncio.to_thread(_do_sync, since)

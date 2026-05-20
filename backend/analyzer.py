@@ -160,20 +160,13 @@ def analyze_report(pdf_bytes: bytes, filename: str | None = None) -> dict | None
     text, total_pages = extract_text_from_pdf(pdf_bytes, max_pages=20)
 
     if text.strip():
-        # 多頁 PDF（> 10 頁）通常是報紙、晨會彙整：
-        #   - 只取前 5 頁文字，避免把全份報紙丟給 Gemini
-        # 少頁 PDF（個股報告）：
-        #   - 跳過第一頁（封面/免責聲明多），從第二頁開始；字數上限拉高到 12000
+        # 大型 PDF（報紙/晨會彙整，> 10 頁）：只取前 5 頁，避免把全份報紙丟給 Gemini
+        # 個股報告（≤ 10 頁）：第 1 頁通常就是評等/目標價，字數上限拉高到 12000
         if total_pages > 10:
-            # 大型文件：只取前 5 頁
             text_short, _ = extract_text_from_pdf(pdf_bytes, max_pages=5)
             text_to_send = text_short[:10000]
         else:
-            # 個股報告：嘗試跳過第一頁（通常是封面）
-            text_pages, _ = extract_text_from_pdf(pdf_bytes, max_pages=20)
-            # 如果頁數 > 1，丟掉第一段（以雙換行分頁）
-            parts_split = text_pages.split("\n\n", 1)
-            text_to_send = (parts_split[1] if len(parts_split) > 1 else text_pages)[:12000]
+            text_to_send = text[:12000]
 
         prompt = EXTRACT_PROMPT_TEXT.format(
             filename_hint=filename_hint,

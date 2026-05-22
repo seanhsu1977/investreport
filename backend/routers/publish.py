@@ -7,15 +7,7 @@ from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 from urllib.parse import unquote
 import httpx
-from google import genai
-from google.genai import types as genai_types
-
-_SAFETY_OFF = [
-    genai_types.SafetySetting(category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="BLOCK_NONE"),
-    genai_types.SafetySetting(category="HARM_CATEGORY_HARASSMENT",         threshold="BLOCK_NONE"),
-    genai_types.SafetySetting(category="HARM_CATEGORY_HATE_SPEECH",        threshold="BLOCK_NONE"),
-    genai_types.SafetySetting(category="HARM_CATEGORY_SEXUALLY_EXPLICIT",  threshold="BLOCK_NONE"),
-]
+import anthropic
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -157,18 +149,15 @@ def generate_draft(
 
     def generate():
         try:
-            client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
-            for chunk in client.models.generate_content_stream(
-                model="gemini-2.5-flash",
-                contents=user_msg,
-                config=genai_types.GenerateContentConfig(
-                    system_instruction=DRAFT_SYSTEM,
-                    max_output_tokens=3000,
-                    safety_settings=_SAFETY_OFF,
-                ),
-            ):
-                if chunk.text:
-                    yield f"data: {json.dumps({'text': chunk.text}, ensure_ascii=False)}\n\n"
+            client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+            with client.messages.stream(
+                model="claude-sonnet-4-6",
+                system=DRAFT_SYSTEM,
+                messages=[{"role": "user", "content": user_msg}],
+                max_tokens=3000,
+            ) as stream:
+                for text in stream.text_stream:
+                    yield f"data: {json.dumps({'text': text}, ensure_ascii=False)}\n\n"
             yield "data: [DONE]\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'error': str(e)}, ensure_ascii=False)}\n\n"

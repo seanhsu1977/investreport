@@ -18,15 +18,7 @@ from typing import Optional
 from dotenv import load_dotenv
 load_dotenv(override=True)
 
-from google import genai
-from google.genai import types as genai_types
-
-_SAFETY_OFF = [
-    genai_types.SafetySetting(category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="BLOCK_NONE"),
-    genai_types.SafetySetting(category="HARM_CATEGORY_HARASSMENT",         threshold="BLOCK_NONE"),
-    genai_types.SafetySetting(category="HARM_CATEGORY_HATE_SPEECH",        threshold="BLOCK_NONE"),
-    genai_types.SafetySetting(category="HARM_CATEGORY_SEXUALLY_EXPLICIT",  threshold="BLOCK_NONE"),
-]
+import anthropic
 
 import nstock_etf
 import fundamental_analysis as fa
@@ -38,7 +30,7 @@ from stocks_master import resolve_name
 logger = logging.getLogger(__name__)
 
 TPE = timezone(timedelta(hours=8))
-LLM_MODEL = os.environ.get("DAILY_ARTICLE_MODEL", "gemini-2.5-flash")
+LLM_MODEL = os.environ.get("DAILY_ARTICLE_MODEL", "claude-sonnet-4-6")
 
 # ──────────────────────────────────────────────────────────────────────
 # Prompt
@@ -218,10 +210,10 @@ def _gather_context(db, topic: dict, etf_data: dict, target_date: date) -> dict:
 # ──────────────────────────────────────────────────────────────────────
 
 def _call_llm(context: dict) -> dict:
-    """呼叫 Gemini，回傳 {'title': ..., 'content': ...}。"""
-    api_key = os.environ.get("GEMINI_API_KEY")
+    """呼叫 Claude，回傳 {'title': ..., 'content': ...}。"""
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
-        raise RuntimeError("GEMINI_API_KEY not set")
+        raise RuntimeError("ANTHROPIC_API_KEY not set")
 
     user_msg = (
         "以下是今日（"
@@ -230,17 +222,14 @@ def _call_llm(context: dict) -> dict:
         + json.dumps(context, ensure_ascii=False, indent=2)
     )
 
-    client = genai.Client(api_key=api_key)
-    resp = client.models.generate_content(
+    client = anthropic.Anthropic(api_key=api_key)
+    resp = client.messages.create(
         model=LLM_MODEL,
-        contents=user_msg,
-        config=genai_types.GenerateContentConfig(
-            system_instruction=SYSTEM_PROMPT,
-            max_output_tokens=4000,
-            safety_settings=_SAFETY_OFF,
-        ),
+        system=SYSTEM_PROMPT,
+        messages=[{"role": "user", "content": user_msg}],
+        max_tokens=4000,
     )
-    text = resp.text.strip()
+    text = resp.content[0].text.strip()
     # 容錯：可能被包在 ```json ... ``` 裡
     if text.startswith("```"):
         text = text.strip("`")

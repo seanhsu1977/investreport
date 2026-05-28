@@ -15,6 +15,15 @@ import { AuthProvider, useAuth } from "./contexts/AuthContext";
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID ?? "";
 
+// ルート切替時に自動でページ先頭へ戻る
+function RouteScrollToTop() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [pathname]);
+  return null;
+}
+
 function ScrollToTop() {
   const [visible, setVisible] = useState(false);
   useEffect(() => {
@@ -143,6 +152,7 @@ function AppInner() {
         </div>
       </header>
 
+      <RouteScrollToTop />
       <main>
         <Routes>
           <Route path="/"             element={<RequireAuth><RecommendationsPage /></RequireAuth>} />

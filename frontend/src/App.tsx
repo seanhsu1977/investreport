@@ -37,18 +37,18 @@ function ScrollToTop() {
 }
 
 const NAV_ITEMS = [
-  { to: "/recommendations", label: "投顧精選", end: false, auth: true  },
-  { to: "/",                label: "自選股",   end: true,  auth: false },
-  { to: "/recent",          label: "近期消息", end: false, auth: true  },
-  { to: "/ranking",         label: "排行",     end: false, auth: true  },
-  { to: "/chips",           label: "籌碼面",   end: false, auth: true  },
-  { to: "/search",          label: "搜尋",     end: false, auth: true  },
+  { to: "/",          label: "投顧精選", end: true,  auth: true  },
+  { to: "/watchlist", label: "自選股",   end: false, auth: false },
+  { to: "/recent",    label: "近期消息", end: false, auth: true  },
+  { to: "/ranking",   label: "排行",     end: false, auth: true  },
+  { to: "/chips",     label: "籌碼面",   end: false, auth: true  },
+  { to: "/search",    label: "搜尋",     end: false, auth: true  },
 ];
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   if (loading) return null;
-  if (!user) return <Navigate to="/" replace />;
+  if (!user) return <Navigate to="/watchlist" replace />;
   return <>{children}</>;
 }
 
@@ -136,12 +136,12 @@ function AppInner() {
 
       <main>
         <Routes>
-          <Route path="/" element={<WatchlistPage />} />
+          <Route path="/"             element={<RequireAuth><RecommendationsPage /></RequireAuth>} />
+          <Route path="/watchlist"    element={<WatchlistPage />} />
           <Route path="/recent"       element={<RequireAuth><RecentPage /></RequireAuth>} />
           <Route path="/search"       element={<RequireAuth><SearchPage /></RequireAuth>} />
           <Route path="/stocks/:code" element={<RequireAuth><StockPage /></RequireAuth>} />
-          <Route path="/ranking"         element={<RequireAuth><RankingPage /></RequireAuth>} />
-          <Route path="/recommendations" element={<RequireAuth><RecommendationsPage /></RequireAuth>} />
+          <Route path="/ranking"      element={<RequireAuth><RankingPage /></RequireAuth>} />
           <Route path="/chips"        element={<RequireAuth><ChipsPage /></RequireAuth>} />
           <Route path="/admin"        element={<RequireAuth><AdminPage /></RequireAuth>} />
         </Routes>

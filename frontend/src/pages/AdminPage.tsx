@@ -1460,7 +1460,7 @@ export default function AdminPage() {
   const { user, token } = useAuth();
   const location = useLocation();
   const locState = location.state as { tab?: "publish" | "daily" | "users"; selectedIds?: number[] } | null;
-  const [tab, setTab] = useState<"publish" | "daily" | "users" | "sync" | "invites">(locState?.tab ?? "publish");
+  const [tab, setTab] = useState<"publish" | "daily" | "users" | "sync" | "invites">(locState?.tab ?? "sync");
   const [users, setUsers] = useState<UserRecord[]>([]);
   const [selectedUser, setSelectedUser] = useState<UserRecord | null>(null);
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -1493,9 +1493,9 @@ export default function AdminPage() {
   );
 
   const tabs = [
-    { id: "publish", label: "社群發布" },
-    { id: "daily",   label: "每日草稿" },
     { id: "sync",    label: "同步記錄" },
+    { id: "daily",   label: "每日草稿" },
+    { id: "publish", label: "社群發布" },
     { id: "users",   label: "帳號管理" },
     { id: "invites", label: "邀請碼" },
   ] as const;

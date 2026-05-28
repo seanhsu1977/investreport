@@ -84,16 +84,16 @@ function ScoreCard({ item, rank, onAskReason }: { item: RecommendationItem; rank
       <Link
         to={`/stocks/${item.code}`}
         state={{ from: "/", label: "投顧精選" }}
-        className="font-mono text-[13px] font-bold text-[#1B6FD8] hover:underline"
+        className="font-mono text-[16px] font-bold text-[#1B6FD8] hover:underline"
       >{item.code}</Link>
-      {item.name && <div className="text-[11px] text-[#6B7A99] mt-0.5">{item.name}</div>}
+      {item.name && <div className="text-[13px] text-[#6B7A99] mt-0.5">{item.name}</div>}
 
       {/* price */}
-      <div className="text-[26px] font-bold mt-3 tabular-nums">
+      <div className="text-[30px] font-bold mt-3 tabular-nums">
         {item.current_price ? formatPrice(item.current_price) : "—"}
       </div>
       {item.change_pct != null && (
-        <div className={`text-xs font-semibold mt-0.5 ${item.change_pct >= 0 ? "text-[#E53935]" : "text-[#1E8B4A]"}`}>
+        <div className={`text-sm font-semibold mt-0.5 ${item.change_pct >= 0 ? "text-[#E53935]" : "text-[#1E8B4A]"}`}>
           {item.change_pct >= 0 ? "▲" : "▼"} {Math.abs(item.change_pct).toFixed(2)}%
         </div>
       )}
@@ -101,28 +101,28 @@ function ScoreCard({ item, rank, onAskReason }: { item: RecommendationItem; rank
       {/* rec + report count */}
       <div className="flex items-center gap-2 mt-2.5">
         {item.latest_recommendation && (
-          <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${REC_BADGE[item.latest_recommendation] ?? "bg-gray-100 text-gray-600 border-gray-200"}`}>
+          <span className={`text-xs font-bold px-2 py-0.5 rounded border ${REC_BADGE[item.latest_recommendation] ?? "bg-gray-100 text-gray-600 border-gray-200"}`}>
             {item.latest_recommendation}
           </span>
         )}
-        <span className="text-[11px] text-[#6B7A99]">{item.report_count} 篇 · 共識 {item.rec_avg.toFixed(1)}/3</span>
+        <span className="text-[13px] text-[#6B7A99]">{item.report_count} 篇 · 共識 {item.rec_avg.toFixed(1)}/3</span>
       </div>
 
       {/* score badge */}
       <div className="inline-flex items-baseline gap-1 bg-[#EEF3FC] rounded-lg px-2.5 py-1 mt-3">
-        <span className="text-xl font-extrabold text-[#0B1E3D]">{item.score.toFixed(0)}</span>
-        <span className="text-[11px] text-[#6B7A99]">/ 100</span>
+        <span className="text-2xl font-extrabold text-[#0B1E3D]">{item.score.toFixed(0)}</span>
+        <span className="text-xs text-[#6B7A99]">/ 100</span>
       </div>
 
       {/* mini score bars */}
-      <div className="mt-3 flex flex-col gap-1.5">
+      <div className="mt-3 flex flex-col gap-2">
         {bars.map(([label, val, max, color]) => (
           <div key={label} className="flex items-center gap-2">
-            <span className="text-[10px] text-[#6B7A99] w-[54px] shrink-0">{label}</span>
-            <div className="flex-1 h-1 bg-[#EEF0F6] rounded">
+            <span className="text-xs text-[#6B7A99] w-[54px] shrink-0">{label}</span>
+            <div className="flex-1 h-1.5 bg-[#EEF0F6] rounded">
               <div className="h-full rounded" style={{ width: `${(val / max) * 100}%`, background: color }} />
             </div>
-            <span className="text-[10px] text-[#6B7A99] w-6 text-right shrink-0">{val.toFixed(0)}</span>
+            <span className="text-xs text-[#6B7A99] w-6 text-right shrink-0">{val.toFixed(0)}</span>
           </div>
         ))}
       </div>
@@ -130,24 +130,24 @@ function ScoreCard({ item, rank, onAskReason }: { item: RecommendationItem; rank
       {/* metrics grid */}
       <div className="grid grid-cols-2 gap-2 mt-3.5 pt-3.5 border-t border-[#DDE2EC]">
         <div>
-          <div className="text-[10px] text-[#6B7A99] uppercase tracking-[0.6px]">目標價</div>
-          <div className="text-[13px] font-semibold mt-0.5 tabular-nums">{formatPrice(item.target_price)}</div>
+          <div className="text-xs text-[#6B7A99] uppercase tracking-[0.6px]">目標價</div>
+          <div className="text-[15px] font-semibold mt-0.5 tabular-nums">{formatPrice(item.target_price)}</div>
         </div>
         <div>
-          <div className="text-[10px] text-[#6B7A99] uppercase tracking-[0.6px]">上漲空間</div>
-          <div className={`text-[13px] font-semibold mt-0.5 tabular-nums ${item.upside_pct != null && item.upside_pct >= 0 ? "text-[#E53935]" : "text-[#1E8B4A]"}`}>
+          <div className="text-xs text-[#6B7A99] uppercase tracking-[0.6px]">上漲空間</div>
+          <div className={`text-[15px] font-semibold mt-0.5 tabular-nums ${item.upside_pct != null && item.upside_pct >= 0 ? "text-[#E53935]" : "text-[#1E8B4A]"}`}>
             {item.upside_pct != null ? `${item.upside_pct >= 0 ? "+" : ""}${item.upside_pct.toFixed(1)}%` : "—"}
           </div>
         </div>
         <div>
-          <div className="text-[10px] text-[#6B7A99] uppercase tracking-[0.6px]">法人 5日</div>
-          <div className={`text-[13px] font-semibold mt-0.5 tabular-nums ${item.inst_5d_net >= 0 ? "text-[#E53935]" : "text-[#1E8B4A]"}`}>
+          <div className="text-xs text-[#6B7A99] uppercase tracking-[0.6px]">法人 5日</div>
+          <div className={`text-[15px] font-semibold mt-0.5 tabular-nums ${item.inst_5d_net >= 0 ? "text-[#E53935]" : "text-[#1E8B4A]"}`}>
             {fmtInst(item.inst_5d_net)}
           </div>
         </div>
         <div>
-          <div className="text-[10px] text-[#6B7A99] uppercase tracking-[0.6px]">均線</div>
-          <div className="text-[13px] font-semibold mt-0.5 text-[#0D1B2A]">{item.ma_signal ?? "—"}</div>
+          <div className="text-xs text-[#6B7A99] uppercase tracking-[0.6px]">均線</div>
+          <div className="text-[15px] font-semibold mt-0.5 text-[#0D1B2A]">{item.ma_signal ?? "—"}</div>
         </div>
       </div>
 
@@ -178,43 +178,43 @@ function RestCard({ item, rank, onAskReason }: { item: RecommendationItem; rank:
       {/* top row */}
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2.5">
-          <span className="text-[13px] text-[#6B7A99] font-medium w-[18px]">{rank}</span>
+          <span className="text-[15px] text-[#6B7A99] font-medium w-[22px]">{rank}</span>
           <div>
             <Link
               to={`/stocks/${item.code}`}
               state={{ from: "/", label: "投顧精選" }}
-              className="font-mono text-[14px] font-bold text-[#1B6FD8] hover:underline"
+              className="font-mono text-[16px] font-bold text-[#1B6FD8] hover:underline"
             >{item.code}</Link>
-            {item.name && <div className="text-[11px] text-[#6B7A99] mt-0.5">{item.name}</div>}
+            {item.name && <div className="text-[13px] text-[#6B7A99] mt-0.5">{item.name}</div>}
           </div>
         </div>
         <div className="text-right">
-          <div className="text-[22px] font-extrabold text-[#0B1E3D] tabular-nums leading-none">{item.score.toFixed(0)}</div>
-          <div className="text-[9px] text-[#6B7A99]">總分</div>
+          <div className="text-[26px] font-extrabold text-[#0B1E3D] tabular-nums leading-none">{item.score.toFixed(0)}</div>
+          <div className="text-[11px] text-[#6B7A99]">總分</div>
         </div>
       </div>
 
       {/* 4-col metrics */}
       <div className="grid grid-cols-4 gap-1.5 pt-2 border-t border-[#F0F2F6]">
         <div>
-          <div className="text-[9px] text-[#6B7A99]">現價</div>
-          <div className="text-[12px] font-semibold mt-0.5 tabular-nums">
+          <div className="text-[11px] text-[#6B7A99]">現價</div>
+          <div className="text-[13px] font-semibold mt-0.5 tabular-nums">
             {item.current_price ? formatPrice(item.current_price) : "—"}
           </div>
         </div>
         <div>
-          <div className="text-[9px] text-[#6B7A99]">目標價</div>
-          <div className="text-[12px] font-semibold mt-0.5 tabular-nums">{formatPrice(item.target_price)}</div>
+          <div className="text-[11px] text-[#6B7A99]">目標價</div>
+          <div className="text-[13px] font-semibold mt-0.5 tabular-nums">{formatPrice(item.target_price)}</div>
         </div>
         <div>
-          <div className="text-[9px] text-[#6B7A99]">Upside</div>
-          <div className={`text-[12px] font-semibold mt-0.5 tabular-nums ${item.upside_pct != null && item.upside_pct >= 0 ? "text-[#E53935]" : "text-[#1E8B4A]"}`}>
+          <div className="text-[11px] text-[#6B7A99]">Upside</div>
+          <div className={`text-[13px] font-semibold mt-0.5 tabular-nums ${item.upside_pct != null && item.upside_pct >= 0 ? "text-[#E53935]" : "text-[#1E8B4A]"}`}>
             {item.upside_pct != null ? `${item.upside_pct >= 0 ? "+" : ""}${item.upside_pct.toFixed(1)}%` : "—"}
           </div>
         </div>
         <div>
-          <div className="text-[9px] text-[#6B7A99]">報告數</div>
-          <div className="text-[12px] font-semibold mt-0.5 tabular-nums">{item.report_count}</div>
+          <div className="text-[11px] text-[#6B7A99]">報告數</div>
+          <div className="text-[13px] font-semibold mt-0.5 tabular-nums">{item.report_count}</div>
         </div>
       </div>
 
@@ -222,16 +222,16 @@ function RestCard({ item, rank, onAskReason }: { item: RecommendationItem; rank:
       <div className="flex items-center justify-between mt-2">
         <div className="flex items-center gap-2">
           {item.latest_recommendation && (
-            <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${REC_BADGE[item.latest_recommendation] ?? "bg-gray-100 text-gray-600 border-gray-200"}`}>
+            <span className={`text-xs font-bold px-2 py-0.5 rounded border ${REC_BADGE[item.latest_recommendation] ?? "bg-gray-100 text-gray-600 border-gray-200"}`}>
               {item.latest_recommendation}
             </span>
           )}
-          <div className="flex items-center gap-1">
-            {hasBullDot && <div className="w-1.5 h-1.5 rounded-full bg-[#E53935]" />}
-            {hasBearDot && <div className="w-1.5 h-1.5 rounded-full bg-[#1E8B4A]" />}
-            {hasVolDot && <div className="w-1.5 h-1.5 rounded-full bg-amber-400" />}
+          <div className="flex items-center gap-1.5">
+            {hasBullDot && <div className="w-2 h-2 rounded-full bg-[#E53935]" />}
+            {hasBearDot && <div className="w-2 h-2 rounded-full bg-[#1E8B4A]" />}
+            {hasVolDot && <div className="w-2 h-2 rounded-full bg-amber-400" />}
             {(maSig || volSig) && (
-              <span className="text-[10px] text-[#6B7A99]">
+              <span className="text-xs text-[#6B7A99]">
                 {[maSig, volSig].filter(Boolean).join("·")}
               </span>
             )}
@@ -239,7 +239,7 @@ function RestCard({ item, rank, onAskReason }: { item: RecommendationItem; rank:
         </div>
         <button
           onClick={onAskReason}
-          className="text-[10px] font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 border-none rounded-md px-2.5 py-1 transition"
+          className="text-xs font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 border-none rounded-md px-2.5 py-1.5 transition"
         >
           💡 理由
         </button>

@@ -7,6 +7,7 @@ import RecentPage from "./pages/RecentPage";
 import SearchPage from "./pages/SearchPage";
 import AdminPage from "./pages/AdminPage";
 import RankingPage from "./pages/RankingPage";
+import RecommendationsPage from "./pages/RecommendationsPage";
 import ChipsPage from "./pages/ChipsPage";
 import LoginButton from "./components/LoginButton";
 import PostMaterialsBar from "./components/PostMaterialsBar";
@@ -36,11 +37,12 @@ function ScrollToTop() {
 }
 
 const NAV_ITEMS = [
-  { to: "/",        label: "自選股",   end: true,  auth: false },
-  { to: "/recent",  label: "近期消息", end: false, auth: true  },
-  { to: "/ranking", label: "排行",     end: false, auth: true  },
-  { to: "/chips",   label: "籌碼面",   end: false, auth: true  },
-  { to: "/search",  label: "搜尋",     end: false, auth: true  },
+  { to: "/recommendations", label: "投顧精選", end: false, auth: true  },
+  { to: "/",                label: "自選股",   end: true,  auth: false },
+  { to: "/recent",          label: "近期消息", end: false, auth: true  },
+  { to: "/ranking",         label: "排行",     end: false, auth: true  },
+  { to: "/chips",           label: "籌碼面",   end: false, auth: true  },
+  { to: "/search",          label: "搜尋",     end: false, auth: true  },
 ];
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -138,7 +140,8 @@ function AppInner() {
           <Route path="/recent"       element={<RequireAuth><RecentPage /></RequireAuth>} />
           <Route path="/search"       element={<RequireAuth><SearchPage /></RequireAuth>} />
           <Route path="/stocks/:code" element={<RequireAuth><StockPage /></RequireAuth>} />
-          <Route path="/ranking"      element={<RequireAuth><RankingPage /></RequireAuth>} />
+          <Route path="/ranking"         element={<RequireAuth><RankingPage /></RequireAuth>} />
+          <Route path="/recommendations" element={<RequireAuth><RecommendationsPage /></RequireAuth>} />
           <Route path="/chips"        element={<RequireAuth><ChipsPage /></RequireAuth>} />
           <Route path="/admin"        element={<RequireAuth><AdminPage /></RequireAuth>} />
         </Routes>

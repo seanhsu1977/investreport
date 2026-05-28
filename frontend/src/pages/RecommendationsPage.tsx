@@ -476,6 +476,26 @@ export default function RecommendationsPage() {
             </h2>
             <span className="text-[11px] text-[#6B7A99]">點選查看個股</span>
           </div>
+
+          {/* 桌面表頭（手機隱藏） */}
+          <div className="hidden sm:flex items-center gap-4 px-4 py-2 mb-1 rounded-lg bg-[#F8F9FC] border border-[#DDE2EC]">
+            <div className="w-52 shrink-0 flex items-center gap-3">
+              <span className="w-5" />
+              <span className="text-[11px] font-bold text-[#6B7A99] uppercase tracking-wide">股票</span>
+            </div>
+            <div className="flex gap-6 flex-1">
+              <span className="w-20 text-[11px] font-bold text-[#6B7A99] uppercase tracking-wide">現價</span>
+              <span className="w-20 text-[11px] font-bold text-[#6B7A99] uppercase tracking-wide">目標價</span>
+              <span className="w-20 text-[11px] font-bold text-[#6B7A99] uppercase tracking-wide">Upside</span>
+              <span className="w-16 text-[11px] font-bold text-[#6B7A99] uppercase tracking-wide">報告數</span>
+            </div>
+            <span className="w-36 shrink-0 text-[11px] font-bold text-[#6B7A99] uppercase tracking-wide">評等</span>
+            <div className="shrink-0 flex gap-4">
+              <span className="w-12 text-right text-[11px] font-bold text-[#6B7A99] uppercase tracking-wide">總分</span>
+              <span className="w-14" />
+            </div>
+          </div>
+
           <div className="flex flex-col gap-2.5">
             {rest.map((item, i) => (
               <RestCard key={item.code} item={item} rank={i + 4} onAskReason={() => setReasonOpen(item)} />

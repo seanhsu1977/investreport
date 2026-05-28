@@ -86,7 +86,7 @@ function ScoreCard({ item, rank, onAskReason }: { item: RecommendationItem; rank
         state={{ from: "/", label: "投顧精選" }}
         className="font-mono text-[16px] font-bold text-[#1B6FD8] hover:underline"
       >{item.code}</Link>
-      {item.name && <div className="text-[13px] text-[#6B7A99] mt-0.5">{item.name}</div>}
+      {item.name && <div className="text-[18px] text-[#6B7A99] mt-0.5">{item.name}</div>}
 
       {/* price */}
       <div className="text-[30px] font-bold mt-3 tabular-nums">
@@ -172,70 +172,72 @@ function RestCard({ item, rank, onAskReason }: { item: RecommendationItem; rank:
   const hasBullDot = maSig === "多頭排列";
   const hasBearDot = maSig === "空頭排列";
   const hasVolDot = volSig === "量增";
+  const upsideCls = item.upside_pct != null && item.upside_pct >= 0 ? "text-[#E53935]" : "text-[#1E8B4A]";
 
   return (
-    <div className="bg-white border border-[#DDE2EC] rounded-xl p-3.5">
-      {/* top row */}
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-2.5">
-          <span className="text-[15px] text-[#6B7A99] font-medium w-[22px]">{rank}</span>
-          <div>
-            <Link
-              to={`/stocks/${item.code}`}
-              state={{ from: "/", label: "投顧精選" }}
-              className="font-mono text-[16px] font-bold text-[#1B6FD8] hover:underline"
-            >{item.code}</Link>
-            {item.name && <div className="text-[13px] text-[#6B7A99] mt-0.5">{item.name}</div>}
-          </div>
-        </div>
-        <div className="text-right">
-          <div className="text-[26px] font-extrabold text-[#0B1E3D] tabular-nums leading-none">{item.score.toFixed(0)}</div>
-          <div className="text-[11px] text-[#6B7A99]">總分</div>
+    <div className="bg-white border border-[#DDE2EC] rounded-xl px-4 py-3
+      sm:flex sm:items-center sm:gap-4">
+
+      {/* ── rank + stock id ── */}
+      <div className="flex items-center gap-3 sm:w-52 shrink-0 mb-2 sm:mb-0">
+        <span className="text-[15px] text-[#6B7A99] font-medium w-5 shrink-0">{rank}</span>
+        <div className="min-w-0">
+          <Link
+            to={`/stocks/${item.code}`}
+            state={{ from: "/", label: "投顧精選" }}
+            className="font-mono text-[16px] font-bold text-[#1B6FD8] hover:underline"
+          >{item.code}</Link>
+          {item.name && <div className="text-[18px] text-[#6B7A99] truncate">{item.name}</div>}
         </div>
       </div>
 
-      {/* 4-col metrics */}
-      <div className="grid grid-cols-4 gap-1.5 pt-2 border-t border-[#F0F2F6]">
-        <div>
-          <div className="text-[11px] text-[#6B7A99]">現價</div>
+      {/* ── metrics (mobile: 4-col grid / desktop: inline flex) ── */}
+      <div className="grid grid-cols-4 gap-1.5 pt-2 border-t border-[#F0F2F6]
+        sm:flex sm:gap-6 sm:pt-0 sm:border-0 sm:flex-1">
+        <div className="sm:w-20">
+          <div className="text-[11px] text-[#6B7A99] sm:hidden">現價</div>
           <div className="text-[13px] font-semibold mt-0.5 tabular-nums">
             {item.current_price ? formatPrice(item.current_price) : "—"}
           </div>
         </div>
-        <div>
-          <div className="text-[11px] text-[#6B7A99]">目標價</div>
+        <div className="sm:w-20">
+          <div className="text-[11px] text-[#6B7A99] sm:hidden">目標價</div>
           <div className="text-[13px] font-semibold mt-0.5 tabular-nums">{formatPrice(item.target_price)}</div>
         </div>
-        <div>
-          <div className="text-[11px] text-[#6B7A99]">Upside</div>
-          <div className={`text-[13px] font-semibold mt-0.5 tabular-nums ${item.upside_pct != null && item.upside_pct >= 0 ? "text-[#E53935]" : "text-[#1E8B4A]"}`}>
+        <div className="sm:w-20">
+          <div className="text-[11px] text-[#6B7A99] sm:hidden">Upside</div>
+          <div className={`text-[13px] font-semibold mt-0.5 tabular-nums ${upsideCls}`}>
             {item.upside_pct != null ? `${item.upside_pct >= 0 ? "+" : ""}${item.upside_pct.toFixed(1)}%` : "—"}
           </div>
         </div>
-        <div>
-          <div className="text-[11px] text-[#6B7A99]">報告數</div>
-          <div className="text-[13px] font-semibold mt-0.5 tabular-nums">{item.report_count}</div>
+        <div className="sm:w-16">
+          <div className="text-[11px] text-[#6B7A99] sm:hidden">報告數</div>
+          <div className="text-[13px] font-semibold mt-0.5 tabular-nums">{item.report_count} 篇</div>
         </div>
       </div>
 
-      {/* footer */}
-      <div className="flex items-center justify-between mt-2">
-        <div className="flex items-center gap-2">
-          {item.latest_recommendation && (
-            <span className={`text-xs font-bold px-2 py-0.5 rounded border ${REC_BADGE[item.latest_recommendation] ?? "bg-gray-100 text-gray-600 border-gray-200"}`}>
-              {item.latest_recommendation}
-            </span>
+      {/* ── rec + signal ── */}
+      <div className="flex items-center gap-2 mt-2 sm:mt-0 sm:w-36 shrink-0">
+        {item.latest_recommendation && (
+          <span className={`text-xs font-bold px-2 py-0.5 rounded border ${REC_BADGE[item.latest_recommendation] ?? "bg-gray-100 text-gray-600 border-gray-200"}`}>
+            {item.latest_recommendation}
+          </span>
+        )}
+        <div className="flex items-center gap-1">
+          {hasBullDot && <div className="w-2 h-2 rounded-full bg-[#E53935]" />}
+          {hasBearDot && <div className="w-2 h-2 rounded-full bg-[#1E8B4A]" />}
+          {hasVolDot && <div className="w-2 h-2 rounded-full bg-amber-400" />}
+          {(maSig || volSig) && (
+            <span className="text-xs text-[#6B7A99]">{[maSig, volSig].filter(Boolean).join("·")}</span>
           )}
-          <div className="flex items-center gap-1.5">
-            {hasBullDot && <div className="w-2 h-2 rounded-full bg-[#E53935]" />}
-            {hasBearDot && <div className="w-2 h-2 rounded-full bg-[#1E8B4A]" />}
-            {hasVolDot && <div className="w-2 h-2 rounded-full bg-amber-400" />}
-            {(maSig || volSig) && (
-              <span className="text-xs text-[#6B7A99]">
-                {[maSig, volSig].filter(Boolean).join("·")}
-              </span>
-            )}
-          </div>
+        </div>
+      </div>
+
+      {/* ── score + reason ── */}
+      <div className="flex items-center justify-between mt-2 sm:mt-0 sm:gap-4 shrink-0">
+        <div className="text-right sm:w-12">
+          <div className="text-[22px] font-extrabold text-[#0B1E3D] tabular-nums leading-none">{item.score.toFixed(0)}</div>
+          <div className="text-[11px] text-[#6B7A99]">總分</div>
         </div>
         <button
           onClick={onAskReason}

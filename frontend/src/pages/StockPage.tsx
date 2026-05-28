@@ -1,12 +1,17 @@
 import { useEffect, useState } from "react";
 import { useParams, Link, useNavigate, useLocation } from "react-router-dom";
-import { stocksApi, watchlistApi, fundamentalsApi, type Report, type StockPrice, type FundamentalsResponse, type StockSignal } from "../api/client";
+import {
+  stocksApi, watchlistApi, fundamentalsApi,
+  type Report, type StockPrice, type FundamentalsResponse, type StockSignal,
+} from "../api/client";
 import RecommendationBadge from "../components/RecommendationBadge";
 import ShareButton from "../components/ShareButton";
 import { buildShareText, buildShareUrl } from "../utils/share";
 import { useAuth } from "../contexts/AuthContext";
 import StockLinkedText from "../components/StockLinkedText";
 import { usePostMaterials } from "../hooks/usePostMaterials";
+
+// ── constants ─────────────────────────────────────────────────────────────────
 
 const REC_COLOR: Record<string, string> = {
   買進: "bg-green-500",
@@ -17,6 +22,16 @@ const REC_COLOR: Record<string, string> = {
   Sell: "bg-red-500",
 };
 
+type StockTabKey = "reports" | "chips" | "tech" | "article" | "news";
+
+// ── helpers ───────────────────────────────────────────────────────────────────
+
+function formatPrice(price: number) {
+  return price.toLocaleString("zh-TW", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// ── StockPage ─────────────────────────────────────────────────────────────────
+
 export default function StockPage() {
   const { user } = useAuth();
   const { code } = useParams<{ code: string }>();
@@ -26,9 +41,9 @@ export default function StockPage() {
   const backPath = backState?.from ?? "/";
   const backLabel = backState?.label ?? "自選股";
   const backNavState = backState?.recentTab ? { tab: backState.recentTab } : undefined;
+
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
-
   const [relatedNews, setRelatedNews] = useState<Report[]>([]);
   const [stockPrice, setStockPrice] = useState<StockPrice | null>(null);
   const [priceLoading, setPriceLoading] = useState(false);
@@ -37,6 +52,7 @@ export default function StockPage() {
   const [fundamentals, setFundamentals] = useState<FundamentalsResponse | null>(null);
   const [signal, setSignal] = useState<StockSignal | null>(null);
   const [signalLoading, setSignalLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState<StockTabKey>("reports");
 
   const fetchPrice = () => {
     if (!code) return;
@@ -83,375 +99,336 @@ export default function StockPage() {
     }
   };
 
-  // 以報告日期新→舊排序（無報告日期者排最後，用加入時間補位）
   const sortedReports = [...reports].sort((a, b) => {
     const da = (a.report_date ?? a.created_at ?? "").slice(0, 10);
     const db = (b.report_date ?? b.created_at ?? "").slice(0, 10);
-    if (da > db) return -1; // a 較新，排前面
-    if (da < db) return 1;  // b 較新，排前面
+    if (da > db) return -1;
+    if (da < db) return 1;
     return 0;
   });
 
   const stockName = sortedReports[0]?.stock_name;
-  const latest = sortedReports[0]; // 報告日期最新一筆
+  const latest = sortedReports[0];
 
-  // 趨勢資料（舊→新，左到右，與箭頭方向一致）
-  const recTrend = [...sortedReports].reverse().map((r) => r.recommendation).filter(Boolean);
-  const priceTrend = [...sortedReports].reverse().map((r) => r.target_price).filter(Boolean) as number[];
+  // consensus stats
+  const buyCount  = sortedReports.filter((r) => ["買進","Buy","增持"].includes(r.recommendation ?? "")).length;
+  const holdCount = sortedReports.filter((r) => ["持有","Hold","中立"].includes(r.recommendation ?? "")).length;
+  const sellCount = sortedReports.filter((r) => ["賣出","Sell","減持"].includes(r.recommendation ?? "")).length;
+  const targets   = sortedReports.map((r) => r.target_price).filter((t): t is number => t != null);
+  const avgTarget = targets.length ? targets.reduce((a, b) => a + b, 0) / targets.length : null;
+  const maxTarget = targets.length ? Math.max(...targets) : null;
+  const avgUpside = avgTarget && stockPrice?.price
+    ? ((avgTarget / stockPrice.price - 1) * 100)
+    : null;
 
-  type TabKey = "reports" | "news";
-  const [tab, setTab] = useState<TabKey>("reports");
+  // upside from latest report
+  const latestUpside = latest?.target_price && stockPrice?.price
+    ? ((latest.target_price / stockPrice.price - 1) * 100)
+    : null;
 
-  // 貼文素材選取（跨個股頁累積，僅 admin 顯示）
+  // beware: RecommendationItem is not available here — we're on the stock page
+  // No score_breakdown data on StockPage — hero bars only show if signal exists
+
   const materials = usePostMaterials();
 
-  return (
-    <div className="max-w-3xl mx-auto py-8 px-4 space-y-6">
-      {/* 標題列 */}
-      <div className="flex items-center gap-3 flex-wrap">
-        <button onClick={() => navigate(backPath, { state: backNavState })} className="text-sm text-blue-500 hover:underline">← {backLabel}</button>
-        <h1 className="text-2xl font-bold text-gray-800">
-          <a
-            href={`https://www.nstock.tw/stock_info?stock_id=${code}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="font-mono hover:text-blue-600 transition"
-          >{code}</a>
-          {stockName && <span className="ml-2 text-gray-500 text-xl">{stockName}</span>}
-        </h1>
-        <span className="text-sm text-gray-400">{reports.length} 篇報告</span>
-        {user && (
-        <button
-          onClick={toggleWatchlist}
-          disabled={watchlistLoading}
-          className={`ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition border shadow-sm disabled:opacity-50
-            ${inWatchlist
-              ? "bg-yellow-50 border-yellow-300 text-yellow-700 hover:bg-yellow-100"
-              : "bg-white border-gray-300 text-gray-600 hover:bg-gray-50"
-            }`}
-        >
-          <span>{inWatchlist ? "★" : "☆"}</span>
-          <span>{inWatchlist ? "已加入自選" : "加入自選"}</span>
-        </button>
-        )}
-      </div>
+  // ── Tabs config ──────────────────────────────────────────────────────────────
+  const TABS: { key: StockTabKey; label: string }[] = [
+    { key: "reports", label: "投顧報告" },
+    { key: "chips",   label: "籌碼面" },
+    { key: "tech",    label: "技術訊號" },
+    { key: "article", label: "AI 每日稿" },
+  ];
 
-      {/* 趨勢摘要卡片 */}
-      {!loading && reports.length > 0 && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 space-y-3">
-          {/* 第一行：即時股價 + 最新結論 */}
-          <div className="flex items-center gap-4 flex-wrap">
-            {stockPrice?.price ? (
-              <div className="flex items-center gap-2">
-                <span className="text-2xl font-bold text-gray-800">{stockPrice.price}</span>
-                {stockPrice.change !== null && (
-                  <span className={`text-sm font-medium ${stockPrice.change >= 0 ? "text-red-500" : "text-green-600"}`}>
-                    {stockPrice.change >= 0 ? "▲" : "▼"} {Math.abs(stockPrice.change)} ({stockPrice.change_pct?.toFixed(2)}%)
-                  </span>
-                )}
-                <button onClick={fetchPrice} disabled={priceLoading}
-                  className="text-xs text-blue-400 hover:text-blue-600 disabled:opacity-40 transition">
-                  {priceLoading ? "…" : "↻ 更新"}
-                </button>
+  // ── render ───────────────────────────────────────────────────────────────────
+  return (
+    <div className="min-h-screen bg-[#F0F2F6]">
+
+      {/* ── Dark Hero Section ── */}
+      <div className="bg-[#122548]">
+
+        {/* top bar */}
+        <div className="flex items-center gap-3 px-4 py-3">
+          <button
+            onClick={() => navigate(backPath, { state: backNavState })}
+            className="w-8 h-8 rounded-lg bg-white/8 flex items-center justify-center shrink-0 hover:bg-white/15 transition"
+            aria-label="返回"
+          >
+            <svg className="w-4 h-4 stroke-white/80" fill="none" viewBox="0 0 24 24" strokeWidth="2.5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+            </svg>
+          </button>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <a
+                href={`https://www.nstock.tw/stock_info?stock_id=${code}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[15px] font-bold text-white hover:text-[#C9A84C] transition font-mono"
+              >{code}</a>
+              {stockName && <span className="text-[11px] text-white/50">{stockName}</span>}
+            </div>
+            <div className="text-[11px] text-white/40 mt-0.5">來自：{backLabel}</div>
+          </div>
+          {/* watchlist button */}
+          {user && (
+            <button
+              onClick={toggleWatchlist}
+              disabled={watchlistLoading}
+              className="w-8 h-8 rounded-lg bg-white/8 flex items-center justify-center shrink-0 hover:bg-white/15 transition disabled:opacity-50"
+              aria-label={inWatchlist ? "移除自選" : "加入自選"}
+            >
+              <svg className="w-4 h-4" fill={inWatchlist ? "#C9A84C" : "none"} stroke={inWatchlist ? "#C9A84C" : "rgba(255,255,255,0.7)"} viewBox="0 0 24 24" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0111.186 0z" />
+              </svg>
+            </button>
+          )}
+        </div>
+
+        {/* price hero */}
+        <div className="px-4 pb-5">
+          <div className="flex items-start justify-between">
+            <div>
+              <div className="text-[36px] font-extrabold text-white tabular-nums leading-none">
+                {stockPrice?.price ? formatPrice(stockPrice.price) : "—"}
               </div>
-            ) : null}
-            {latest && (
-              <div className="flex items-center gap-2 flex-wrap">
-                <RecommendationBadge value={latest.recommendation} />
-                {latest.target_price && (
-                  <span className="text-sm text-gray-500">
-                    目標價 <span className="font-semibold text-gray-800">{latest.target_price}</span>
-                    {stockPrice?.price && (
-                      <span className={`ml-1 font-medium ${latest.target_price > stockPrice.price ? "text-red-500" : "text-green-600"}`}>
-                        ({latest.target_price > stockPrice.price ? "+" : ""}{((latest.target_price / stockPrice.price - 1) * 100).toFixed(1)}%)
-                      </span>
-                    )}
-                  </span>
-                )}
-                {latest.analyst && <span className="text-xs text-gray-400">{latest.analyst}</span>}
+              <div className={`text-[14px] font-semibold mt-1 ${
+                stockPrice?.change != null && stockPrice.change >= 0 ? "text-[#FF6B6B]" : "text-[#4CD964]"
+              }`}>
+                {stockPrice?.change != null ? (
+                  <>
+                    {stockPrice.change >= 0 ? "▲" : "▼"} {Math.abs(stockPrice.change)}
+                    {stockPrice.change_pct != null && ` (${stockPrice.change >= 0 ? "+" : ""}${stockPrice.change_pct.toFixed(2)}%)`}
+                    <button onClick={fetchPrice} disabled={priceLoading}
+                      className="ml-2 text-[11px] text-white/30 hover:text-white/60 disabled:opacity-40 transition">
+                      {priceLoading ? "…" : "↻"}
+                    </button>
+                  </>
+                ) : "—"}
+              </div>
+            </div>
+            {latest?.recommendation && (
+              <span className={`text-[11px] font-bold px-3 py-1 rounded-lg border mt-1 ${
+                ["買進","Buy","增持"].includes(latest.recommendation)
+                  ? "bg-red-500/15 text-[#FF6B6B] border-red-500/30"
+                  : ["賣出","Sell","減持"].includes(latest.recommendation)
+                  ? "bg-green-500/15 text-[#4CD964] border-green-500/30"
+                  : "bg-white/10 text-white/70 border-white/20"
+              }`}>
+                {latest.recommendation}
+              </span>
+            )}
+          </div>
+
+          {/* 4-stat row */}
+          <div className="flex gap-4 mt-3.5 flex-wrap">
+            {latest?.target_price && (
+              <div>
+                <div className="text-[9px] text-white/35 uppercase tracking-[0.7px]">目標價</div>
+                <div className="text-[13px] font-semibold text-white/90 mt-0.5 tabular-nums">{formatPrice(latest.target_price)}</div>
+              </div>
+            )}
+            {latestUpside != null && (
+              <div>
+                <div className="text-[9px] text-white/35 uppercase tracking-[0.7px]">上漲空間</div>
+                <div className={`text-[13px] font-semibold mt-0.5 tabular-nums ${latestUpside >= 0 ? "text-[#FF6B6B]" : "text-[#4CD964]"}`}>
+                  {latestUpside >= 0 ? "+" : ""}{latestUpside.toFixed(1)}%
+                </div>
+              </div>
+            )}
+            {reports.length > 0 && (
+              <div>
+                <div className="text-[9px] text-white/35 uppercase tracking-[0.7px]">報告數</div>
+                <div className="text-[13px] font-semibold text-white/90 mt-0.5">{reports.length} 篇</div>
+              </div>
+            )}
+            {signal?.current_price && (
+              <div>
+                <div className="text-[9px] text-white/35 uppercase tracking-[0.7px]">成交量</div>
+                <div className="text-[13px] font-semibold text-white/90 mt-0.5 tabular-nums">
+                  {/* volume not directly in StockSignal; skip or show RSI */}
+                  RSI {signal.rsi ?? "—"}
+                </div>
               </div>
             )}
           </div>
 
-          {/* 第二行：趨勢（並排，最近 10 筆） */}
-          {(recTrend.length > 0 || priceTrend.length > 0) && (
-            <div className="pt-2 border-t border-gray-100 grid grid-cols-2 gap-3">
-              {recTrend.length > 0 && (
-                <div>
-                  <p className="text-xs text-gray-400 mb-1.5">評等趨勢</p>
-                  <div className="flex items-center gap-0.5 flex-wrap">
-                    {recTrend.slice(-10).map((rec, i, arr) => (
-                      <div key={i} className="flex items-center gap-0.5">
-                        <span className={`w-2 h-2 rounded-full ${REC_COLOR[rec!] ?? "bg-gray-300"}`} />
-                        <span className="text-xs text-gray-600">{rec}</span>
-                        {i < arr.length - 1 && <span className="text-gray-200 mx-0.5">→</span>}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {priceTrend.length > 0 && (
-                <div>
-                  <p className="text-xs text-gray-400 mb-1.5">目標價趨勢</p>
-                  <div className="flex items-center gap-0.5 flex-wrap">
-                    {priceTrend.slice(-10).map((price, i, arr) => (
-                      <div key={i} className="flex items-center gap-0.5">
-                        <span className="text-xs font-medium text-gray-700">{price}</span>
-                        {i < arr.length - 1 && <span className="text-gray-200 mx-0.5">→</span>}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* 基本面：月營收 + 法人買賣超 */}
-      {fundamentals && (fundamentals.revenue || fundamentals.institutional) && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 space-y-3">
-          {fundamentals.revenue && (() => {
-            const r = fundamentals.revenue!;
-            const fmtB = (v: number) => `${(v / 100000).toFixed(0)}億`;
-            const pctCls = (v: number | null) => v == null ? "" : v >= 0 ? "text-red-500" : "text-green-600";
-            const pctStr = (v: number | null) => v == null ? "—" : `${v >= 0 ? "+" : ""}${v.toFixed(1)}%`;
-            return (
+          {/* score + mini bars — only show if signal loaded */}
+          {signal && (
+            <div className="flex items-center justify-between mt-4 pt-3.5 border-t border-white/8">
               <div>
-                <p className="text-xs text-gray-400 mb-1.5">月營收（{r.year}/{r.month}月）</p>
-                <div className="flex items-center gap-4 flex-wrap text-sm">
-                  <span className="font-semibold text-gray-800">{fmtB(r.revenue)}</span>
-                  <span className="text-gray-400">YoY <span className={`font-medium ${pctCls(r.yoy_pct)}`}>{pctStr(r.yoy_pct)}</span></span>
-                  <span className="text-gray-400">MoM <span className={`font-medium ${pctCls(r.mom_pct)}`}>{pctStr(r.mom_pct)}</span></span>
-                  <span className="text-xs text-gray-400">累計 {fmtB(r.ytd)} YoY <span className={`font-medium ${pctCls(r.ytd_yoy_pct)}`}>{pctStr(r.ytd_yoy_pct)}</span></span>
+                <div className="flex items-baseline gap-1 bg-white/10 rounded-xl px-3.5 py-1.5">
+                  <span className="text-[24px] font-extrabold text-white leading-none tabular-nums">
+                    {signal.ma_signal === "多頭排列" ? "↑" : signal.ma_signal === "空頭排列" ? "↓" : "→"}
+                  </span>
                 </div>
+                <div className="text-[9px] text-white/30 mt-1 text-center">{signal.ma_signal ?? "—"}</div>
               </div>
-            );
-          })()}
-          {fundamentals.institutional && fundamentals.institutional.length > 0 && (
-            <div className={fundamentals.revenue ? "pt-3 border-t border-gray-100" : ""}>
-              <p className="text-xs text-gray-400 mb-1.5">法人買賣超（張）</p>
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="text-gray-400">
-                      <th className="text-left py-1 pr-3 font-normal">日期</th>
-                      <th className="text-right py-1 px-2 font-normal">外資</th>
-                      <th className="text-right py-1 px-2 font-normal">投信</th>
-                      <th className="text-right py-1 px-2 font-normal">自營商</th>
-                      <th className="text-right py-1 pl-2 font-normal">合計</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {fundamentals.institutional.map((row) => {
-                      const fmt = (v: number) => {
-                        const abs = Math.abs(v);
-                        const s = abs >= 1000 ? `${(abs / 1000).toFixed(0)}千` : String(abs);
-                        return v >= 0 ? `+${s}` : `-${s}`;
-                      };
-                      const cls = (v: number) => v >= 0 ? "text-red-500" : "text-green-600";
-                      return (
-                        <tr key={row.date} className="border-t border-gray-50">
-                          <td className="py-1 pr-3 text-gray-500">{row.date.slice(5)}</td>
-                          <td className={`py-1 px-2 text-right tabular-nums font-medium ${cls(row.foreign)}`}>{fmt(row.foreign)}</td>
-                          <td className={`py-1 px-2 text-right tabular-nums font-medium ${cls(row.trust)}`}>{fmt(row.trust)}</td>
-                          <td className={`py-1 px-2 text-right tabular-nums font-medium ${cls(row.dealer)}`}>{fmt(row.dealer)}</td>
-                          <td className={`py-1 pl-2 text-right tabular-nums font-semibold ${cls(row.total)}`}>{fmt(row.total)}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+              <div className="flex-1 ml-4 flex flex-col gap-1">
+                {[
+                  ["RSI", signal.rsi ?? 0, 100, "#1B6FD8"],
+                  ["MA趨勢", signal.ma_signal === "多頭排列" ? 80 : signal.ma_signal === "空頭排列" ? 20 : 50, 100, "#7C3AED"],
+                  ["量能", signal.volume_signal === "量增" ? 80 : signal.volume_signal === "量縮" ? 20 : 50, 100, "#F59E0B"],
+                  ["布林", signal.bb_pct_b != null ? Math.round(signal.bb_pct_b * 100) : 50, 100, "#10B981"],
+                ].map(([label, val, max, color]) => (
+                  <div key={label as string} className="flex items-center gap-1.5">
+                    <span className="text-[9px] text-white/35 w-10 shrink-0">{label as string}</span>
+                    <div className="flex-1 h-[3px] bg-white/10 rounded">
+                      <div className="h-full rounded" style={{ width: `${Math.min(100, Math.max(0, ((val as number) / (max as number)) * 100))}%`, background: color as string }} />
+                    </div>
+                    <span className="text-[9px] text-white/40 w-6 text-right shrink-0 tabular-nums">{typeof val === "number" ? val.toFixed(0) : "—"}</span>
+                  </div>
+                ))}
               </div>
             </div>
           )}
         </div>
-      )}
+      </div>
 
-      {/* 技術指標 */}
-      {(signalLoading || signal) && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 space-y-3">
-          <p className="text-xs font-medium text-gray-500">技術指標</p>
-          {signalLoading && !signal ? (
-            <div className="animate-pulse space-y-2">
-              <div className="h-4 bg-gray-100 rounded w-48" />
-              <div className="h-3 bg-gray-100 rounded w-full" />
-            </div>
-          ) : signal ? (
-            <>
-              {/* 均線位置描述 */}
-              {signal.ma_position && (
-                <div className="text-sm font-semibold text-gray-800">{signal.ma_position}</div>
-              )}
+      {/* ── Sticky Tab Bar ── */}
+      <div className="sticky top-14 z-10 bg-white border-b border-[#DDE2EC] flex overflow-x-auto scrollbar-hide">
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setActiveTab(t.key)}
+            className={`px-[18px] py-3 text-[13px] font-medium whitespace-nowrap border-b-2 -mb-px shrink-0 transition-all ${
+              activeTab === t.key
+                ? "text-[#1B6FD8] border-[#1B6FD8] font-semibold"
+                : "text-[#6B7A99] border-transparent hover:text-[#0D1B2A]"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
 
-              {/* MA 數值 */}
-              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
-                <span>MA5 <span className="text-gray-700 font-medium tabular-nums">{signal.ma5}</span></span>
-                {signal.ma10 != null && <span>MA10 <span className="text-gray-700 font-medium tabular-nums">{signal.ma10}</span></span>}
-                <span>MA20 <span className="text-gray-700 font-medium tabular-nums">{signal.ma20}</span></span>
-                {signal.ma60 != null && <span>MA60 <span className="text-gray-700 font-medium tabular-nums">{signal.ma60}</span></span>}
+      {/* ── Tab Content ── */}
+      <div className="max-w-3xl mx-auto px-4 py-4 pb-10 space-y-4">
+
+        {/* ── Loading skeleton ── */}
+        {loading && (
+          <div className="space-y-4 animate-pulse">
+            {[...Array(3)].map((_, i) => (
+              <div key={i} className="bg-white rounded-xl border border-[#DDE2EC] p-4 space-y-2">
+                <div className="h-3 bg-gray-200 rounded w-32" />
+                <div className="h-3 bg-gray-100 rounded w-full" />
+                <div className="h-3 bg-gray-100 rounded w-4/5" />
               </div>
+            ))}
+          </div>
+        )}
 
-              {/* 其他指標 */}
-              <div className="flex flex-wrap gap-2 text-xs pt-1 border-t border-gray-100">
-                {signal.volume_signal && (
-                  <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-100">{signal.volume_signal}</span>
-                )}
-                {signal.rsi != null && (
-                  <span className={`px-2 py-0.5 rounded-full border font-medium ${
-                    signal.rsi >= 70 ? "bg-red-50 text-red-500 border-red-200" :
-                    signal.rsi <= 30 ? "bg-green-50 text-green-600 border-green-200" :
-                    "bg-gray-50 text-gray-500 border-gray-200"
-                  }`}>RSI {signal.rsi}</span>
-                )}
-                {signal.bb_signal && (
-                  <span className="px-2 py-0.5 rounded-full bg-purple-50 text-purple-600 border border-purple-100">布林 {signal.bb_signal}</span>
-                )}
-                {signal.tower && (
-                  <span className={`px-2 py-0.5 rounded-full border font-medium ${
-                    signal.tower.color === "陽" ? "bg-red-50 text-red-500 border-red-200" : "bg-green-50 text-green-600 border-green-200"
-                  }`}>寶塔 {signal.tower.signal}（{signal.tower.count}根）</span>
-                )}
-                {signal.price_change_5d != null && (
-                  <span className={`px-2 py-0.5 rounded-full border ${
-                    signal.price_change_5d >= 0 ? "bg-red-50 text-red-500 border-red-100" : "bg-green-50 text-green-600 border-green-100"
-                  }`}>5日 {signal.price_change_5d >= 0 ? "+" : ""}{signal.price_change_5d}%</span>
-                )}
-              </div>
-
-              {/* 支撐壓力 */}
-              {(signal.resistance.length > 0 || signal.support.length > 0) && (
-                <div className="flex flex-wrap gap-4 text-xs text-gray-400 pt-1 border-t border-gray-100">
-                  {signal.resistance.length > 0 && (
-                    <span className="flex items-center gap-1">
-                      壓力
-                      {signal.resistance.map((v) => (
-                        <span key={v} className="px-1.5 py-0.5 rounded bg-red-50 text-red-500 border border-red-100 tabular-nums font-medium">{v}</span>
-                      ))}
-                    </span>
-                  )}
-                  {signal.support.length > 0 && (
-                    <span className="flex items-center gap-1">
-                      支撐
-                      {signal.support.map((v) => (
-                        <span key={v} className="px-1.5 py-0.5 rounded bg-green-50 text-green-700 border border-green-100 tabular-nums font-medium">{v}</span>
-                      ))}
-                    </span>
-                  )}
+        {/* ════════════════ TAB: 投顧報告 ════════════════ */}
+        {!loading && activeTab === "reports" && (
+          <>
+            {/* Consensus summary card */}
+            {reports.length > 0 && (
+              <div className="bg-white border border-[#DDE2EC] rounded-2xl overflow-hidden">
+                <div className="px-4 py-3 border-b border-[#DDE2EC] flex items-center justify-between">
+                  <h3 className="text-[13px] font-bold text-[#0D1B2A]">投顧共識</h3>
+                  <span className="text-[11px] text-[#6B7A99]">{reports.length} 篇報告</span>
                 </div>
-              )}
-            </>
-          ) : null}
-        </div>
-      )}
-
-      {/* 頁籤 */}
-      {!loading && (
-        <div className="flex gap-1 border-b border-gray-200">
-          {([
-            { key: "reports" as TabKey, label: "個股報告", count: reports.length, color: "blue" },
-            { key: "news"    as TabKey, label: "市場新聞",  count: relatedNews.length, color: "orange" },
-          ]).map((t) => (
-            <button
-              key={t.key}
-              onClick={() => setTab(t.key)}
-              className={`px-4 py-2 text-sm font-medium border-b-2 transition -mb-px ${
-                tab === t.key
-                  ? t.color === "blue"
-                    ? "border-blue-500 text-blue-600"
-                    : "border-orange-400 text-orange-500"
-                  : "border-transparent text-gray-500 hover:text-gray-700"
-              }`}
-            >
-              {t.label}
-              <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded-full ${
-                tab === t.key
-                  ? t.color === "blue" ? "bg-blue-100 text-blue-600" : "bg-orange-100 text-orange-500"
-                  : "bg-gray-100 text-gray-400"
-              }`}>{t.count}</span>
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* 內容區 */}
-      {loading ? (
-        <div className="space-y-6 animate-pulse">
-          {[...Array(3)].map((_, i) => (
-            <div key={i} className="relative pl-10">
-              <div className="absolute left-0.5 top-1.5 w-5 h-5 rounded-full bg-gray-200" />
-              <div className="flex items-center gap-2 mb-2">
-                <div className="bg-gray-200 rounded h-3 w-20" />
-                <div className="bg-gray-200 rounded h-5 w-10" />
-              </div>
-              <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-2">
-                <div className="bg-gray-100 rounded h-3 w-full" />
-                <div className="bg-gray-100 rounded h-3 w-5/6" />
-                <div className="bg-gray-100 rounded h-3 w-4/6" />
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : tab === "reports" ? (
-        reports.length === 0 ? (
-          <p className="text-gray-400">尚無報告資料</p>
-        ) : (
-          <div className="relative">
-            {/* 時間軸線 */}
-            <div className="absolute left-3 top-0 bottom-0 w-px bg-gray-200" />
-            <div className="space-y-6">
-              {sortedReports.map((r) => (
-                <div key={r.id} className="relative pl-10">
-                  {/* 時間軸節點 */}
-                  <div
-                    className={`absolute left-0.5 top-1.5 w-5 h-5 rounded-full border-2 border-white shadow-sm flex items-center justify-center
-                      ${REC_COLOR[r.recommendation ?? ""] ?? "bg-gray-300"}`}
-                  />
-                  {/* 日期標籤 */}
-                  <div className="flex items-center gap-2 mb-2 flex-wrap">
-                    {r.report_date && (
-                      <span className="text-xs text-gray-400">報告日 {r.report_date.slice(0, 10)}</span>
-                    )}
-                    {r.created_at && (
-                      <span className="text-xs text-gray-300">加入 {r.created_at.slice(0, 10)}</span>
-                    )}
-                    {r.analyst && (
-                      <span className="text-xs text-gray-400">· {r.analyst}</span>
-                    )}
-                    <RecommendationBadge value={r.recommendation} />
-                    {r.target_price && (
-                      <span className="text-xs text-gray-500">
-                        目標價 <span className="font-semibold">{r.target_price}</span>
-                      </span>
-                    )}
-                    <span className="ml-auto">
-                      <ShareButton text={buildShareText(r)} url={buildShareUrl(r)} />
-                    </span>
+                {/* buy/hold/sell counts */}
+                <div className="grid grid-cols-3 px-4 py-3.5 border-b border-[#F0F2F6]">
+                  <div className="text-center">
+                    <div className="text-[20px] font-extrabold tabular-nums text-[#E53935]">{buyCount}</div>
+                    <div className="text-[9px] text-[#6B7A99] uppercase tracking-[0.5px] mt-0.5">買進</div>
                   </div>
-                  {/* 報告內容 */}
-                  <div className={`bg-white rounded-xl border p-4 shadow-sm transition ${
-                    materials.has(r.id) ? "border-blue-400 ring-2 ring-blue-100" : "border-gray-200"
-                  }`}>
-                    {r.summary && (
-                      <p className="text-sm text-gray-700 leading-relaxed mb-3">{r.summary}</p>
-                    )}
-                    {r.key_points.length > 0 && (
-                      <ul className="space-y-1">
-                        {r.key_points.map((pt, j) => (
-                          <li key={j} className="text-sm text-gray-600 flex gap-2">
-                            <span className="text-blue-400 mt-0.5">▸</span>
-                            <span>{pt}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                    <div className="mt-2 pt-2 border-t border-gray-100 flex items-center gap-2">
-                      {r.source_filename && (
-                        <p className="text-xs text-gray-400 truncate flex-1">📄 {r.source_filename}</p>
+                  <div className="text-center">
+                    <div className="text-[20px] font-extrabold tabular-nums text-[#6B7A99]">{holdCount}</div>
+                    <div className="text-[9px] text-[#6B7A99] uppercase tracking-[0.5px] mt-0.5">持有</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-[20px] font-extrabold tabular-nums text-[#1E8B4A]">{sellCount}</div>
+                    <div className="text-[9px] text-[#6B7A99] uppercase tracking-[0.5px] mt-0.5">賣出</div>
+                  </div>
+                </div>
+                {/* target price row */}
+                <div className="flex items-center justify-around px-4 py-3">
+                  <div className="text-center">
+                    <div className="text-[9px] text-[#6B7A99] uppercase tracking-[0.5px]">平均目標價</div>
+                    <div className="text-[16px] font-bold mt-0.5 tabular-nums">
+                      {avgTarget ? formatPrice(avgTarget) : "—"}
+                    </div>
+                  </div>
+                  <div className="w-px h-8 bg-[#DDE2EC]" />
+                  <div className="text-center">
+                    <div className="text-[9px] text-[#6B7A99] uppercase tracking-[0.5px]">最高目標</div>
+                    <div className="text-[16px] font-bold mt-0.5 tabular-nums">
+                      {maxTarget ? formatPrice(maxTarget) : "—"}
+                    </div>
+                  </div>
+                  <div className="w-px h-8 bg-[#DDE2EC]" />
+                  <div className="text-center">
+                    <div className="text-[9px] text-[#6B7A99] uppercase tracking-[0.5px]">平均 Upside</div>
+                    <div className={`text-[16px] font-bold mt-0.5 tabular-nums ${avgUpside != null && avgUpside >= 0 ? "text-[#E53935]" : "text-[#1E8B4A]"}`}>
+                      {avgUpside != null ? `${avgUpside >= 0 ? "+" : ""}${avgUpside.toFixed(1)}%` : "—"}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Report list */}
+            {reports.length === 0 ? (
+              <p className="text-[#6B7A99] text-sm py-8 text-center">尚無報告資料</p>
+            ) : (
+              <div className="bg-white border border-[#DDE2EC] rounded-2xl overflow-hidden">
+                <div className="px-4 py-3 border-b border-[#DDE2EC] flex items-center justify-between">
+                  <h3 className="text-[13px] font-bold text-[#0D1B2A]">最新報告</h3>
+                </div>
+                {sortedReports.map((r) => {
+                  const upside = r.target_price && stockPrice?.price
+                    ? ((r.target_price / stockPrice.price - 1) * 100)
+                    : null;
+                  return (
+                    <div key={r.id} className="px-4 py-3.5 border-b border-[#F5F7FC] last:border-b-0">
+                      {/* top row */}
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          {r.analyst && (
+                            <div className="text-[11px] font-bold text-[#1B6FD8]">{r.analyst}</div>
+                          )}
+                          {r.summary && (
+                            <div className="text-[13px] font-medium text-[#0D1B2A] mt-1 leading-snug line-clamp-2">
+                              {r.summary.slice(0, 80)}{r.summary.length > 80 ? "…" : ""}
+                            </div>
+                          )}
+                        </div>
+                        <div className="text-[10px] text-[#6B7A99] shrink-0 mt-0.5">
+                          {(r.report_date ?? r.created_at)?.slice(5, 10)}
+                        </div>
+                      </div>
+                      {/* footer pills */}
+                      <div className="flex items-center gap-2 mt-2">
+                        <RecommendationBadge value={r.recommendation} />
+                        {r.target_price && (
+                          <span className="text-[11px] text-[#6B7A99]">
+                            目標 <span className="font-semibold text-[#0D1B2A]">{r.target_price}</span>
+                          </span>
+                        )}
+                        {upside != null && (
+                          <span className={`text-[11px] font-semibold ${upside >= 0 ? "text-[#E53935]" : "text-[#1E8B4A]"}`}>
+                            {upside >= 0 ? "↑ +" : "↓ "}{upside.toFixed(1)}%
+                          </span>
+                        )}
+                        <span className="ml-auto">
+                          <ShareButton text={buildShareText(r)} url={buildShareUrl(r)} />
+                        </span>
+                      </div>
+                      {/* AI summary block */}
+                      {r.key_points.length > 0 && (
+                        <div className="mt-2 bg-[#F8F9FE] rounded-lg p-2.5 border-l-2 border-[#1B6FD8]">
+                          <div className="text-[11px] text-[#6B7A99] leading-relaxed space-y-0.5">
+                            {r.key_points.slice(0, 2).map((pt, j) => (
+                              <div key={j}>▸ {pt}</div>
+                            ))}
+                          </div>
+                        </div>
                       )}
+                      {/* admin select */}
                       {user?.is_admin && (
-                        <label className={`ml-auto flex items-center gap-1.5 text-xs cursor-pointer select-none shrink-0 transition ${
-                          materials.has(r.id) ? "text-blue-600 font-medium" : "text-gray-500 hover:text-blue-600"
+                        <label className={`mt-1.5 flex items-center gap-1.5 text-xs cursor-pointer select-none transition ${
+                          materials.has(r.id) ? "text-blue-600 font-medium" : "text-gray-400 hover:text-blue-600"
                         }`}>
                           <input
                             type="checkbox"
@@ -463,63 +440,256 @@ export default function StockPage() {
                         </label>
                       )}
                     </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Related news */}
+            {relatedNews.length > 0 && (
+              <div className="bg-white border border-[#DDE2EC] rounded-2xl overflow-hidden">
+                <div className="px-4 py-3 border-b border-[#DDE2EC] flex items-center justify-between">
+                  <h3 className="text-[13px] font-bold text-[#0D1B2A]">市場新聞</h3>
+                  <span className="text-[11px] text-[#6B7A99]">{relatedNews.length} 篇</span>
+                </div>
+                {relatedNews.map((r) => {
+                  const mentionedCodes = r.mentioned_stocks ?? [];
+                  const newsLinkState = { from: `/stocks/${code}`, label: stockName ?? code ?? "個股", recentTab: "news" };
+                  return (
+                    <div key={r.id} className="px-4 py-3.5 border-b border-[#F5F7FC] last:border-b-0">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-[10px] px-2 py-0.5 rounded bg-orange-50 text-orange-600 font-medium border border-orange-200">
+                          {r.analyst ?? "市場新聞"}
+                        </span>
+                        <span className="text-[10px] text-[#6B7A99]">
+                          {(r.report_date ?? r.created_at)?.slice(0, 10)}
+                        </span>
+                      </div>
+                      {r.summary && (
+                        <p className="text-sm text-[#0D1B2A] leading-relaxed">
+                          <StockLinkedText text={r.summary} mentionedStocks={mentionedCodes} linkState={newsLinkState} />
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* ════════════════ TAB: 籌碼面 ════════════════ */}
+        {!loading && activeTab === "chips" && (
+          <>
+            {(fundamentals?.institutional && fundamentals.institutional.length > 0) ? (
+              <div className="bg-white border border-[#DDE2EC] rounded-2xl overflow-hidden">
+                <div className="px-4 py-3 border-b border-[#DDE2EC] flex items-center justify-between">
+                  <h3 className="text-[13px] font-bold text-[#0D1B2A]">籌碼面</h3>
+                </div>
+                {/* 2×3 chip grid from institutional data */}
+                {(() => {
+                  const latest = fundamentals!.institutional![0];
+                  const items: [string, number, string?][] = [
+                    ["外資 5 日", fundamentals!.institutional!.slice(0, 5).reduce((s, d) => s + d.foreign, 0)],
+                    ["投信 5 日", fundamentals!.institutional!.slice(0, 5).reduce((s, d) => s + d.trust, 0)],
+                    ["自營 5 日", fundamentals!.institutional!.slice(0, 5).reduce((s, d) => s + d.dealer, 0)],
+                    ["外資昨日", latest.foreign, latest.date.slice(5)],
+                    ["投信昨日", latest.trust, latest.date.slice(5)],
+                    ["合計昨日", latest.total, latest.date.slice(5)],
+                  ];
+                  return (
+                    <div className="grid grid-cols-2">
+                      {items.map(([label, val, sub], idx) => {
+                        const isRight = idx % 2 !== 0;
+                        const isLastRow = idx >= items.length - 2;
+                        return (
+                          <div key={label as string}
+                            className={`px-4 py-3.5 ${!isRight ? "border-r border-[#F0F2F6]" : ""} ${!isLastRow ? "border-b border-[#F0F2F6]" : ""}`}>
+                            <div className="text-[9px] text-[#6B7A99] uppercase tracking-[0.5px]">{label as string}</div>
+                            <div className={`text-[16px] font-bold mt-1 tabular-nums ${(val as number) >= 0 ? "text-[#E53935]" : "text-[#1E8B4A]"}`}>
+                              {(val as number) >= 0 ? "+" : ""}{(val as number).toLocaleString()}
+                            </div>
+                            {sub && <div className="text-[10px] text-[#6B7A99] mt-0.5">張　{sub as string}</div>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+
+                {/* institutional table */}
+                <div className="border-t border-[#DDE2EC] px-4 py-3">
+                  <p className="text-[11px] text-[#6B7A99] mb-2">法人買賣超（張）</p>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="text-[#6B7A99]">
+                          <th className="text-left py-1 pr-3 font-normal">日期</th>
+                          <th className="text-right py-1 px-2 font-normal">外資</th>
+                          <th className="text-right py-1 px-2 font-normal">投信</th>
+                          <th className="text-right py-1 px-2 font-normal">自營</th>
+                          <th className="text-right py-1 pl-2 font-normal">合計</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {fundamentals!.institutional!.map((row) => {
+                          const fmt = (v: number) => {
+                            const abs = Math.abs(v);
+                            const s = abs >= 1000 ? `${(abs / 1000).toFixed(0)}千` : String(abs);
+                            return v >= 0 ? `+${s}` : `-${s}`;
+                          };
+                          const cls = (v: number) => v >= 0 ? "text-[#E53935]" : "text-[#1E8B4A]";
+                          return (
+                            <tr key={row.date} className="border-t border-gray-50">
+                              <td className="py-1 pr-3 text-[#6B7A99]">{row.date.slice(5)}</td>
+                              <td className={`py-1 px-2 text-right tabular-nums font-medium ${cls(row.foreign)}`}>{fmt(row.foreign)}</td>
+                              <td className={`py-1 px-2 text-right tabular-nums font-medium ${cls(row.trust)}`}>{fmt(row.trust)}</td>
+                              <td className={`py-1 px-2 text-right tabular-nums font-medium ${cls(row.dealer)}`}>{fmt(row.dealer)}</td>
+                              <td className={`py-1 pl-2 text-right tabular-nums font-semibold ${cls(row.total)}`}>{fmt(row.total)}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
-              ))}
+              </div>
+            ) : (
+              <div className="bg-white border border-[#DDE2EC] rounded-2xl p-6 text-center text-[#6B7A99] text-sm">
+                目前無籌碼資料
+              </div>
+            )}
+
+            {/* revenue */}
+            {fundamentals?.revenue && (() => {
+              const r = fundamentals.revenue!;
+              const fmtB = (v: number) => `${(v / 100000).toFixed(0)}億`;
+              const pctCls = (v: number | null) => v == null ? "" : v >= 0 ? "text-[#E53935]" : "text-[#1E8B4A]";
+              const pctStr = (v: number | null) => v == null ? "—" : `${v >= 0 ? "+" : ""}${v.toFixed(1)}%`;
+              return (
+                <div className="bg-white border border-[#DDE2EC] rounded-2xl p-4">
+                  <p className="text-[11px] text-[#6B7A99] mb-2">月營收（{r.year}/{r.month}月）</p>
+                  <div className="flex items-center gap-4 flex-wrap text-sm">
+                    <span className="font-semibold text-[#0D1B2A]">{fmtB(r.revenue)}</span>
+                    <span className="text-[#6B7A99]">YoY <span className={`font-medium ${pctCls(r.yoy_pct)}`}>{pctStr(r.yoy_pct)}</span></span>
+                    <span className="text-[#6B7A99]">MoM <span className={`font-medium ${pctCls(r.mom_pct)}`}>{pctStr(r.mom_pct)}</span></span>
+                    <span className="text-xs text-[#6B7A99]">累計 {fmtB(r.ytd)} YoY <span className={`font-medium ${pctCls(r.ytd_yoy_pct)}`}>{pctStr(r.ytd_yoy_pct)}</span></span>
+                  </div>
+                </div>
+              );
+            })()}
+          </>
+        )}
+
+        {/* ════════════════ TAB: 技術訊號 ════════════════ */}
+        {!loading && activeTab === "tech" && (
+          <>
+            {(signalLoading || signal) ? (
+              <div className="bg-white border border-[#DDE2EC] rounded-2xl overflow-hidden">
+                <div className="px-4 py-3 border-b border-[#DDE2EC]">
+                  <h3 className="text-[13px] font-bold text-[#0D1B2A]">技術訊號</h3>
+                </div>
+                {signalLoading && !signal ? (
+                  <div className="animate-pulse p-4 space-y-2">
+                    <div className="h-4 bg-gray-100 rounded w-48" />
+                    <div className="h-3 bg-gray-100 rounded w-full" />
+                  </div>
+                ) : signal ? (
+                  <div>
+                    {/* signal rows */}
+                    {[
+                      { name: "均線排列", badge: signal.ma_signal,
+                        bull: signal.ma_signal === "多頭排列", bear: signal.ma_signal === "空頭排列" },
+                      { name: "成交量", badge: signal.volume_signal,
+                        bull: signal.volume_signal === "量增", bear: signal.volume_signal === "量縮" },
+                      ...(signal.rsi != null ? [{
+                        name: "RSI (14)",
+                        badge: `${signal.rsi} ${signal.rsi >= 70 ? "超買" : signal.rsi <= 30 ? "超賣" : "中性"}`,
+                        bull: signal.rsi >= 70, bear: signal.rsi <= 30,
+                      }] : []),
+                      ...(signal.bb_signal ? [{ name: "布林通道", badge: signal.bb_signal,
+                        bull: false, bear: false }] : []),
+                      ...(signal.tower ? [{ name: "寶塔線",
+                        badge: `${signal.tower.signal}（${signal.tower.count}根）`,
+                        bull: signal.tower.color === "陽", bear: signal.tower.color === "陰" }] : []),
+                      ...(signal.price_change_5d != null ? [{
+                        name: "5日漲跌",
+                        badge: `${signal.price_change_5d >= 0 ? "+" : ""}${signal.price_change_5d}%`,
+                        bull: signal.price_change_5d > 0, bear: signal.price_change_5d < 0,
+                      }] : []),
+                    ].map((row) => (
+                      <div key={row.name} className="flex items-center justify-between px-4 py-2.5 border-b border-[#F5F7FC] last:border-b-0">
+                        <span className="text-[12px] font-medium text-[#0D1B2A]">{row.name}</span>
+                        <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
+                          row.bull ? "bg-[#FEF2F2] text-[#DC2626]" :
+                          row.bear ? "bg-[#F0FDF4] text-[#16A34A]" :
+                          "bg-[#F3F4F6] text-[#6B7280]"
+                        }`}>
+                          {row.badge ?? "—"}
+                        </span>
+                      </div>
+                    ))}
+
+                    {/* MA values */}
+                    {signal.ma_position && (
+                      <div className="px-4 py-3 border-t border-[#DDE2EC]">
+                        <div className="text-[11px] font-semibold text-[#0D1B2A] mb-1.5">{signal.ma_position}</div>
+                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-[#6B7A99]">
+                          <span>MA5 <span className="text-[#0D1B2A] font-medium tabular-nums">{signal.ma5}</span></span>
+                          {signal.ma10 != null && <span>MA10 <span className="text-[#0D1B2A] font-medium tabular-nums">{signal.ma10}</span></span>}
+                          <span>MA20 <span className="text-[#0D1B2A] font-medium tabular-nums">{signal.ma20}</span></span>
+                          {signal.ma60 != null && <span>MA60 <span className="text-[#0D1B2A] font-medium tabular-nums">{signal.ma60}</span></span>}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* support / resistance */}
+                    {(signal.resistance.length > 0 || signal.support.length > 0) && (
+                      <div className="px-4 py-3 border-t border-[#DDE2EC] flex flex-wrap gap-4 text-xs text-[#6B7A99]">
+                        {signal.resistance.length > 0 && (
+                          <span className="flex items-center gap-1">
+                            壓力
+                            {signal.resistance.map((v) => (
+                              <span key={v} className="px-1.5 py-0.5 rounded bg-red-50 text-[#E53935] border border-red-100 tabular-nums font-medium">{v}</span>
+                            ))}
+                          </span>
+                        )}
+                        {signal.support.length > 0 && (
+                          <span className="flex items-center gap-1">
+                            支撐
+                            {signal.support.map((v) => (
+                              <span key={v} className="px-1.5 py-0.5 rounded bg-green-50 text-[#1E8B4A] border border-green-100 tabular-nums font-medium">{v}</span>
+                            ))}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <div className="bg-white border border-[#DDE2EC] rounded-2xl p-6 text-center text-[#6B7A99] text-sm">
+                目前無技術訊號資料
+              </div>
+            )}
+          </>
+        )}
+
+        {/* ════════════════ TAB: AI 每日稿 ════════════════ */}
+        {!loading && activeTab === "article" && (
+          <div className="bg-white border border-[#DDE2EC] rounded-2xl overflow-hidden">
+            <div className="px-4 py-3 border-b border-[#DDE2EC]">
+              <h3 className="text-[13px] font-bold text-[#0D1B2A]">AI 每日稿</h3>
+            </div>
+            <div className="p-6 text-center text-[#6B7A99] text-sm space-y-2">
+              <div className="text-2xl">📰</div>
+              <p>AI 每日稿功能需由管理員在後台生成。</p>
+              <p className="text-xs text-[#6B7A99]">請至管理員頁面查看今日草稿。</p>
             </div>
           </div>
-        )
-      ) : (
-        relatedNews.length === 0 ? (
-          <p className="text-gray-400">無相關市場新聞</p>
-        ) : (
-          <div className="space-y-4">
-            {relatedNews.map((r) => {
-              const mentionedCodes = r.mentioned_stocks ?? [];
-              const newsLinkState = { from: `/stocks/${code}`, label: stockName ?? code ?? "個股", recentTab: "news" };
-              return (
-              <div key={r.id} className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-xs px-2 py-0.5 rounded bg-orange-50 text-orange-600 font-medium border border-orange-200">
-                      {r.analyst ?? "市場新聞"}
-                    </span>
-                    {/* 入選原因：報告文字中提及本股代號 */}
-                    <span className="text-xs px-2 py-0.5 rounded bg-gray-50 text-gray-400 border border-gray-200">
-                      報告提及 {code}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0 ml-2">
-                    <span className="text-xs text-gray-400">
-                      {(r.report_date ?? r.created_at)?.slice(0, 10)}
-                    </span>
-                    <ShareButton text={buildShareText(r)} url={buildShareUrl(r)} />
-                  </div>
-                </div>
-                {r.summary && (
-                  <p className="text-sm text-gray-700 leading-relaxed mb-2">
-                    <StockLinkedText text={r.summary} mentionedStocks={mentionedCodes} linkState={newsLinkState} />
-                  </p>
-                )}
-                {r.key_points.length > 0 && (
-                  <ul className="space-y-1">
-                    {r.key_points.map((pt, i) => (
-                      <li key={i} className="text-sm text-gray-600 flex gap-2">
-                        <span className="text-orange-400 mt-0.5">▸</span>
-                        <span><StockLinkedText text={pt} mentionedStocks={mentionedCodes} linkState={newsLinkState} /></span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                {r.source_filename && (
-                  <p className="mt-2 pt-2 border-t border-gray-100 text-xs text-gray-400 truncate">📄 {r.source_filename}</p>
-                )}
-              </div>
-            )})}
-          </div>
-        )
-      )}
+        )}
 
+      </div>
     </div>
   );
 }

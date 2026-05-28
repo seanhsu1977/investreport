@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { stocksApi, RecommendationItem } from "../api/client";
 
+// ── helpers ──────────────────────────────────────────────────────────────────
+
 const REC_BADGE: Record<string, string> = {
   買進: "bg-red-50 text-red-600 border-red-200",
   Buy: "bg-red-50 text-red-600 border-red-200",
@@ -13,6 +15,7 @@ const REC_BADGE: Record<string, string> = {
   賣出: "bg-green-50 text-green-700 border-green-300",
   Sell: "bg-green-50 text-green-700 border-green-300",
 };
+
 
 function formatPrice(price: number) {
   return price.toLocaleString("zh-TW", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -27,14 +30,21 @@ function fmtInst(v: number): string {
   return `${sign}${abs.toFixed(1)}K`;
 }
 
-// Module-level cache：切換頁面不清空，TTL 1 小時
+// ── Cache ─────────────────────────────────────────────────────────────────────
+
 const _recCache = new Map<string, { items: RecommendationItem[]; warnings: string[]; fetchedAt: Date }>();
 const REC_CACHE_TTL = 60 * 60 * 1000;
-function recCacheKey(days: number, minReports: number, recFilter: string) { return `${days}_${minReports}_${recFilter}`; }
+
+function recCacheKey(days: number, minReports: number, recFilter: string) {
+  return `${days}_${minReports}_${recFilter}`;
+}
 function getRecCached(days: number, minReports: number, recFilter: string) {
   const entry = _recCache.get(recCacheKey(days, minReports, recFilter));
   if (!entry) return null;
-  if (Date.now() - entry.fetchedAt.getTime() > REC_CACHE_TTL) { _recCache.delete(recCacheKey(days, minReports, recFilter)); return null; }
+  if (Date.now() - entry.fetchedAt.getTime() > REC_CACHE_TTL) {
+    _recCache.delete(recCacheKey(days, minReports, recFilter));
+    return null;
+  }
   return entry;
 }
 
@@ -44,59 +54,201 @@ const REC_PERIOD_OPTIONS = [
   { days: 90, label: "90 天" },
 ];
 
+// ── ScoreCard (Top 3) ─────────────────────────────────────────────────────────
+
 function ScoreCard({ item, rank, onAskReason }: { item: RecommendationItem; rank: number; onAskReason: () => void }) {
-  const borderClr = rank === 1 ? "border-yellow-300" : rank === 2 ? "border-gray-300" : "border-orange-300";
-  const scoreClr  = rank === 1 ? "text-yellow-600" : rank === 2 ? "text-gray-500" : "text-orange-500";
-  const medal     = rank === 1 ? "🥇" : rank === 2 ? "🥈" : "🥉";
+  const medal = rank === 1 ? "🥇" : rank === 2 ? "🥈" : "🥉";
+  const topBorder =
+    rank === 1
+      ? "before:bg-gradient-to-r before:from-[#C9A84C] before:to-[#E8C36A]"
+      : rank === 2
+      ? "before:bg-gradient-to-r before:from-gray-400 before:to-gray-300"
+      : "before:bg-gradient-to-r before:from-[#B45309] before:to-[#D97706]";
+
+  const sb = item.score_breakdown;
+
+  const bars: [string, number, number, string][] = [
+    ["Upside", sb.upside, 30, "#1B6FD8"],
+    ["共識", sb.consensus, 35, "#7C3AED"],
+    ["籌碼", sb.institutional, 15, "#F59E0B"],
+    ["技術", sb.technical, 20, "#10B981"],
+  ];
+
   return (
-    <div className={`bg-white rounded-xl border-2 ${borderClr} shadow-sm p-4 space-y-2 relative`}>
-      <span className="absolute top-3 right-3 text-2xl">{medal}</span>
-      <div>
-        <Link to={`/stocks/${item.code}`} state={{ from: "/recommendations", label: "投顧精選" }}
-          className="font-mono text-blue-700 font-semibold hover:underline">{item.code}</Link>
-        {item.name && <span className="ml-1 text-gray-500 text-sm">{item.name}</span>}
+    <div className={`bg-white border border-[#DDE2EC] rounded-2xl p-5 relative overflow-hidden hover:shadow-lg transition-shadow
+      before:content-[''] before:absolute before:top-0 before:left-0 before:right-0 before:h-[3px] ${topBorder}`}>
+      {/* rank medal */}
+      <span className="absolute top-4 right-4 text-[22px] leading-none">{medal}</span>
+
+      {/* stock id */}
+      <Link
+        to={`/stocks/${item.code}`}
+        state={{ from: "/", label: "投顧精選" }}
+        className="font-mono text-[13px] font-bold text-[#1B6FD8] hover:underline"
+      >{item.code}</Link>
+      {item.name && <div className="text-[11px] text-[#6B7A99] mt-0.5">{item.name}</div>}
+
+      {/* price */}
+      <div className="text-[26px] font-bold mt-3 tabular-nums">
+        {item.current_price ? formatPrice(item.current_price) : "—"}
       </div>
-      <div className="flex items-baseline gap-2">
-        <span className="text-2xl font-bold tabular-nums">
-          {item.current_price ? formatPrice(item.current_price) : "—"}
-        </span>
-        {item.change_pct != null && (
-          <span className={`text-xs font-medium ${item.change_pct >= 0 ? "text-red-500" : "text-green-600"}`}>
-            {item.change_pct >= 0 ? "▲" : "▼"} {Math.abs(item.change_pct).toFixed(2)}%
-          </span>
-        )}
-      </div>
-      <div className="text-xs text-gray-500 flex items-center gap-2 flex-wrap">
-        <span>目標 <span className="font-semibold text-gray-700 tabular-nums">{formatPrice(item.target_price)}</span></span>
-        {item.upside_pct != null && (
-          <span className={`font-medium ${item.upside_pct >= 0 ? "text-red-500" : "text-green-600"}`}>
-            {item.upside_pct >= 0 ? "+" : ""}{item.upside_pct.toFixed(1)}%
-          </span>
-        )}
-      </div>
-      <div className="flex items-center gap-1.5 flex-wrap text-xs">
+      {item.change_pct != null && (
+        <div className={`text-xs font-semibold mt-0.5 ${item.change_pct >= 0 ? "text-[#E53935]" : "text-[#1E8B4A]"}`}>
+          {item.change_pct >= 0 ? "▲" : "▼"} {Math.abs(item.change_pct).toFixed(2)}%
+        </div>
+      )}
+
+      {/* rec + report count */}
+      <div className="flex items-center gap-2 mt-2.5">
         {item.latest_recommendation && (
-          <span className={`px-1.5 py-0.5 rounded border font-bold ${REC_BADGE[item.latest_recommendation] ?? "bg-gray-100 text-gray-600 border-gray-200"}`}>
+          <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${REC_BADGE[item.latest_recommendation] ?? "bg-gray-100 text-gray-600 border-gray-200"}`}>
             {item.latest_recommendation}
           </span>
         )}
-        <span className="text-gray-500">{item.report_count} 篇 · 共識 {item.rec_avg.toFixed(1)}/3</span>
+        <span className="text-[11px] text-[#6B7A99]">{item.report_count} 篇 · 共識 {item.rec_avg.toFixed(1)}/3</span>
       </div>
-      <div className="text-xs text-gray-500">
-        法人 {fmtInst(item.inst_5d_net)} · {item.ma_signal ?? "—"} {item.volume_signal ? `+ ${item.volume_signal}` : ""}
+
+      {/* score badge */}
+      <div className="inline-flex items-baseline gap-1 bg-[#EEF3FC] rounded-lg px-2.5 py-1 mt-3">
+        <span className="text-xl font-extrabold text-[#0B1E3D]">{item.score.toFixed(0)}</span>
+        <span className="text-[11px] text-[#6B7A99]">/ 100</span>
       </div>
-      <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+
+      {/* mini score bars */}
+      <div className="mt-3 flex flex-col gap-1.5">
+        {bars.map(([label, val, max, color]) => (
+          <div key={label} className="flex items-center gap-2">
+            <span className="text-[10px] text-[#6B7A99] w-[54px] shrink-0">{label}</span>
+            <div className="flex-1 h-1 bg-[#EEF0F6] rounded">
+              <div className="h-full rounded" style={{ width: `${(val / max) * 100}%`, background: color }} />
+            </div>
+            <span className="text-[10px] text-[#6B7A99] w-6 text-right shrink-0">{val.toFixed(0)}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* metrics grid */}
+      <div className="grid grid-cols-2 gap-2 mt-3.5 pt-3.5 border-t border-[#DDE2EC]">
         <div>
-          <div className="text-xs text-gray-400">總分</div>
-          <div className={`text-2xl font-bold tabular-nums ${scoreClr}`}>{item.score.toFixed(0)}</div>
+          <div className="text-[10px] text-[#6B7A99] uppercase tracking-[0.6px]">目標價</div>
+          <div className="text-[13px] font-semibold mt-0.5 tabular-nums">{formatPrice(item.target_price)}</div>
         </div>
-        <button onClick={onAskReason} className="px-2.5 py-1.5 rounded-lg text-xs bg-purple-100 text-purple-700 hover:bg-purple-200 font-medium">
+        <div>
+          <div className="text-[10px] text-[#6B7A99] uppercase tracking-[0.6px]">上漲空間</div>
+          <div className={`text-[13px] font-semibold mt-0.5 tabular-nums ${item.upside_pct != null && item.upside_pct >= 0 ? "text-[#E53935]" : "text-[#1E8B4A]"}`}>
+            {item.upside_pct != null ? `${item.upside_pct >= 0 ? "+" : ""}${item.upside_pct.toFixed(1)}%` : "—"}
+          </div>
+        </div>
+        <div>
+          <div className="text-[10px] text-[#6B7A99] uppercase tracking-[0.6px]">法人 5日</div>
+          <div className={`text-[13px] font-semibold mt-0.5 tabular-nums ${item.inst_5d_net >= 0 ? "text-[#E53935]" : "text-[#1E8B4A]"}`}>
+            {fmtInst(item.inst_5d_net)}
+          </div>
+        </div>
+        <div>
+          <div className="text-[10px] text-[#6B7A99] uppercase tracking-[0.6px]">均線</div>
+          <div className="text-[13px] font-semibold mt-0.5 text-[#0D1B2A]">{item.ma_signal ?? "—"}</div>
+        </div>
+      </div>
+
+      {/* ask reason */}
+      <div className="mt-3 flex justify-end">
+        <button
+          onClick={onAskReason}
+          className="text-xs px-2.5 py-1.5 rounded-lg bg-purple-50 text-purple-700 hover:bg-purple-100 font-medium transition"
+        >
           💡 推薦理由
         </button>
       </div>
     </div>
   );
 }
+
+// ── RestCard (rank 4+) ────────────────────────────────────────────────────────
+
+function RestCard({ item, rank, onAskReason }: { item: RecommendationItem; rank: number; onAskReason: () => void }) {
+  const maSig = item.ma_signal;
+  const volSig = item.volume_signal;
+  const hasBullDot = maSig === "多頭排列";
+  const hasBearDot = maSig === "空頭排列";
+  const hasVolDot = volSig === "量增";
+
+  return (
+    <div className="bg-white border border-[#DDE2EC] rounded-xl p-3.5">
+      {/* top row */}
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2.5">
+          <span className="text-[13px] text-[#6B7A99] font-medium w-[18px]">{rank}</span>
+          <div>
+            <Link
+              to={`/stocks/${item.code}`}
+              state={{ from: "/", label: "投顧精選" }}
+              className="font-mono text-[14px] font-bold text-[#1B6FD8] hover:underline"
+            >{item.code}</Link>
+            {item.name && <div className="text-[11px] text-[#6B7A99] mt-0.5">{item.name}</div>}
+          </div>
+        </div>
+        <div className="text-right">
+          <div className="text-[22px] font-extrabold text-[#0B1E3D] tabular-nums leading-none">{item.score.toFixed(0)}</div>
+          <div className="text-[9px] text-[#6B7A99]">總分</div>
+        </div>
+      </div>
+
+      {/* 4-col metrics */}
+      <div className="grid grid-cols-4 gap-1.5 pt-2 border-t border-[#F0F2F6]">
+        <div>
+          <div className="text-[9px] text-[#6B7A99]">現價</div>
+          <div className="text-[12px] font-semibold mt-0.5 tabular-nums">
+            {item.current_price ? formatPrice(item.current_price) : "—"}
+          </div>
+        </div>
+        <div>
+          <div className="text-[9px] text-[#6B7A99]">目標價</div>
+          <div className="text-[12px] font-semibold mt-0.5 tabular-nums">{formatPrice(item.target_price)}</div>
+        </div>
+        <div>
+          <div className="text-[9px] text-[#6B7A99]">Upside</div>
+          <div className={`text-[12px] font-semibold mt-0.5 tabular-nums ${item.upside_pct != null && item.upside_pct >= 0 ? "text-[#E53935]" : "text-[#1E8B4A]"}`}>
+            {item.upside_pct != null ? `${item.upside_pct >= 0 ? "+" : ""}${item.upside_pct.toFixed(1)}%` : "—"}
+          </div>
+        </div>
+        <div>
+          <div className="text-[9px] text-[#6B7A99]">報告數</div>
+          <div className="text-[12px] font-semibold mt-0.5 tabular-nums">{item.report_count}</div>
+        </div>
+      </div>
+
+      {/* footer */}
+      <div className="flex items-center justify-between mt-2">
+        <div className="flex items-center gap-2">
+          {item.latest_recommendation && (
+            <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${REC_BADGE[item.latest_recommendation] ?? "bg-gray-100 text-gray-600 border-gray-200"}`}>
+              {item.latest_recommendation}
+            </span>
+          )}
+          <div className="flex items-center gap-1">
+            {hasBullDot && <div className="w-1.5 h-1.5 rounded-full bg-[#E53935]" />}
+            {hasBearDot && <div className="w-1.5 h-1.5 rounded-full bg-[#1E8B4A]" />}
+            {hasVolDot && <div className="w-1.5 h-1.5 rounded-full bg-amber-400" />}
+            {(maSig || volSig) && (
+              <span className="text-[10px] text-[#6B7A99]">
+                {[maSig, volSig].filter(Boolean).join("·")}
+              </span>
+            )}
+          </div>
+        </div>
+        <button
+          onClick={onAskReason}
+          className="text-[10px] font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 border-none rounded-md px-2.5 py-1 transition"
+        >
+          💡 理由
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function RecommendationsPage() {
   const [days, setDays] = useState(30);
@@ -209,83 +361,74 @@ export default function RecommendationsPage() {
   const top3 = items.slice(0, 3);
   const rest = items.slice(3);
 
+  const chipBase = "text-[12px] font-medium px-3 py-[5px] rounded-full border cursor-pointer whitespace-nowrap transition-all";
+  const chipActive = "bg-[#0B1E3D] text-white border-[#0B1E3D]";
+  const chipInactive = "bg-white text-[#6B7A99] border-[#DDE2EC] hover:text-[#0D1B2A]";
+
   return (
-    <div className="max-w-5xl mx-auto px-4 py-6 space-y-4">
-      {/* 頁標 + 重整 */}
-      <div className="flex items-start justify-between flex-wrap gap-2">
+    <div className="max-w-5xl mx-auto px-4 py-6 space-y-5">
+
+      {/* ── Page Header ── */}
+      <div className="flex items-end justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">投顧精選</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            依投顧共識度 + 籌碼面 + 量價綜合評分　·　即時計算
+          <h1 className="text-[22px] font-bold text-[#0D1B2A]">投顧精選</h1>
+          <p className="text-[12px] text-[#6B7A99] mt-0.5">
+            綜合投顧共識 · 籌碼面 · 技術面評分
             {lastFetched && (
-              <span className="ml-2 text-gray-400">· 更新於 {lastFetched.toLocaleTimeString("zh-TW")}</span>
+              <span className="ml-2">· 更新於 {lastFetched.toLocaleTimeString("zh-TW")}</span>
             )}
           </p>
         </div>
-        <button
-          onClick={() => fetchData(true)}
-          disabled={loading}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition"
-        >
-          {loading ? (
-            <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-            </svg>
-          ) : (
-            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582M20 20v-5h-.581M5.5 9A7.5 7.5 0 0119.5 15M4.5 15A7.5 7.5 0 0118.5 9" />
-            </svg>
-          )}
-          {loading ? "計算中…" : "重新整理"}
-        </button>
+
+        {/* Filter bar */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-[11px] text-[#6B7A99] font-medium">期間</span>
+          <div className="flex gap-1">
+            {REC_PERIOD_OPTIONS.map((opt) => (
+              <button key={opt.days} onClick={() => setDays(opt.days)}
+                className={`${chipBase} ${days === opt.days ? chipActive : chipInactive}`}>
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          <div className="w-px h-[18px] bg-[#DDE2EC]" />
+          <span className="text-[11px] text-[#6B7A99] font-medium">最少報告</span>
+          <div className="flex gap-1">
+            {[1, 2, 3].map((n) => (
+              <button key={n} onClick={() => setMinReports(n)}
+                className={`${chipBase} ${minReports === n ? chipActive : chipInactive}`}>
+                {n}+
+              </button>
+            ))}
+          </div>
+          <div className="w-px h-[18px] bg-[#DDE2EC]" />
+          <div className="flex gap-1">
+            <button onClick={() => setRecFilter("all")}
+              className={`${chipBase} ${recFilter === "all" ? chipActive : chipInactive}`}>全部</button>
+            <button onClick={() => setRecFilter("buy_only")}
+              className={`${chipBase} ${recFilter === "buy_only" ? chipActive : chipInactive}`}>只看買進</button>
+          </div>
+          <button
+            onClick={() => fetchData(true)}
+            disabled={loading}
+            className="flex items-center gap-1.5 px-3.5 py-[7px] rounded-lg bg-[#1B6FD8] text-white text-[12px] font-semibold hover:bg-[#2480EF] disabled:opacity-50 transition"
+          >
+            {loading ? (
+              <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+              </svg>
+            ) : (
+              <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582M20 20v-5h-.581M5.5 9A7.5 7.5 0 0119.5 15M4.5 15A7.5 7.5 0 0118.5 9" />
+              </svg>
+            )}
+            {loading ? "計算中…" : "重新整理"}
+          </button>
+        </div>
       </div>
 
-      {/* 篩選列 */}
-      <section className="bg-white rounded-xl border border-gray-200 p-3 flex items-center gap-3 flex-wrap text-xs">
-        <span className="text-gray-500">期間</span>
-        <div className="flex gap-1">
-          {REC_PERIOD_OPTIONS.map((opt) => (
-            <button
-              key={opt.days}
-              onClick={() => setDays(opt.days)}
-              className={`px-2.5 py-1 rounded font-medium ${
-                days === opt.days ? "bg-blue-100 text-blue-700" : "text-gray-500 hover:bg-gray-50"
-              }`}
-            >{opt.label}</button>
-          ))}
-        </div>
-        <div className="w-px h-4 bg-gray-200"></div>
-        <span className="text-gray-500">最少報告數</span>
-        <div className="flex gap-1">
-          {[1, 2, 3].map((n) => (
-            <button
-              key={n}
-              onClick={() => setMinReports(n)}
-              className={`px-2.5 py-1 rounded font-medium ${
-                minReports === n ? "bg-blue-100 text-blue-700" : "text-gray-500 hover:bg-gray-50"
-              }`}
-            >{n}+</button>
-          ))}
-        </div>
-        <div className="w-px h-4 bg-gray-200"></div>
-        <span className="text-gray-500">評等</span>
-        <div className="flex gap-1">
-          <button
-            onClick={() => setRecFilter("all")}
-            className={`px-2.5 py-1 rounded font-medium ${
-              recFilter === "all" ? "bg-blue-100 text-blue-700" : "text-gray-500 hover:bg-gray-50"
-            }`}
-          >全部</button>
-          <button
-            onClick={() => setRecFilter("buy_only")}
-            className={`px-2.5 py-1 rounded font-medium ${
-              recFilter === "buy_only" ? "bg-blue-100 text-blue-700" : "text-gray-500 hover:bg-gray-50"
-            }`}
-          >只看買進系</button>
-        </div>
-      </section>
-
+      {/* Error */}
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700 text-sm flex items-center justify-between gap-3">
           <span>{error}</span>
@@ -293,6 +436,7 @@ export default function RecommendationsPage() {
         </div>
       )}
 
+      {/* Warnings */}
       {warnings.length > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-amber-800 text-xs space-y-1">
           <div className="flex items-start justify-between gap-3">
@@ -305,95 +449,40 @@ export default function RecommendationsPage() {
       )}
 
       {loading && items.length === 0 && (
-        <div className="text-center py-12 text-gray-400 text-sm">計算中（要抓現價、訊號、籌碼，約 15-30 秒）…</div>
+        <div className="text-center py-12 text-[#6B7A99] text-sm">計算中（要抓現價、訊號、籌碼，約 15-30 秒）…</div>
       )}
 
       {!loading && items.length === 0 && !error && (
-        <div className="text-center py-12 text-gray-400 text-sm">沒有符合條件的個股。</div>
+        <div className="text-center py-12 text-[#6B7A99] text-sm">沒有符合條件的個股。</div>
       )}
 
-      {/* Top 3 卡片 */}
+      {/* ── Top 3 Cards ── */}
       {top3.length > 0 && (
-        <section className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {top3.map((item, i) => (
             <ScoreCard key={item.code} item={item} rank={i + 1} onAskReason={() => setReasonOpen(item)} />
           ))}
         </section>
       )}
 
-      {/* 完整表格 */}
+      {/* ── Rank 4+ list ── */}
       {rest.length > 0 && (
-        <section className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
-            <h2 className="font-semibold text-gray-700">完整排行（共 {items.length} 檔）</h2>
-            <span className="text-xs text-gray-400">點列跳到個股頁</span>
+        <section>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-[14px] font-bold text-[#0D1B2A]">
+              完整排行 <span className="text-[#6B7A99] font-normal text-[13px]">共 {items.length} 檔</span>
+            </h2>
+            <span className="text-[11px] text-[#6B7A99]">點選查看個股</span>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
-                <tr>
-                  <th className="px-3 py-2 text-center w-10">#</th>
-                  <th className="px-3 py-2 text-left">股票</th>
-                  <th className="px-3 py-2 text-right">現價</th>
-                  <th className="px-3 py-2 text-right">目標價</th>
-                  <th className="px-3 py-2 text-right">Upside</th>
-                  <th className="px-3 py-2 text-center">評等</th>
-                  <th className="px-3 py-2 text-center">報告</th>
-                  <th className="px-3 py-2 text-right">法人 5d</th>
-                  <th className="px-3 py-2 text-left">訊號</th>
-                  <th className="px-3 py-2 text-right">總分</th>
-                  <th className="px-3 py-2 text-center"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {rest.map((item, i) => {
-                  const rank = i + 4;
-                  return (
-                    <tr key={item.code} className="hover:bg-blue-50">
-                      <td className="px-3 py-2 text-center text-gray-400">{rank}</td>
-                      <td className="px-3 py-2">
-                        <Link to={`/stocks/${item.code}`} state={{ from: "/recommendations", label: "投顧精選" }}
-                          className="font-mono text-blue-700 font-medium hover:underline">{item.code}</Link>
-                        {item.name && <span className="ml-1 text-xs text-gray-500">{item.name}</span>}
-                      </td>
-                      <td className="px-3 py-2 text-right tabular-nums">
-                        {item.current_price ? formatPrice(item.current_price) : "—"}
-                      </td>
-                      <td className="px-3 py-2 text-right tabular-nums">{formatPrice(item.target_price)}</td>
-                      <td className={`px-3 py-2 text-right tabular-nums font-semibold ${
-                        item.upside_pct != null && item.upside_pct >= 0 ? "text-red-500" : "text-green-600"
-                      }`}>
-                        {item.upside_pct != null ? `${item.upside_pct >= 0 ? "+" : ""}${item.upside_pct.toFixed(1)}%` : "—"}
-                      </td>
-                      <td className="px-3 py-2 text-center">
-                        {item.latest_recommendation && (
-                          <span className={`text-xs px-1.5 py-0.5 rounded border font-bold ${REC_BADGE[item.latest_recommendation] ?? "bg-gray-100 text-gray-600 border-gray-200"}`}>
-                            {item.latest_recommendation}
-                          </span>
-                        )}
-                        <span className="text-xs text-gray-400 ml-1">{item.rec_avg.toFixed(1)}</span>
-                      </td>
-                      <td className="px-3 py-2 text-center tabular-nums">{item.report_count}</td>
-                      <td className={`px-3 py-2 text-right tabular-nums font-medium ${
-                        item.inst_5d_net >= 0 ? "text-red-500" : "text-green-600"
-                      }`}>{fmtInst(item.inst_5d_net)}</td>
-                      <td className="px-3 py-2 text-xs text-gray-600">
-                        {item.ma_signal ?? "—"}{item.volume_signal ? ` · ${item.volume_signal}` : ""}
-                      </td>
-                      <td className="px-3 py-2 text-right tabular-nums font-bold text-gray-700">{item.score.toFixed(0)}</td>
-                      <td className="px-3 py-2 text-center">
-                        <button onClick={() => setReasonOpen(item)} className="text-xs text-purple-600 hover:underline">💡</button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          <div className="flex flex-col gap-2.5">
+            {rest.map((item, i) => (
+              <RestCard key={item.code} item={item} rank={i + 4} onAskReason={() => setReasonOpen(item)} />
+            ))}
           </div>
         </section>
       )}
 
-      {/* LLM 推薦理由 modal */}
+      {/* ── LLM 推薦理由 Modal ── */}
       {reasonOpen && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40"
@@ -408,7 +497,7 @@ export default function RecommendationsPage() {
                 <span className="text-purple-600">💡</span>
                 <span className="font-semibold text-gray-800">推薦理由</span>
                 <span className="text-sm text-gray-500">·</span>
-                <span className="font-mono text-blue-700">{reasonOpen.code}</span>
+                <span className="font-mono text-[#1B6FD8]">{reasonOpen.code}</span>
                 {reasonOpen.name && <span className="text-sm text-gray-600">{reasonOpen.name}</span>}
               </div>
               <button
@@ -424,9 +513,7 @@ export default function RecommendationsPage() {
               </div>
               <div>
                 <div className="text-gray-400">Upside</div>
-                <div className={`text-sm font-semibold tabular-nums ${
-                  reasonOpen.upside_pct != null && reasonOpen.upside_pct >= 0 ? "text-red-500" : "text-green-600"
-                }`}>
+                <div className={`text-sm font-semibold tabular-nums ${reasonOpen.upside_pct != null && reasonOpen.upside_pct >= 0 ? "text-[#E53935]" : "text-[#1E8B4A]"}`}>
                   {reasonOpen.upside_pct != null ? `${reasonOpen.upside_pct >= 0 ? "+" : ""}${reasonOpen.upside_pct.toFixed(1)}%` : "—"}
                 </div>
               </div>
@@ -500,7 +587,7 @@ export default function RecommendationsPage() {
                 </button>
                 <Link
                   to={`/stocks/${reasonOpen.code}`}
-                  state={{ from: "/recommendations", label: "投顧精選" }}
+                  state={{ from: "/", label: "投顧精選" }}
                   onClick={() => setReasonOpen(null)}
                   className="px-3 py-2 rounded-lg text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium"
                 >看個股頁 →</Link>
@@ -510,14 +597,15 @@ export default function RecommendationsPage() {
         </div>
       )}
 
-      {/* 評分說明 */}
-      <section className="bg-white rounded-xl border border-gray-200 p-4 text-xs text-gray-500 space-y-1">
-        <h4 className="font-medium text-gray-700">評分構成（總分 0–100）</h4>
-        <div>· <span className="text-gray-700">Upside 空間</span>：cap +50% 避免極端值灌分　(0–30 分)</div>
-        <div>· <span className="text-gray-700">投顧共識</span>：報告數 × 評等平均（買=3、增持=2、持有=1、中立=0、減=-1、賣=-2）　(0–35 分)</div>
-        <div>· <span className="text-gray-700">籌碼配合</span>：法人 5 日淨買超（每千張 1 分）　(0–15 分)</div>
-        <div>· <span className="text-gray-700">技術面</span>：多頭排列 +10、量增 +10　(0–20 分)</div>
+      {/* ── Scoring note ── */}
+      <section className="bg-white border border-[#DDE2EC] rounded-xl p-4 text-[11px] text-[#6B7A99] flex flex-wrap gap-x-6 gap-y-1">
+        <span className="font-semibold text-[#0D1B2A]">評分構成（0–100 分）</span>
+        <span><span className="font-medium text-[#0D1B2A]">Upside 空間</span> 0–30 分，cap +50%</span>
+        <span><span className="font-medium text-[#0D1B2A]">投顧共識</span> 0–35 分，報告數 × 評等平均</span>
+        <span><span className="font-medium text-[#0D1B2A]">籌碼配合</span> 0–15 分，法人 5 日淨買超</span>
+        <span><span className="font-medium text-[#0D1B2A]">技術面</span> 0–20 分，多頭排列 +10、量增 +10</span>
       </section>
     </div>
   );
 }
+

@@ -158,16 +158,16 @@ export default function StockPage() {
             </svg>
           </button>
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
+            <div className="flex items-baseline gap-2.5 flex-wrap">
               <a
                 href={`https://www.nstock.tw/stock_info?stock_id=${code}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-[15px] font-bold text-white hover:text-[#C9A84C] transition font-mono"
+                className="text-[22px] font-bold text-white hover:text-[#C9A84C] transition font-mono leading-none"
               >{code}</a>
-              {stockName && <span className="text-[11px] text-white/50">{stockName}</span>}
+              {stockName && <span className="text-[20px] font-semibold text-white/85 leading-none">{stockName}</span>}
             </div>
-            <div className="text-[11px] text-white/40 mt-0.5">來自：{backLabel}</div>
+            <div className="text-[12px] text-white/55 mt-1">來自：{backLabel}</div>
           </div>
           {/* watchlist button */}
           {user && (
@@ -223,28 +223,28 @@ export default function StockPage() {
           <div className="flex gap-4 mt-3.5 flex-wrap">
             {latest?.target_price && (
               <div>
-                <div className="text-[9px] text-white/35 uppercase tracking-[0.7px]">目標價</div>
-                <div className="text-[13px] font-semibold text-white/90 mt-0.5 tabular-nums">{formatPrice(latest.target_price)}</div>
+                <div className="text-[12px] text-white/65 uppercase tracking-[0.7px]">目標價</div>
+                <div className="text-[15px] font-semibold text-white mt-0.5 tabular-nums">{formatPrice(latest.target_price)}</div>
               </div>
             )}
             {latestUpside != null && (
               <div>
-                <div className="text-[9px] text-white/35 uppercase tracking-[0.7px]">上漲空間</div>
-                <div className={`text-[13px] font-semibold mt-0.5 tabular-nums ${latestUpside >= 0 ? "text-[#FF6B6B]" : "text-[#4CD964]"}`}>
+                <div className="text-[12px] text-white/65 uppercase tracking-[0.7px]">上漲空間</div>
+                <div className={`text-[15px] font-semibold mt-0.5 tabular-nums ${latestUpside >= 0 ? "text-[#FF6B6B]" : "text-[#4CD964]"}`}>
                   {latestUpside >= 0 ? "+" : ""}{latestUpside.toFixed(1)}%
                 </div>
               </div>
             )}
             {reports.length > 0 && (
               <div>
-                <div className="text-[9px] text-white/35 uppercase tracking-[0.7px]">報告數</div>
-                <div className="text-[13px] font-semibold text-white/90 mt-0.5">{reports.length} 篇</div>
+                <div className="text-[12px] text-white/65 uppercase tracking-[0.7px]">報告數</div>
+                <div className="text-[15px] font-semibold text-white mt-0.5">{reports.length} 篇</div>
               </div>
             )}
             {signal?.current_price && (
               <div>
-                <div className="text-[9px] text-white/35 uppercase tracking-[0.7px]">成交量</div>
-                <div className="text-[13px] font-semibold text-white/90 mt-0.5 tabular-nums">
+                <div className="text-[12px] text-white/65 uppercase tracking-[0.7px]">成交量</div>
+                <div className="text-[15px] font-semibold text-white mt-0.5 tabular-nums">
                   {/* volume not directly in StockSignal; skip or show RSI */}
                   RSI {signal.rsi ?? "—"}
                 </div>
@@ -261,7 +261,7 @@ export default function StockPage() {
                     {signal.ma_signal === "多頭排列" ? "↑" : signal.ma_signal === "空頭排列" ? "↓" : "→"}
                   </span>
                 </div>
-                <div className="text-[9px] text-white/30 mt-1 text-center">{signal.ma_signal ?? "—"}</div>
+                <div className="text-[11px] text-white/60 mt-1 text-center">{signal.ma_signal ?? "—"}</div>
               </div>
               <div className="flex-1 ml-4 flex flex-col gap-1">
                 {[
@@ -270,12 +270,12 @@ export default function StockPage() {
                   ["量能", signal.volume_signal === "量增" ? 80 : signal.volume_signal === "量縮" ? 20 : 50, 100, "#F59E0B"],
                   ["布林", signal.bb_pct_b != null ? Math.round(signal.bb_pct_b * 100) : 50, 100, "#10B981"],
                 ].map(([label, val, max, color]) => (
-                  <div key={label as string} className="flex items-center gap-1.5">
-                    <span className="text-[9px] text-white/35 w-10 shrink-0">{label as string}</span>
-                    <div className="flex-1 h-[3px] bg-white/10 rounded">
+                  <div key={label as string} className="flex items-center gap-2">
+                    <span className="text-[12px] text-white/70 w-12 shrink-0">{label as string}</span>
+                    <div className="flex-1 h-[4px] bg-white/15 rounded">
                       <div className="h-full rounded" style={{ width: `${Math.min(100, Math.max(0, ((val as number) / (max as number)) * 100))}%`, background: color as string }} />
                     </div>
-                    <span className="text-[9px] text-white/40 w-6 text-right shrink-0 tabular-nums">{typeof val === "number" ? val.toFixed(0) : "—"}</span>
+                    <span className="text-[12px] text-white/75 w-7 text-right shrink-0 tabular-nums">{typeof val === "number" ? val.toFixed(0) : "—"}</span>
                   </div>
                 ))}
               </div>

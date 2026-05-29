@@ -61,8 +61,21 @@ def _cleanup_stale_syncs():
         ), {"now": datetime.utcnow()})
 
 
+def _fix_known_name_errors():
+    """修正 stocks 表中已知的錯字股名"""
+    corrections = [
+        ("3017", "奇鋐"),   # 奇鎧 → 奇鋐
+    ]
+    with engine.begin() as conn:
+        for code, correct_name in corrections:
+            conn.execute(text(
+                "UPDATE stocks SET name=:name WHERE code=:code AND name!=:name"
+            ), {"code": code, "name": correct_name})
+
+
 def init_db():
     from models import DriveFile, Report, Watchlist, WatchlistGroup, FuturesChip, Stock, DailyArticle, SyncLog, InviteCode, RecommendationCache  # noqa: F401
     Base.metadata.create_all(bind=engine)
     _migrate()
     _cleanup_stale_syncs()
+    _fix_known_name_errors()

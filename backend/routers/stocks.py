@@ -500,7 +500,7 @@ def get_cached_recommendation_reason(
     return {
         "stock_code": stock_code,
         "content": row.content,
-        "generated_at": row.generated_at.isoformat(),
+        "generated_at": row.generated_at.isoformat() + "Z",  # UTC, 確保前端正確解析
     }
 
 

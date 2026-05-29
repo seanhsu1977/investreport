@@ -273,6 +273,7 @@ export default function RecommendationsPage() {
     setReasonError(null);
     setReasonGeneratedAt(null);
     setReasonLoading(true);
+    let succeeded = false;
     try {
       const token = localStorage.getItem("auth_token");
       const resp = await fetch(`/api/stocks/${code}/recommendation-reason`, {
@@ -308,7 +309,7 @@ export default function RecommendationsPage() {
         for (const line of lines) {
           if (!line.startsWith("data: ")) continue;
           const payload = line.slice(6);
-          if (payload === "[DONE]") { setReasonGeneratedAt(new Date().toISOString()); continue; }
+          if (payload === "[DONE]") { succeeded = true; continue; }
           try {
             const obj = JSON.parse(payload);
             if (obj.error) { setReasonError(obj.error); continue; }
@@ -316,6 +317,8 @@ export default function RecommendationsPage() {
           } catch {}
         }
       }
+      // 串流結束後一次性設定日期，避免 React batching 問題
+      if (succeeded) setReasonGeneratedAt(new Date().toISOString());
     } catch (e: any) {
       setReasonError(e.message || "生成失敗");
     } finally {
@@ -336,7 +339,9 @@ export default function RecommendationsPage() {
       if (resp.ok) {
         const data = await resp.json();
         setReasonText(data.content ?? "");
-        setReasonGeneratedAt(data.generated_at ?? null);
+        // 後端回傳的是 UTC isoformat（無 Z），補上 Z 確保正確解析
+        const raw: string | undefined = data.generated_at;
+        setReasonGeneratedAt(raw ? (raw.endsWith("Z") ? raw : raw + "Z") : null);
         setReasonLoading(false);
         return;
       }
@@ -605,6 +610,16 @@ export default function RecommendationsPage() {
             </div>
             <div className="px-5 py-4 space-y-3">
               <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 min-h-[140px]">
+                {/* 生成時間標注（右上角） */}
+                {reasonGeneratedAt && !reasonLoading && (
+                  <p className="text-[10px] text-purple-400 text-right mb-2">
+                    生成於 {new Date(reasonGeneratedAt).toLocaleString("zh-TW", {
+                      timeZone: "Asia/Taipei",
+                      year: "numeric", month: "2-digit", day: "2-digit",
+                      hour: "2-digit", minute: "2-digit",
+                    })}
+                  </p>
+                )}
                 {reasonError ? (
                   <p className="text-sm text-red-600">❌ {reasonError}</p>
                 ) : reasonText ? (
@@ -624,16 +639,6 @@ export default function RecommendationsPage() {
                   <p className="text-sm text-gray-400">準備生成…</p>
                 )}
               </div>
-              {/* 生成時間標注 */}
-              {reasonGeneratedAt && !reasonLoading && (
-                <p className="text-[11px] text-gray-400 text-right">
-                  生成於 {new Date(reasonGeneratedAt).toLocaleString("zh-TW", {
-                    timeZone: "Asia/Taipei",
-                    year: "numeric", month: "2-digit", day: "2-digit",
-                    hour: "2-digit", minute: "2-digit",
-                  })}
-                </p>
-              )}
               <div className="flex gap-2">
                 <button
                   onClick={() => streamReason(reasonOpen!.code)}

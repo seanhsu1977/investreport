@@ -21,7 +21,7 @@ _SAFETY_OFF = [
 ]
 
 from database import get_db
-from models import Report
+from models import Report, StockRecommendationReason
 from stocks_master import resolve_name
 
 router = APIRouter(prefix="/stocks", tags=["stocks"])
@@ -488,12 +488,28 @@ _REASON_SYSTEM = """你是資深投資編輯。根據提供的投顧報告 + 量
 """
 
 
+@router.get("/{stock_code}/recommendation-reason")
+def get_cached_recommendation_reason(
+    stock_code: str,
+    db: Session = Depends(get_db),
+):
+    """回傳已快取的推薦理由（含生成時間）；無快取時回傳 404。"""
+    row = db.get(StockRecommendationReason, stock_code)
+    if not row:
+        raise HTTPException(404, "no cached reason")
+    return {
+        "stock_code": stock_code,
+        "content": row.content,
+        "generated_at": row.generated_at.isoformat(),
+    }
+
+
 @router.post("/{stock_code}/recommendation-reason")
 async def stream_recommendation_reason(
     stock_code: str,
     db: Session = Depends(get_db),
 ):
-    """LLM streaming 生成個股推薦理由（~150-200 字）。SSE 格式。"""
+    """LLM streaming 生成個股推薦理由（~150-200 字）。SSE 格式。生成完後暫存至 DB。"""
     cutoff = datetime.utcnow() - timedelta(days=90)
     reports = (
         db.query(Report)
@@ -586,6 +602,9 @@ async def stream_recommendation_reason(
         f"Context:\n{json.dumps(context, ensure_ascii=False, indent=2, default=str)}"
     )
 
+    # 取得一個可在 generator 內使用的 DB session（非 FastAPI DI）
+    from database import SessionLocal
+
     def generate():
         client = genai.Client(api_key=api_key)
         model = os.environ.get("RECOMMENDATION_MODEL", "gemini-2.5-flash")
@@ -598,13 +617,36 @@ async def stream_recommendation_reason(
         max_retries = 3
         for attempt in range(max_retries):
             sent_any = False
+            full_text: list[str] = []
             try:
                 for chunk in client.models.generate_content_stream(
                     model=model, contents=user_msg, config=config,
                 ):
                     if chunk.text:
                         sent_any = True
+                        full_text.append(chunk.text)
                         yield f"data: {json.dumps({'text': chunk.text}, ensure_ascii=False)}\n\n"
+                # 生成成功 → 暫存至 DB
+                if full_text:
+                    content = "".join(full_text)
+                    _db = SessionLocal()
+                    try:
+                        row = _db.get(StockRecommendationReason, stock_code)
+                        now = datetime.utcnow()
+                        if row:
+                            row.content = content
+                            row.generated_at = now
+                        else:
+                            _db.add(StockRecommendationReason(
+                                stock_code=stock_code,
+                                content=content,
+                                generated_at=now,
+                            ))
+                        _db.commit()
+                    except Exception:
+                        _db.rollback()
+                    finally:
+                        _db.close()
                 yield "data: [DONE]\n\n"
                 return
             except Exception as e:

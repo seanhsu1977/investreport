@@ -266,10 +266,12 @@ export default function RecommendationsPage() {
   const [reasonText, setReasonText] = useState("");
   const [reasonLoading, setReasonLoading] = useState(false);
   const [reasonError, setReasonError] = useState<string | null>(null);
+  const [reasonGeneratedAt, setReasonGeneratedAt] = useState<string | null>(null);
 
-  const generateReason = useCallback(async (code: string) => {
+  const streamReason = useCallback(async (code: string) => {
     setReasonText("");
     setReasonError(null);
+    setReasonGeneratedAt(null);
     setReasonLoading(true);
     try {
       const token = localStorage.getItem("auth_token");
@@ -306,7 +308,7 @@ export default function RecommendationsPage() {
         for (const line of lines) {
           if (!line.startsWith("data: ")) continue;
           const payload = line.slice(6);
-          if (payload === "[DONE]") continue;
+          if (payload === "[DONE]") { setReasonGeneratedAt(new Date().toISOString()); continue; }
           try {
             const obj = JSON.parse(payload);
             if (obj.error) { setReasonError(obj.error); continue; }
@@ -321,14 +323,37 @@ export default function RecommendationsPage() {
     }
   }, []);
 
+  const loadCachedReason = useCallback(async (code: string) => {
+    setReasonText("");
+    setReasonError(null);
+    setReasonGeneratedAt(null);
+    setReasonLoading(true);
+    try {
+      const token = localStorage.getItem("auth_token");
+      const resp = await fetch(`/api/stocks/${code}/recommendation-reason`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        setReasonText(data.content ?? "");
+        setReasonGeneratedAt(data.generated_at ?? null);
+        setReasonLoading(false);
+        return;
+      }
+    } catch {}
+    // 無快取 → 自動生成
+    await streamReason(code);
+  }, [streamReason]);
+
   useEffect(() => {
     if (reasonOpen) {
-      generateReason(reasonOpen.code);
+      loadCachedReason(reasonOpen.code);
     } else {
       setReasonText("");
       setReasonError(null);
+      setReasonGeneratedAt(null);
     }
-  }, [reasonOpen, generateReason]);
+  }, [reasonOpen, loadCachedReason]);
 
   const fetchData = useCallback(async (force = false) => {
     if (!force) {
@@ -593,15 +618,25 @@ export default function RecommendationsPage() {
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
                     </svg>
-                    Claude 即時生成中…
+                    AI 生成中…
                   </div>
                 ) : (
                   <p className="text-sm text-gray-400">準備生成…</p>
                 )}
               </div>
+              {/* 生成時間標注 */}
+              {reasonGeneratedAt && !reasonLoading && (
+                <p className="text-[11px] text-gray-400 text-right">
+                  生成於 {new Date(reasonGeneratedAt).toLocaleString("zh-TW", {
+                    timeZone: "Asia/Taipei",
+                    year: "numeric", month: "2-digit", day: "2-digit",
+                    hour: "2-digit", minute: "2-digit",
+                  })}
+                </p>
+              )}
               <div className="flex gap-2">
                 <button
-                  onClick={() => generateReason(reasonOpen!.code)}
+                  onClick={() => streamReason(reasonOpen!.code)}
                   disabled={reasonLoading}
                   className="flex-1 px-3 py-2 rounded-lg text-sm bg-purple-600 hover:bg-purple-700 text-white font-medium disabled:opacity-40 disabled:cursor-not-allowed transition"
                 >

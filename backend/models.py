@@ -134,6 +134,15 @@ class RecommendationCache(Base):
     computed_at = Column(DateTime, nullable=False)
 
 
+class StockRecommendationReason(Base):
+    """個股推薦理由快取（由 LLM 生成後暫存，附生成時間）"""
+    __tablename__ = "stock_recommendation_reasons"
+
+    stock_code = Column(String, primary_key=True)
+    content    = Column(Text, nullable=False)
+    generated_at = Column(DateTime, nullable=False)
+
+
 class DailyArticle(Base):
     """每日 00981A × 投顧報告 自動生成的草稿文章。"""
     __tablename__ = "daily_articles"

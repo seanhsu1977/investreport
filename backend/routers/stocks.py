@@ -779,6 +779,51 @@ def get_recent_reports(days: int = Query(default=3, ge=1, le=30), db: Session = 
     return {"stock_reports": stock_reports, "market_news": market_news}
 
 
+@router.get("/{stock_code}/kline")
+def get_stock_kline(stock_code: str, period: str = Query(default="6mo")):
+    """Return daily OHLCV + MA5/10/20/60 for lightweight-charts."""
+    import yfinance as yf
+    import pandas as pd
+
+    ticker = yf.Ticker(f"{stock_code}.TW")
+    df = ticker.history(period=period, interval="1d", auto_adjust=True)
+    if df.empty:
+        # Try TWO suffix for OTC stocks
+        ticker = yf.Ticker(f"{stock_code}.TWO")
+        df = ticker.history(period=period, interval="1d", auto_adjust=True)
+    if df.empty:
+        return {"candles": [], "ma5": [], "ma10": [], "ma20": [], "ma60": []}
+
+    df = df.dropna(subset=["Open", "High", "Low", "Close"])
+    df.index = pd.to_datetime(df.index).tz_localize(None)
+
+    def to_ts(dt):
+        import calendar
+        return calendar.timegm(dt.timetuple())
+
+    candles = [
+        {"time": to_ts(idx), "open": round(row.Open, 2), "high": round(row.High, 2),
+         "low": round(row.Low, 2), "close": round(row.Close, 2)}
+        for idx, row in df.iterrows()
+    ]
+
+    def ma_series(window):
+        s = df["Close"].rolling(window).mean()
+        result = []
+        for idx, val in s.items():
+            if pd.notna(val):
+                result.append({"time": to_ts(idx), "value": round(float(val), 2)})
+        return result
+
+    return {
+        "candles": candles,
+        "ma5":  ma_series(5),
+        "ma10": ma_series(10),
+        "ma20": ma_series(20),
+        "ma60": ma_series(60),
+    }
+
+
 @router.get("/{stock_code}/reports")
 def get_stock_reports(stock_code: str, db: Session = Depends(get_db)):
     """取得某個股的所有報告 + 提及該股的市場新聞"""

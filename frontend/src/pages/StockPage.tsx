@@ -10,6 +10,7 @@ import { buildShareText, buildShareUrl } from "../utils/share";
 import { useAuth } from "../contexts/AuthContext";
 import StockLinkedText from "../components/StockLinkedText";
 import { usePostMaterials } from "../hooks/usePostMaterials";
+import KlineChart from "../components/KlineChart";
 
 // ── constants ─────────────────────────────────────────────────────────────────
 
@@ -53,6 +54,8 @@ export default function StockPage() {
   const [signal, setSignal] = useState<StockSignal | null>(null);
   const [signalLoading, setSignalLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<StockTabKey>("reports");
+  const [kline, setKline] = useState<{ candles: any[]; ma5: any[]; ma10: any[]; ma20: any[]; ma60: any[] } | null>(null);
+  const [klineLoading, setKlineLoading] = useState(true);
 
   const fetchPrice = () => {
     if (!code) return;
@@ -76,6 +79,8 @@ export default function StockPage() {
       .then((d) => setSignal(d[code] ?? null))
       .catch(() => {})
       .finally(() => setSignalLoading(false));
+    setKlineLoading(true);
+    stocksApi.kline(code).then(setKline).catch(() => {}).finally(() => setKlineLoading(false));
     if (user) {
       watchlistApi.get().then((list) => {
         setInWatchlist(list.some((item) => item.stock_code === code));
@@ -584,6 +589,33 @@ export default function StockPage() {
         {/* ════════════════ TAB: 技術訊號 ════════════════ */}
         {!loading && activeTab === "tech" && (
           <>
+            {/* K-line Chart */}
+            <div className="bg-white border border-[#DDE2EC] rounded-xl overflow-hidden mb-4">
+              <div className="px-4 py-3 border-b border-[#DDE2EC] flex items-center justify-between">
+                <h3 className="text-[13px] font-bold text-[#0D1B2A]">日 K 線</h3>
+                <div className="flex items-center gap-3 text-[11px]">
+                  <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-[#F59E0B] inline-block"/>MA5</span>
+                  <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-[#3B82F6] inline-block"/>MA10</span>
+                  <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-[#A855F7] inline-block"/>MA20</span>
+                  <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-[#10B981] inline-block"/>MA60</span>
+                </div>
+              </div>
+              {klineLoading ? (
+                <div className="h-[300px] flex items-center justify-center bg-[#122548]">
+                  <svg className="animate-spin h-6 w-6 text-white/40" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+                  </svg>
+                </div>
+              ) : kline && kline.candles.length > 0 ? (
+                <KlineChart {...kline} />
+              ) : (
+                <div className="h-[300px] flex items-center justify-center bg-[#122548] text-white/40 text-sm">
+                  無法載入 K 線資料
+                </div>
+              )}
+            </div>
+
             {(signalLoading || signal) ? (
               <div className="bg-white border border-[#DDE2EC] rounded-2xl overflow-hidden">
                 <div className="px-4 py-3 border-b border-[#DDE2EC]">

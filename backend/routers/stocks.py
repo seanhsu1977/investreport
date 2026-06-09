@@ -676,6 +676,110 @@ async def get_market_overview_api():
     return await asyncio.to_thread(get_market_overview)
 
 
+@router.get("/market-kline")
+def get_market_kline(index: str = Query(default="taiex")):
+    """大盤指數日K + MA5/10/20/60 + 自訂KDJ（RSV=9, 權重1/12, 89日區間）。
+    index: taiex | twoii
+    """
+    import nstock as ns
+    import pandas as pd
+    import calendar as _cal
+    from datetime import datetime
+
+    nid_map = {"taiex": "IX0001", "twoii": "IX0043"}
+    nid = nid_map.get(index, "IX0001")
+
+    daily = ns.get_daily(nid)
+    if not daily or not daily.get("日K"):
+        return {
+            "candles": [], "ma5": [], "ma10": [], "ma20": [], "ma60": [],
+            "kdj_k": [], "kdj_d": [], "kdj_j": [],
+            "kdj_k20_price": None, "kdj_k80_price": None,
+            "kdj_range_low": None, "kdj_range_high": None,
+            "kdj_cur_k": None, "kdj_cur_d": None, "kdj_cur_j": None,
+        }
+
+    bars = list(reversed(daily["日K"]))   # 最新在前 → 反轉為舊→新
+    # 取近 1 年（約 252 個交易日）
+    bars = bars[-252:]
+
+    def bar_ts(b: dict) -> int:
+        d = datetime.strptime(str(b["交易日"]), "%Y%m%d")
+        return _cal.timegm(d.timetuple())
+
+    candles = [
+        {
+            "time":  bar_ts(b),
+            "open":  round(float(b["開盤價"]), 2),
+            "high":  round(float(b["最高價"]), 2),
+            "low":   round(float(b["最低價"]), 2),
+            "close": round(float(b["收盤價"]), 2),
+        }
+        for b in bars
+    ]
+
+    closes = pd.Series([float(b["收盤價"]) for b in bars])
+    highs  = pd.Series([float(b["最高價"]) for b in bars])
+    lows   = pd.Series([float(b["最低價"]) for b in bars])
+    ts_list = [bar_ts(b) for b in bars]
+
+    def ma_series(window):
+        s = closes.rolling(window).mean()
+        return [{"time": ts_list[i], "value": round(float(v), 2)}
+                for i, v in enumerate(s) if pd.notna(v)]
+
+    # ── 自訂 KDJ（同個股參數）──
+    RSV_N, W, RANGE_N = 9, 1 / 12, 89
+    low_min  = lows.rolling(RSV_N).min()
+    high_max = highs.rolling(RSV_N).max()
+    denom    = high_max - low_min
+    rsv_raw  = ((closes - low_min) / denom * 100).where(denom > 0)
+
+    k_vals, d_vals, j_vals = [], [], []
+    k_prev, d_prev = 50.0, 50.0
+    for r in rsv_raw:
+        if pd.isna(r):
+            k_vals.append(None); d_vals.append(None); j_vals.append(None)
+        else:
+            k = k_prev * (1 - W) + r * W
+            d = d_prev * (1 - W) + k * W
+            j_vals.append(round(3 * k - 2 * d, 2))
+            k_vals.append(round(k, 2))
+            d_vals.append(round(d, 2))
+            k_prev, d_prev = k, d
+
+    def kdj_series(vals):
+        return [{"time": ts_list[i], "value": v}
+                for i, v in enumerate(vals) if v is not None]
+
+    range_low  = float(lows.iloc[-RANGE_N:].min())
+    range_high = float(highs.iloc[-RANGE_N:].max())
+    k20_price  = round(range_low + 0.20 * (range_high - range_low), 2)
+    k80_price  = round(range_low + 0.80 * (range_high - range_low), 2)
+
+    last_k = next((v for v in reversed(k_vals) if v is not None), None)
+    last_d = next((v for v in reversed(d_vals) if v is not None), None)
+    last_j = next((v for v in reversed(j_vals) if v is not None), None)
+
+    return {
+        "candles": candles,
+        "ma5":  ma_series(5),
+        "ma10": ma_series(10),
+        "ma20": ma_series(20),
+        "ma60": ma_series(60),
+        "kdj_k": kdj_series(k_vals),
+        "kdj_d": kdj_series(d_vals),
+        "kdj_j": kdj_series(j_vals),
+        "kdj_k20_price":  k20_price,
+        "kdj_k80_price":  k80_price,
+        "kdj_range_low":  round(range_low, 2),
+        "kdj_range_high": round(range_high, 2),
+        "kdj_cur_k": last_k,
+        "kdj_cur_d": last_d,
+        "kdj_cur_j": last_j,
+    }
+
+
 @router.get("/batch-prices")
 async def get_batch_prices(codes: str = Query(..., description="逗號分隔的股票代碼")):
     """批次取得多支股票的即時股價（nstock.tw）"""

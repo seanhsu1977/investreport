@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Bar,
   BarChart,
@@ -11,7 +11,10 @@ import {
   YAxis,
   Cell,
 } from "recharts";
-import { chipsApi, type ChipSnapshot, type InstitutionPosition } from "../api/client";
+import { chipsApi, stocksApi, type ChipSnapshot, type InstitutionPosition, type KlineResponse } from "../api/client";
+import KlineChart from "../components/KlineChart";
+import KdjChart from "../components/KdjChart";
+import type { ITimeScaleApi, UTCTimestamp } from "lightweight-charts";
 
 type Direction = "long" | "short" | "neutral";
 
@@ -499,6 +502,118 @@ function RetailChart({
   );
 }
 
+/* ============================ 大盤技術分析 Card ============================ */
+
+function MarketTechCard() {
+  const [kline, setKline] = useState<KlineResponse | null>(null);
+  const [klineLoading, setKlineLoading] = useState(true);
+  const klineTs = useRef<ITimeScaleApi<UTCTimestamp> | null>(null);
+  const kdjTs   = useRef<ITimeScaleApi<UTCTimestamp> | null>(null);
+  const syncing  = useRef(false);
+
+  useEffect(() => {
+    stocksApi.market_kline("taiex")
+      .then(setKline)
+      .catch(() => {})
+      .finally(() => setKlineLoading(false));
+  }, []);
+
+  const syncCharts = (
+    src: ITimeScaleApi<UTCTimestamp>,
+    dst: ITimeScaleApi<UTCTimestamp>,
+  ) => {
+    src.subscribeVisibleLogicalRangeChange((range) => {
+      if (syncing.current || !range) return;
+      syncing.current = true;
+      dst.setVisibleLogicalRange(range);
+      syncing.current = false;
+    });
+  };
+
+  const formatPrice = (n: number) =>
+    n.toLocaleString("zh-TW", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  return (
+    <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 space-y-4">
+      <h2 className="text-xl font-bold text-gray-900">📊 加權指數技術分析</h2>
+
+      {/* K 線 */}
+      <div className="rounded-xl overflow-hidden border border-[#1e3a5f]">
+        <div className="px-4 py-2.5 bg-[#0B1E3D] flex items-center justify-between">
+          <span className="text-[13px] font-bold text-white">日 K 線</span>
+          <div className="flex items-center gap-3 text-[11px] text-white/70">
+            <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-[#F59E0B] inline-block"/>MA5</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-[#3B82F6] inline-block"/>MA10</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-[#A855F7] inline-block"/>MA20</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-[#10B981] inline-block"/>MA60</span>
+          </div>
+        </div>
+        {klineLoading ? (
+          <div className="h-[300px] flex items-center justify-center bg-[#122548]">
+            <svg className="animate-spin h-6 w-6 text-white/40" viewBox="0 0 24 24" fill="none">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+            </svg>
+          </div>
+        ) : kline && kline.candles.length > 0 ? (
+          <KlineChart {...kline} onTimeScaleReady={(ts) => {
+            klineTs.current = ts;
+            if (kdjTs.current) { syncCharts(ts, kdjTs.current); syncCharts(kdjTs.current, ts); }
+          }} />
+        ) : (
+          <div className="h-[300px] flex items-center justify-center bg-[#122548] text-white/40 text-sm">
+            無法載入 K 線資料
+          </div>
+        )}
+      </div>
+
+      {/* KDJ */}
+      {!klineLoading && kline && kline.kdj_k.length > 0 && (
+        <div className="rounded-xl overflow-hidden border border-[#1e3a5f]">
+          <div className="px-4 py-2.5 bg-[#0B1E3D] flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-[13px] font-bold text-white">KDJ</span>
+              <span className="text-[11px] text-white/50">RSV=9 · 權重 1/12 · 89日區間</span>
+            </div>
+            <div className="flex items-center gap-3 text-[11px]">
+              {([["K", kline.kdj_cur_k, "#3B82F6"], ["D", kline.kdj_cur_d, "#F59E0B"], ["J", kline.kdj_cur_j, "#A78BFA"]] as [string, number | null, string][]).map(([lbl, val, color]) => (
+                <span key={lbl} style={{ color }}>
+                  {lbl} <span className={`font-mono font-bold ${val == null ? "text-white/40" : val >= 80 ? "text-[#EF4444]" : val <= 20 ? "text-[#22C55E]" : "text-white"}`}>
+                    {val != null ? val.toFixed(1) : "—"}
+                  </span>
+                </span>
+              ))}
+            </div>
+          </div>
+          <KdjChart
+            kdj_k={kline.kdj_k} kdj_d={kline.kdj_d} kdj_j={kline.kdj_j}
+            onTimeScaleReady={(ts) => {
+              kdjTs.current = ts;
+              if (klineTs.current) { syncCharts(ts, klineTs.current); syncCharts(klineTs.current, ts); }
+            }}
+          />
+          {kline.kdj_k20_price != null && kline.kdj_k80_price != null && (
+            <div className="grid grid-cols-3 gap-3 px-4 py-3 bg-[#0B1E3D] border-t border-[#1e3a5f] text-center text-[12px]">
+              <div>
+                <div className="text-[10px] text-white/50 mb-0.5">K=20 支撐估價</div>
+                <div className="font-bold text-[#22C55E] tabular-nums text-[14px]">{formatPrice(kline.kdj_k20_price)}</div>
+              </div>
+              <div className="border-x border-[#1e3a5f]">
+                <div className="text-[10px] text-white/50 mb-0.5">80-20 差距</div>
+                <div className="font-semibold text-white tabular-nums">{formatPrice(kline.kdj_k80_price - kline.kdj_k20_price)}</div>
+              </div>
+              <div>
+                <div className="text-[10px] text-white/50 mb-0.5">K=80 壓力估價</div>
+                <div className="font-bold text-[#EF4444] tabular-nums text-[14px]">{formatPrice(kline.kdj_k80_price)}</div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ============================ Page ============================ */
 
 export default function ChipsPage() {
@@ -548,6 +663,9 @@ export default function ChipsPage() {
           {refreshing ? "抓取中…" : "立即抓取"}
         </button>
       </div>
+
+      {/* 大盤技術分析（獨立載入，不受籌碼資料影響） */}
+      <MarketTechCard />
 
       {loading ? (
         <p className="text-gray-400">載入中…</p>

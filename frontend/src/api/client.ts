@@ -161,6 +161,22 @@ export interface StockSignal {
   updated_at: string;
 }
 
+interface OhlcPoint  { time: number; open: number; high: number; low: number; close: number }
+interface LinePoint  { time: number; value: number }
+
+export interface KlineResponse {
+  candles: OhlcPoint[];
+  ma5: LinePoint[]; ma10: LinePoint[]; ma20: LinePoint[]; ma60: LinePoint[];
+  kdj_k: LinePoint[]; kdj_d: LinePoint[]; kdj_j: LinePoint[];
+  kdj_k20_price: number | null;
+  kdj_k80_price: number | null;
+  kdj_range_low:  number | null;
+  kdj_range_high: number | null;
+  kdj_cur_k: number | null;
+  kdj_cur_d: number | null;
+  kdj_cur_j: number | null;
+}
+
 export const stocksApi = {
   list: () => api.get<StockSummary[]>("/stocks").then((r) => r.data),
   reports: (code: string) =>
@@ -182,7 +198,7 @@ export const stocksApi = {
   market_overview: () =>
     api.get<Record<string, MarketIndex>>("/stocks/market-overview").then((r) => r.data),
   kline: (code: string) =>
-    api.get(`/stocks/${code}/kline`).then((r) => r.data),
+    api.get<KlineResponse>(`/stocks/${code}/kline`).then((r) => r.data),
 };
 
 export const searchApi = {

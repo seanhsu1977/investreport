@@ -822,26 +822,31 @@ def get_recent_reports(days: int = Query(default=3, ge=1, le=30), db: Session = 
 
 
 @router.get("/{stock_code}/kline")
-def get_stock_kline(stock_code: str, period: str = Query(default="6mo")):
-    """Return daily OHLCV + MA5/10/20/60 for lightweight-charts."""
+def get_stock_kline(stock_code: str, period: str = Query(default="1y")):
+    """Return daily OHLCV + MA5/10/20/60 + KDJ(RSV=9, K/D weight=1/12, range=89d)."""
     import yfinance as yf
     import pandas as pd
+    import calendar as _cal
 
     ticker = yf.Ticker(f"{stock_code}.TW")
     df = ticker.history(period=period, interval="1d", auto_adjust=True)
     if df.empty:
-        # Try TWO suffix for OTC stocks
         ticker = yf.Ticker(f"{stock_code}.TWO")
         df = ticker.history(period=period, interval="1d", auto_adjust=True)
     if df.empty:
-        return {"candles": [], "ma5": [], "ma10": [], "ma20": [], "ma60": []}
+        return {
+            "candles": [], "ma5": [], "ma10": [], "ma20": [], "ma60": [],
+            "kdj_k": [], "kdj_d": [], "kdj_j": [],
+            "kdj_k20_price": None, "kdj_k80_price": None,
+            "kdj_range_low": None, "kdj_range_high": None,
+            "kdj_cur_k": None, "kdj_cur_d": None, "kdj_cur_j": None,
+        }
 
     df = df.dropna(subset=["Open", "High", "Low", "Close"])
     df.index = pd.to_datetime(df.index).tz_localize(None)
 
     def to_ts(dt):
-        import calendar
-        return calendar.timegm(dt.timetuple())
+        return _cal.timegm(dt.timetuple())
 
     candles = [
         {"time": to_ts(idx), "open": round(row.Open, 2), "high": round(row.High, 2),
@@ -851,11 +856,47 @@ def get_stock_kline(stock_code: str, period: str = Query(default="6mo")):
 
     def ma_series(window):
         s = df["Close"].rolling(window).mean()
-        result = []
-        for idx, val in s.items():
-            if pd.notna(val):
-                result.append({"time": to_ts(idx), "value": round(float(val), 2)})
-        return result
+        return [{"time": to_ts(idx), "value": round(float(val), 2)}
+                for idx, val in s.items() if pd.notna(val)]
+
+    # ── KDJ ────────────────────────────────────────────────────────────
+    RSV_N   = 9        # RSV 回看天數
+    W       = 1 / 12   # K / D 平滑權重
+    RANGE_N = 89       # K=20 / K=80 區間天數
+
+    low_min  = df["Low"].rolling(RSV_N).min()
+    high_max = df["High"].rolling(RSV_N).max()
+    denom    = high_max - low_min
+    rsv_raw  = ((df["Close"] - low_min) / denom * 100).where(denom > 0)
+
+    k_vals, d_vals, j_vals = [], [], []
+    k_prev, d_prev = 50.0, 50.0
+    for r in rsv_raw:
+        if pd.isna(r):
+            k_vals.append(None); d_vals.append(None); j_vals.append(None)
+        else:
+            k = k_prev * (1 - W) + r * W
+            d = d_prev * (1 - W) + k * W
+            j = 3 * k - 2 * d
+            k_vals.append(round(k, 2))
+            d_vals.append(round(d, 2))
+            j_vals.append(round(j, 2))
+            k_prev, d_prev = k, d
+
+    def kdj_series(vals):
+        return [{"time": to_ts(idx), "value": v}
+                for idx, v in zip(df.index, vals) if v is not None]
+
+    # 89 天價格區間 → K=20 / K=80 估算價
+    range_low  = float(df["Low"].tail(RANGE_N).min())
+    range_high = float(df["High"].tail(RANGE_N).max())
+    k20_price  = round(range_low + 0.20 * (range_high - range_low), 2)
+    k80_price  = round(range_low + 0.80 * (range_high - range_low), 2)
+
+    # 最新 KDJ 值
+    last_k = next((v for v in reversed(k_vals) if v is not None), None)
+    last_d = next((v for v in reversed(d_vals) if v is not None), None)
+    last_j = next((v for v in reversed(j_vals) if v is not None), None)
 
     return {
         "candles": candles,
@@ -863,6 +904,16 @@ def get_stock_kline(stock_code: str, period: str = Query(default="6mo")):
         "ma10": ma_series(10),
         "ma20": ma_series(20),
         "ma60": ma_series(60),
+        "kdj_k": kdj_series(k_vals),
+        "kdj_d": kdj_series(d_vals),
+        "kdj_j": kdj_series(j_vals),
+        "kdj_k20_price":   k20_price,
+        "kdj_k80_price":   k80_price,
+        "kdj_range_low":   round(range_low, 2),
+        "kdj_range_high":  round(range_high, 2),
+        "kdj_cur_k": last_k,
+        "kdj_cur_d": last_d,
+        "kdj_cur_j": last_j,
     }
 
 

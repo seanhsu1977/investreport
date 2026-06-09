@@ -11,6 +11,8 @@ import { useAuth } from "../contexts/AuthContext";
 import StockLinkedText from "../components/StockLinkedText";
 import { usePostMaterials } from "../hooks/usePostMaterials";
 import KlineChart from "../components/KlineChart";
+import KdjChart from "../components/KdjChart";
+import { type KlineResponse } from "../api/client";
 
 // ── constants ─────────────────────────────────────────────────────────────────
 
@@ -54,7 +56,7 @@ export default function StockPage() {
   const [signal, setSignal] = useState<StockSignal | null>(null);
   const [signalLoading, setSignalLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<StockTabKey>("reports");
-  const [kline, setKline] = useState<{ candles: any[]; ma5: any[]; ma10: any[]; ma20: any[]; ma60: any[] } | null>(null);
+  const [kline, setKline] = useState<KlineResponse | null>(null);
   const [klineLoading, setKlineLoading] = useState(true);
 
   const fetchPrice = () => {
@@ -615,6 +617,70 @@ export default function StockPage() {
                 </div>
               )}
             </div>
+
+            {/* ── KDJ Chart ── */}
+            {!klineLoading && kline && kline.kdj_k.length > 0 && (
+              <div className="bg-white border border-[#DDE2EC] rounded-xl overflow-hidden mb-4">
+                {/* KDJ header */}
+                <div className="px-4 py-3 border-b border-[#DDE2EC] flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-[13px] font-bold text-[#0D1B2A]">KDJ</h3>
+                    <span className="text-[11px] text-[#6B7A99]">RSV=9 · K/D 權重 1/12 · 89天區間</span>
+                  </div>
+                  <div className="flex items-center gap-3 text-[11px]">
+                    <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-[#3B82F6] inline-block"/>K</span>
+                    <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-[#F59E0B] inline-block"/>D</span>
+                    <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-[#A78BFA] inline-block"/>J</span>
+                  </div>
+                </div>
+
+                {/* Current KDJ values */}
+                <div className="px-4 py-2 bg-[#0F1E35] grid grid-cols-3 gap-2 text-center text-[11px]">
+                  {([
+                    ["K", kline.kdj_cur_k, "#3B82F6"],
+                    ["D", kline.kdj_cur_d, "#F59E0B"],
+                    ["J", kline.kdj_cur_j, "#A78BFA"],
+                  ] as [string, number | null, string][]).map(([label, val, color]) => (
+                    <div key={label}>
+                      <span style={{ color }} className="font-bold">{label} </span>
+                      <span className={`font-mono font-semibold text-[12px] ${
+                        val == null ? "text-white/40" :
+                        val >= 80  ? "text-[#EF4444]" :
+                        val <= 20  ? "text-[#22C55E]" : "text-white"
+                      }`}>
+                        {val != null ? val.toFixed(1) : "—"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                <KdjChart kdj_k={kline.kdj_k} kdj_d={kline.kdj_d} kdj_j={kline.kdj_j} />
+
+                {/* K=20 / K=80 price estimates */}
+                {kline.kdj_k20_price != null && kline.kdj_k80_price != null && (
+                  <div className="px-4 py-3 border-t border-[#DDE2EC] grid grid-cols-3 gap-3 text-[12px]">
+                    <div className="text-center">
+                      <div className="text-[10px] text-[#6B7A99] mb-0.5">K=20 支撐估價</div>
+                      <div className="font-bold text-[#16A34A] tabular-nums text-[14px]">
+                        {formatPrice(kline.kdj_k20_price)}
+                      </div>
+                    </div>
+                    <div className="text-center border-x border-[#DDE2EC]">
+                      <div className="text-[10px] text-[#6B7A99] mb-0.5">80-20 差距</div>
+                      <div className="font-semibold text-[#0D1B2A] tabular-nums text-[13px]">
+                        {formatPrice(kline.kdj_k80_price - kline.kdj_k20_price)}
+                      </div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-[10px] text-[#6B7A99] mb-0.5">K=80 壓力估價</div>
+                      <div className="font-bold text-[#DC2626] tabular-nums text-[14px]">
+                        {formatPrice(kline.kdj_k80_price)}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {(signalLoading || signal) ? (
               <div className="bg-white border border-[#DDE2EC] rounded-2xl overflow-hidden">

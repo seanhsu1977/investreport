@@ -687,45 +687,50 @@ async def get_txf_kline(db: Session = Depends(get_db)):
         return d.replace("/", "")
     missing = [d for d in trading_dates if to_yyyymmdd(d) not in existing]
 
-    # ── 3. 並行抓取缺失的日期（semaphore 控制 15 並發）──
+    # ── 3. 分批抓取缺失的日期（每批 10 天，逐批存 DB 釋放記憶體）──
     if missing:
-        sem = asyncio.Semaphore(15)
         _BASE_URL = "https://openapi.taifex.com.tw/v1/DailyMarketReportFut"
+        BATCH = 10   # 每批並發數，控制峰值記憶體
 
         async def fetch_one(query_date: str):
-            async with sem:
-                url = f"{_BASE_URL}?queryDate={query_date}"
-                try:
-                    async with httpx.AsyncClient(timeout=10) as client:
-                        resp = await client.get(url)
-                        resp.raise_for_status()
-                        rows = resp.json()
-                        # 取近月合約（成交量最大的一般盤 TX）
-                        tx_rows = [r for r in rows
-                                   if r.get("Contract") == "TX"
-                                   and r.get("TradingSession") == "一般"
-                                   and r.get("Open") not in (None, "", "0")]
-                        if not tx_rows:
-                            return None
-                        near = max(tx_rows, key=lambda r: int(r.get("Volume", 0) or 0))
-                        return {
-                            "date":   to_yyyymmdd(query_date),
-                            "open":   float(near["Open"]),
-                            "high":   float(near["High"]),
-                            "low":    float(near["Low"]),
-                            "close":  float(near["Last"]),
-                            "volume": int(near.get("Volume") or 0),
-                        }
-                except Exception:
-                    return None
+            url = f"{_BASE_URL}?queryDate={query_date}"
+            try:
+                async with httpx.AsyncClient(timeout=10) as client:
+                    resp = await client.get(url)
+                    resp.raise_for_status()
+                    rows = resp.json()
+                    # 只保留 TX 一般盤，立即丟棄其餘 2000+ 筆
+                    tx_rows = [r for r in rows
+                               if r.get("Contract") == "TX"
+                               and r.get("TradingSession") == "一般"
+                               and r.get("Open") not in (None, "", "0")]
+                    del rows  # 釋放完整回應
+                    if not tx_rows:
+                        return None
+                    near = max(tx_rows, key=lambda r: int(r.get("Volume", 0) or 0))
+                    return {
+                        "date":   to_yyyymmdd(query_date),
+                        "open":   float(near["Open"]),
+                        "high":   float(near["High"]),
+                        "low":    float(near["Low"]),
+                        "close":  float(near["Last"]),
+                        "volume": int(near.get("Volume") or 0),
+                    }
+            except Exception:
+                return None
 
-        results = await asyncio.gather(*[fetch_one(d) for d in missing])
-        new_candles = [r for r in results if r]
-        if new_candles:
-            for c in new_candles:
-                if c["date"] not in existing:
-                    db.merge(TxfCandle(**c))
-            db.commit()
+        # 逐批處理，每批完成後立即 commit 並釋放
+        for i in range(0, len(missing), BATCH):
+            batch = missing[i:i + BATCH]
+            results = await asyncio.gather(*[fetch_one(d) for d in batch])
+            new_candles = [r for r in results if r]
+            if new_candles:
+                for c in new_candles:
+                    if c["date"] not in existing:
+                        db.merge(TxfCandle(**c))
+                        existing.add(c["date"])
+                db.commit()
+            del results, new_candles  # 明確釋放
 
     # ── 4. 讀取 DB 中最近 252 根日K ──
     rows = (

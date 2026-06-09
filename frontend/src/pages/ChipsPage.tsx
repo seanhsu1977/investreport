@@ -592,20 +592,22 @@ function MarketTechCard() {
               if (klineTs.current) { syncCharts(ts, klineTs.current); syncCharts(klineTs.current, ts); }
             }}
           />
-          {kline.kdj_k20_price != null && kline.kdj_k80_price != null && (
-            <div className="grid grid-cols-3 gap-3 px-4 py-3 bg-[#0B1E3D] border-t border-[#1e3a5f] text-center text-[12px]">
-              <div>
-                <div className="text-[10px] text-white/50 mb-0.5">K=20 支撐估價</div>
-                <div className="font-bold text-[#22C55E] tabular-nums text-[14px]">{formatPrice(kline.kdj_k20_price)}</div>
-              </div>
-              <div className="border-x border-[#1e3a5f]">
-                <div className="text-[10px] text-white/50 mb-0.5">80-20 差距</div>
-                <div className="font-semibold text-white tabular-nums">{formatPrice(kline.kdj_k80_price - kline.kdj_k20_price)}</div>
-              </div>
-              <div>
-                <div className="text-[10px] text-white/50 mb-0.5">K=80 壓力估價</div>
-                <div className="font-bold text-[#EF4444] tabular-nums text-[14px]">{formatPrice(kline.kdj_k80_price)}</div>
-              </div>
+          {kline.kdj_k10_price != null && kline.kdj_k90_price != null && (
+            <div className="grid grid-cols-5 px-3 py-3 bg-[#0B1E3D] border-t border-[#1e3a5f] text-center text-[11px]">
+              {([
+                ["K=10", kline.kdj_k10_price,  "text-[#22C55E]"],
+                ["K=20", kline.kdj_k20_price,  "text-[#22C55E]"],
+                ["90-10 差距", kline.kdj_k90_price! - kline.kdj_k10_price!, "text-white"],
+                ["K=80", kline.kdj_k80_price,  "text-[#EF4444]"],
+                ["K=90", kline.kdj_k90_price,  "text-[#EF4444]"],
+              ] as [string, number | null, string][]).map(([label, val, cls], i, arr) => (
+                <div key={label} className={`${i > 0 && i < arr.length ? "border-l border-[#1e3a5f]" : ""}`}>
+                  <div className="text-[10px] text-white/50 mb-0.5">{label}</div>
+                  <div className={`font-bold tabular-nums text-[13px] ${cls}`}>
+                    {val != null ? formatPrice(val) : "—"}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>

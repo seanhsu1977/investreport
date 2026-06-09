@@ -54,17 +54,15 @@ export default function KdjChart({ kdj_k, kdj_d, kdj_j, onTimeScaleReady }: Prop
     const jSeries = chart.addSeries(LineSeries, { color: "#A78BFA", lineWidth: 1, title: "J" });
     jSeries.setData(toLC(kdj_j));
 
-    // Reference lines at 10 / 20 / 80 / 90
+    // Reference lines at 20 / 80 only
     const lastTime  = kdj_k[kdj_k.length - 1].time as UTCTimestamp;
     const firstTime = kdj_k[0].time as UTCTimestamp;
-    const refLines: [number, string, number][] = [
-      [10, "#86EFAC", 1],   // 極低撐：淺綠實線
-      [20, "#22C55E", 2],   // 低撐：綠虛線
-      [80, "#EF4444", 2],   // 高壓：紅虛線
-      [90, "#FCA5A5", 1],   // 極高壓：淺紅實線
+    const refLines: [number, string][] = [
+      [20, "#22C55E"],
+      [80, "#EF4444"],
     ];
-    for (const [level, color, lineStyle] of refLines) {
-      const s = chart.addSeries(LineSeries, { color, lineWidth: 1, lineStyle, title: "" });
+    for (const [level, color] of refLines) {
+      const s = chart.addSeries(LineSeries, { color, lineWidth: 1, lineStyle: 2, title: "" });
       s.setData([{ time: firstTime, value: level }, { time: lastTime, value: level }]);
     }
 

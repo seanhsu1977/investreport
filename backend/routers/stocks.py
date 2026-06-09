@@ -694,7 +694,7 @@ def get_market_kline(index: str = Query(default="taiex")):
         return {
             "candles": [], "ma5": [], "ma10": [], "ma20": [], "ma60": [],
             "kdj_k": [], "kdj_d": [], "kdj_j": [],
-            "kdj_k20_price": None, "kdj_k80_price": None,
+            "kdj_k10_price": None, "kdj_k20_price": None, "kdj_k80_price": None, "kdj_k90_price": None,
             "kdj_range_low": None, "kdj_range_high": None,
             "kdj_cur_k": None, "kdj_cur_d": None, "kdj_cur_j": None,
         }
@@ -758,8 +758,11 @@ def get_market_kline(index: str = Query(default="taiex")):
 
     range_low  = float(low_min.iloc[-1]) if pd.notna(low_min.iloc[-1]) else float(lows.min())
     range_high = float(high_max.iloc[-1]) if pd.notna(high_max.iloc[-1]) else float(highs.max())
-    k20_price  = round(range_low + 0.20 * (range_high - range_low), 2)
-    k80_price  = round(range_low + 0.80 * (range_high - range_low), 2)
+    rng = range_high - range_low
+    k10_price  = round(range_low + 0.10 * rng, 2)
+    k20_price  = round(range_low + 0.20 * rng, 2)
+    k80_price  = round(range_low + 0.80 * rng, 2)
+    k90_price  = round(range_low + 0.90 * rng, 2)
 
     last_k = next((v for v in reversed(k_vals) if v is not None), None)
     last_d = next((v for v in reversed(d_vals) if v is not None), None)
@@ -774,8 +777,10 @@ def get_market_kline(index: str = Query(default="taiex")):
         "kdj_k": kdj_series(k_vals),
         "kdj_d": kdj_series(d_vals),
         "kdj_j": kdj_series(j_vals),
+        "kdj_k10_price":  k10_price,
         "kdj_k20_price":  k20_price,
         "kdj_k80_price":  k80_price,
+        "kdj_k90_price":  k90_price,
         "kdj_range_low":  round(range_low, 2),
         "kdj_range_high": round(range_high, 2),
         "kdj_cur_k": last_k,
@@ -945,7 +950,7 @@ def get_stock_kline(stock_code: str, period: str = Query(default="1y")):
         return {
             "candles": [], "ma5": [], "ma10": [], "ma20": [], "ma60": [],
             "kdj_k": [], "kdj_d": [], "kdj_j": [],
-            "kdj_k20_price": None, "kdj_k80_price": None,
+            "kdj_k10_price": None, "kdj_k20_price": None, "kdj_k80_price": None, "kdj_k90_price": None,
             "kdj_range_low": None, "kdj_range_high": None,
             "kdj_cur_k": None, "kdj_cur_d": None, "kdj_cur_j": None,
         }
@@ -995,11 +1000,14 @@ def get_stock_kline(stock_code: str, period: str = Query(default="1y")):
         return [{"time": to_ts(idx)} if v is None else {"time": to_ts(idx), "value": v}
                 for idx, v in zip(df.index, vals)]
 
-    # K=20 / K=80 估算價：用 RSV 同週期的 89 天區間
+    # K=10/20/80/90 估算價：用 RSV 同週期的 89 天區間
     range_low  = float(low_min.iloc[-1])  if pd.notna(low_min.iloc[-1])  else float(df["Low"].min())
     range_high = float(high_max.iloc[-1]) if pd.notna(high_max.iloc[-1]) else float(df["High"].max())
-    k20_price  = round(range_low + 0.20 * (range_high - range_low), 2)
-    k80_price  = round(range_low + 0.80 * (range_high - range_low), 2)
+    rng = range_high - range_low
+    k10_price  = round(range_low + 0.10 * rng, 2)
+    k20_price  = round(range_low + 0.20 * rng, 2)
+    k80_price  = round(range_low + 0.80 * rng, 2)
+    k90_price  = round(range_low + 0.90 * rng, 2)
 
     # 最新 KDJ 值
     last_k = next((v for v in reversed(k_vals) if v is not None), None)
@@ -1015,8 +1023,10 @@ def get_stock_kline(stock_code: str, period: str = Query(default="1y")):
         "kdj_k": kdj_series(k_vals),
         "kdj_d": kdj_series(d_vals),
         "kdj_j": kdj_series(j_vals),
+        "kdj_k10_price":   k10_price,
         "kdj_k20_price":   k20_price,
         "kdj_k80_price":   k80_price,
+        "kdj_k90_price":   k90_price,
         "kdj_range_low":   round(range_low, 2),
         "kdj_range_high":  round(range_high, 2),
         "kdj_cur_k": last_k,

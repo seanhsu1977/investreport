@@ -688,27 +688,23 @@ export default function StockPage() {
                   }}
                 />
 
-                {/* K=20 / K=80 price estimates */}
-                {kline.kdj_k20_price != null && kline.kdj_k80_price != null && (
-                  <div className="px-4 py-3 border-t border-[#DDE2EC] grid grid-cols-3 gap-3 text-[12px]">
-                    <div className="text-center">
-                      <div className="text-[10px] text-[#6B7A99] mb-0.5">K=20 支撐估價</div>
-                      <div className="font-bold text-[#16A34A] tabular-nums text-[14px]">
-                        {formatPrice(kline.kdj_k20_price)}
+                {/* K=10/20/80/90 price estimates */}
+                {kline.kdj_k10_price != null && kline.kdj_k90_price != null && (
+                  <div className="px-3 py-3 border-t border-[#DDE2EC] grid grid-cols-5 text-[11px]">
+                    {([
+                      ["K=10", kline.kdj_k10_price,  "#16A34A", "text-[#16A34A]"],
+                      ["K=20", kline.kdj_k20_price,  "#16A34A", "text-[#16A34A]"],
+                      ["90-10 差距", kline.kdj_k90_price! - kline.kdj_k10_price!, null, "text-[#0D1B2A]"],
+                      ["K=80", kline.kdj_k80_price,  "#DC2626", "text-[#DC2626]"],
+                      ["K=90", kline.kdj_k90_price,  "#DC2626", "text-[#DC2626]"],
+                    ] as [string, number | null, string | null, string][]).map(([label, val, , cls], i, arr) => (
+                      <div key={label} className={`text-center ${i > 0 && i < arr.length ? "border-l border-[#DDE2EC]" : ""}`}>
+                        <div className="text-[10px] text-[#6B7A99] mb-0.5">{label}</div>
+                        <div className={`font-bold tabular-nums text-[13px] ${cls}`}>
+                          {val != null ? formatPrice(val) : "—"}
+                        </div>
                       </div>
-                    </div>
-                    <div className="text-center border-x border-[#DDE2EC]">
-                      <div className="text-[10px] text-[#6B7A99] mb-0.5">80-20 差距</div>
-                      <div className="font-semibold text-[#0D1B2A] tabular-nums text-[13px]">
-                        {formatPrice(kline.kdj_k80_price - kline.kdj_k20_price)}
-                      </div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-[10px] text-[#6B7A99] mb-0.5">K=80 壓力估價</div>
-                      <div className="font-bold text-[#DC2626] tabular-nums text-[14px]">
-                        {formatPrice(kline.kdj_k80_price)}
-                      </div>
-                    </div>
+                    ))}
                   </div>
                 )}
               </div>

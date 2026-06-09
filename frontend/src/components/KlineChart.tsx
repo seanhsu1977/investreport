@@ -56,20 +56,16 @@ export default function KlineChart({ candles, ma5, ma10, ma20, ma60, onTimeScale
 
     // MA lines
     const maConfigs = [
-      { data: ma5,  color: "#F59E0B", title: "MA5"  },
-      { data: ma10, color: "#3B82F6", title: "MA10" },
-      { data: ma20, color: "#A855F7", title: "MA20" },
-      { data: ma60, color: "#10B981", title: "MA60" },
+      { data: ma5,  color: "#F59E0B" },
+      { data: ma10, color: "#3B82F6" },
+      { data: ma20, color: "#A855F7" },
+      { data: ma60, color: "#10B981" },
     ];
-    for (const { data, color, title } of maConfigs) {
+    for (const { data, color } of maConfigs) {
       if (data.length === 0) continue;
       const series = chart.addSeries(LineSeries, {
-        color,
-        lineWidth: 1,
-        title,
-        priceLineVisible: false,
-        lastValueVisible: false,
-        crosshairMarkerVisible: false,
+        color, lineWidth: 1,
+        priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
       });
       series.setData(data as any);
     }

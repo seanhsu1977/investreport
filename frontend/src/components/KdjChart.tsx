@@ -42,27 +42,25 @@ export default function KdjChart({ kdj_k, kdj_d, kdj_j, onTimeScaleReady }: Prop
       handleScale:  true,
     });
 
+    const noLabel = { lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false };
+
     // K line – blue
-    const kSeries = chart.addSeries(LineSeries, { color: "#3B82F6", lineWidth: 2, title: "K" });
+    const kSeries = chart.addSeries(LineSeries, { color: "#3B82F6", lineWidth: 2, ...noLabel });
     kSeries.setData(toLC(kdj_k));
 
     // D line – orange
-    const dSeries = chart.addSeries(LineSeries, { color: "#F59E0B", lineWidth: 2, title: "D" });
+    const dSeries = chart.addSeries(LineSeries, { color: "#F59E0B", lineWidth: 2, ...noLabel });
     dSeries.setData(toLC(kdj_d));
 
     // J line – purple (thin, lighter)
-    const jSeries = chart.addSeries(LineSeries, { color: "#A78BFA", lineWidth: 1, title: "J" });
+    const jSeries = chart.addSeries(LineSeries, { color: "#A78BFA", lineWidth: 1, ...noLabel });
     jSeries.setData(toLC(kdj_j));
 
     // Reference lines at 20 / 80 only
     const lastTime  = kdj_k[kdj_k.length - 1].time as UTCTimestamp;
     const firstTime = kdj_k[0].time as UTCTimestamp;
-    const refLines: [number, string][] = [
-      [20, "#22C55E"],
-      [80, "#EF4444"],
-    ];
-    for (const [level, color] of refLines) {
-      const s = chart.addSeries(LineSeries, { color, lineWidth: 1, lineStyle: 2, title: "" });
+    for (const [level, color] of [[20, "#22C55E"], [80, "#EF4444"]] as [number, string][]) {
+      const s = chart.addSeries(LineSeries, { color, lineWidth: 1, lineStyle: 2, ...noLabel });
       s.setData([{ time: firstTime, value: level }, { time: lastTime, value: level }]);
     }
 

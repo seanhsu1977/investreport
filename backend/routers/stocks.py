@@ -715,7 +715,9 @@ async def get_txf_kline(db: Session = Depends(get_db)):
             cols = [c.strip() for c in line.split(",")]
             if len(cols) < 10 or not cols[0]:
                 continue
-            date_raw, expiry, session = cols[0], cols[2].strip(), cols[17].strip() if len(cols) > 17 else ""
+            date_raw = cols[0]
+            expiry   = cols[2].strip()
+            session  = cols[17].strip() if len(cols) > 17 else ""
             if session not in ("一般", "盤後"):
                 continue
             o = parse_float(cols[3]); h = parse_float(cols[4])
@@ -726,35 +728,55 @@ async def get_txf_kline(db: Session = Depends(get_db)):
             date_key = date_raw.replace("/", "")
             day_data[date_key][expiry][session] = {"o": o, "h": h, "l": l, "c": c, "v": v}
 
-        result = {}
-        for date_key, expiries in day_data.items():
-            best_expiry, best_v = None, -1
+        # 正確全盤定義（與多數看盤軟體一致）：
+        #   日期 D 的全盤 K 棒 = 前一日盤後（夜盤）+ 當日一般盤
+        #   開盤 = 前一日盤後開盤   收盤 = 當日一般盤收盤
+        #   高低 = 兩段合併最高/最低
+
+        sorted_dates = sorted(day_data.keys())  # 舊→新
+
+        def best_expiry_for(date_key: str, session: str):
+            """取當日最大成交量的到期月份"""
+            expiries = day_data.get(date_key, {})
+            best, best_v = None, -1
             for exp, sessions in expiries.items():
-                total_v = sum(s["v"] for s in sessions.values())
-                if total_v > best_v:
-                    best_v = total_v
-                    best_expiry = exp
-            if not best_expiry:
+                v = sessions.get(session, {}).get("v", 0)
+                if v > best_v:
+                    best_v = v; best = exp
+            return best
+
+        result = {}
+        for i, date_key in enumerate(sorted_dates):
+            # 當日一般盤
+            exp_n = best_expiry_for(date_key, "一般")
+            if not exp_n:
                 continue
-            sess = expiries[best_expiry]
-            normal = sess.get("一般", {})
-            after  = sess.get("盤後", {})
+            normal = day_data[date_key][exp_n].get("一般", {})
             if not normal:
                 continue
-            # 全盤：開盤用一般，高低合併，收盤用盤後（若有）
-            o = normal["o"]
-            h = max(normal["h"], after.get("h", 0) or 0)
-            l_val = min(normal["l"], after["l"]) if after.get("l") else normal["l"]
-            c = after["c"] if after.get("c") else normal["c"]
-            v = normal["v"] + after.get("v", 0)
-            result[date_key] = {"date": date_key, "open": o, "high": h, "low": l_val, "close": c, "volume": v}
+
+            # 前一日盤後（若有）
+            after = {}
+            if i > 0:
+                prev_key = sorted_dates[i - 1]
+                exp_a = best_expiry_for(prev_key, "盤後")
+                if exp_a:
+                    after = day_data[prev_key][exp_a].get("盤後", {})
+
+            o  = after["o"] if after.get("o") else normal["o"]
+            h  = max(normal["h"], after["h"]) if after.get("h") else normal["h"]
+            ll = min(normal["l"], after["l"]) if after.get("l") else normal["l"]
+            c  = normal["c"]
+            v  = normal["v"] + after.get("v", 0)
+            result[date_key] = {"date": date_key, "open": o, "high": h, "low": ll, "close": c, "volume": v}
         return result
 
-    # ── 1. 清除由 open API 存入的錯誤資料（全部相同價格）──
+    # ── 1. 偵測並清除錯誤資料（price range < 200 代表全部是同一天資料）──
     all_rows = db.query(TxfCandle).order_by(TxfCandle.date.asc()).all()
-    if all_rows:
-        closes_sample = {r.close for r in all_rows[:20]}
-        if len(closes_sample) <= 2:  # 幾乎全部相同 → 錯誤資料
+    if len(all_rows) >= 10:
+        closes = [r.close for r in all_rows[:30]]
+        price_range = max(closes) - min(closes)
+        if price_range < 200:   # 正常 260 天 TX 應有數千點範圍
             db.query(TxfCandle).delete()
             db.commit()
             all_rows = []

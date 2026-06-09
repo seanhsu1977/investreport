@@ -671,66 +671,115 @@ async def stream_recommendation_reason(
 
 @router.get("/txf-kline")
 async def get_txf_kline(db: Session = Depends(get_db)):
-    """台指期（TX 近月）日K + MA + KDJ(89,9,12)。首次呼叫會並行抓取歷史資料存 DB。"""
+    """台指期（TX 近月）日K（一般+盤後全盤）+ MA + KDJ(89,9,12)。
+    使用期交所 CSV 端點，每次抓一個月區間，首次呼叫約 9 個請求建庫。
+    """
     import taifex as tf
     import pandas as pd
     import calendar as _cal
-    from datetime import datetime
+    from datetime import datetime, timedelta
 
-    # ── 1. 取得需要的交易日清單（最多 260 天）──
-    trading_dates = tf.recent_trading_dates(260)  # YYYY/MM/DD 最新在前
+    _FUT_CSV = "https://www.taifex.com.tw/cht/3/futDataDown"
 
-    # ── 2. 確認哪些日期 DB 還沒有 ──
-    existing = {r.date for r in db.query(TxfCandle.date).all()}
-    # 將 YYYY/MM/DD 轉成 YYYYMMDD 比對
     def to_yyyymmdd(d: str) -> str:
         return d.replace("/", "")
+
+    def parse_float(s: str):
+        try:
+            return float(s.replace(",", "").strip())
+        except (ValueError, AttributeError):
+            return None
+
+    def parse_int(s: str):
+        try:
+            return int(s.replace(",", "").strip())
+        except (ValueError, AttributeError):
+            return 0
+
+    def fetch_month_csv(start: str, end: str) -> dict:
+        """抓一段區間的 TX CSV，回傳 {date_yyyymmdd: candle_dict}（全盤合併）"""
+        txt = tf._fetch_csv(_FUT_CSV, {
+            "down_type": "1",
+            "commodity_id": "TX",
+            "commodity_id2": "",
+            "queryStartDate": start,
+            "queryEndDate": end,
+        })
+        if not txt:
+            return {}
+
+        # 按日期×到期月份收集 一般 與 盤後
+        from collections import defaultdict
+        day_data: dict = defaultdict(lambda: defaultdict(dict))
+        for line in txt.splitlines()[1:]:
+            cols = [c.strip() for c in line.split(",")]
+            if len(cols) < 10 or not cols[0]:
+                continue
+            date_raw, expiry, session = cols[0], cols[2].strip(), cols[17].strip() if len(cols) > 17 else ""
+            if session not in ("一般", "盤後"):
+                continue
+            o = parse_float(cols[3]); h = parse_float(cols[4])
+            l = parse_float(cols[5]); c = parse_float(cols[6])
+            v = parse_int(cols[9])
+            if not o or not c:
+                continue
+            date_key = date_raw.replace("/", "")
+            day_data[date_key][expiry][session] = {"o": o, "h": h, "l": l, "c": c, "v": v}
+
+        result = {}
+        for date_key, expiries in day_data.items():
+            best_expiry, best_v = None, -1
+            for exp, sessions in expiries.items():
+                total_v = sum(s["v"] for s in sessions.values())
+                if total_v > best_v:
+                    best_v = total_v
+                    best_expiry = exp
+            if not best_expiry:
+                continue
+            sess = expiries[best_expiry]
+            normal = sess.get("一般", {})
+            after  = sess.get("盤後", {})
+            if not normal:
+                continue
+            # 全盤：開盤用一般，高低合併，收盤用盤後（若有）
+            o = normal["o"]
+            h = max(normal["h"], after.get("h", 0) or 0)
+            l_val = min(normal["l"], after["l"]) if after.get("l") else normal["l"]
+            c = after["c"] if after.get("c") else normal["c"]
+            v = normal["v"] + after.get("v", 0)
+            result[date_key] = {"date": date_key, "open": o, "high": h, "low": l_val, "close": c, "volume": v}
+        return result
+
+    # ── 1. 清除由 open API 存入的錯誤資料（全部相同價格）──
+    all_rows = db.query(TxfCandle).order_by(TxfCandle.date.asc()).all()
+    if all_rows:
+        closes_sample = {r.close for r in all_rows[:20]}
+        if len(closes_sample) <= 2:  # 幾乎全部相同 → 錯誤資料
+            db.query(TxfCandle).delete()
+            db.commit()
+            all_rows = []
+
+    # ── 2. 找出需要補的月份區間 ──
+    existing = {r.date for r in all_rows}
+    trading_dates = tf.recent_trading_dates(260)  # YYYY/MM/DD 最新在前
     missing = [d for d in trading_dates if to_yyyymmdd(d) not in existing]
 
-    # ── 3. 分批抓取缺失的日期（每批 10 天，逐批存 DB 釋放記憶體）──
     if missing:
-        _BASE_URL = "https://openapi.taifex.com.tw/v1/DailyMarketReportFut"
-        BATCH = 10   # 每批並發數，控制峰值記憶體
-
-        async def fetch_one(query_date: str):
-            url = f"{_BASE_URL}?queryDate={query_date}"
-            try:
-                async with httpx.AsyncClient(timeout=10) as client:
-                    resp = await client.get(url)
-                    resp.raise_for_status()
-                    rows = resp.json()
-                    # 只保留 TX 一般盤，立即丟棄其餘 2000+ 筆
-                    tx_rows = [r for r in rows
-                               if r.get("Contract") == "TX"
-                               and r.get("TradingSession") == "一般"
-                               and r.get("Open") not in (None, "", "0")]
-                    del rows  # 釋放完整回應
-                    if not tx_rows:
-                        return None
-                    near = max(tx_rows, key=lambda r: int(r.get("Volume", 0) or 0))
-                    return {
-                        "date":   to_yyyymmdd(query_date),
-                        "open":   float(near["Open"]),
-                        "high":   float(near["High"]),
-                        "low":    float(near["Low"]),
-                        "close":  float(near["Last"]),
-                        "volume": int(near.get("Volume") or 0),
-                    }
-            except Exception:
-                return None
-
-        # 逐批處理，每批完成後立即 commit 並釋放
-        for i in range(0, len(missing), BATCH):
-            batch = missing[i:i + BATCH]
-            results = await asyncio.gather(*[fetch_one(d) for d in batch])
-            new_candles = [r for r in results if r]
-            if new_candles:
-                for c in new_candles:
-                    if c["date"] not in existing:
+        # 分組成月份區間（每個月一個請求）
+        from itertools import groupby
+        def month_key(d: str) -> str:
+            return d[:7]  # "YYYY/MM"
+        for month, group in groupby(missing, key=month_key):
+            dates = list(group)
+            start, end = dates[-1], dates[0]  # group 內最新在前，所以最舊=末
+            candles = await asyncio.to_thread(fetch_month_csv, start, end)
+            if candles:
+                for date_key, c in candles.items():
+                    if date_key not in existing:
                         db.merge(TxfCandle(**c))
-                        existing.add(c["date"])
+                        existing.add(date_key)
                 db.commit()
-            del results, new_candles  # 明確釋放
+            del candles
 
     # ── 4. 讀取 DB 中最近 252 根日K ──
     rows = (

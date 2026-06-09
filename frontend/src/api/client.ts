@@ -201,6 +201,8 @@ export const stocksApi = {
     api.get<Record<string, MarketIndex>>("/stocks/market-overview").then((r) => r.data),
   market_kline: (index: "taiex" | "twoii" = "taiex") =>
     api.get<KlineResponse>(`/stocks/market-kline?index=${index}`).then((r) => r.data),
+  txf_kline: () =>
+    api.get<KlineResponse>("/stocks/txf-kline").then((r) => r.data),
   kline: (code: string) =>
     api.get<KlineResponse>(`/stocks/${code}/kline`).then((r) => r.data),
 };

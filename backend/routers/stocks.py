@@ -21,7 +21,7 @@ _SAFETY_OFF = [
 ]
 
 from database import get_db
-from models import Report, StockRecommendationReason
+from models import Report, StockRecommendationReason, TxfCandle
 from stocks_master import resolve_name
 
 router = APIRouter(prefix="/stocks", tags=["stocks"])
@@ -667,6 +667,141 @@ async def stream_recommendation_reason(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@router.get("/txf-kline")
+async def get_txf_kline(db: Session = Depends(get_db)):
+    """台指期（TX 近月）日K + MA + KDJ(89,9,12)。首次呼叫會並行抓取歷史資料存 DB。"""
+    import taifex as tf
+    import pandas as pd
+    import calendar as _cal
+    from datetime import datetime
+
+    # ── 1. 取得需要的交易日清單（最多 260 天）──
+    trading_dates = tf.recent_trading_dates(260)  # YYYY/MM/DD 最新在前
+
+    # ── 2. 確認哪些日期 DB 還沒有 ──
+    existing = {r.date for r in db.query(TxfCandle.date).all()}
+    # 將 YYYY/MM/DD 轉成 YYYYMMDD 比對
+    def to_yyyymmdd(d: str) -> str:
+        return d.replace("/", "")
+    missing = [d for d in trading_dates if to_yyyymmdd(d) not in existing]
+
+    # ── 3. 並行抓取缺失的日期（semaphore 控制 15 並發）──
+    if missing:
+        sem = asyncio.Semaphore(15)
+        _BASE_URL = "https://openapi.taifex.com.tw/v1/DailyMarketReportFut"
+
+        async def fetch_one(query_date: str):
+            async with sem:
+                url = f"{_BASE_URL}?queryDate={query_date}"
+                try:
+                    async with httpx.AsyncClient(timeout=10) as client:
+                        resp = await client.get(url)
+                        resp.raise_for_status()
+                        rows = resp.json()
+                        # 取近月合約（成交量最大的一般盤 TX）
+                        tx_rows = [r for r in rows
+                                   if r.get("Contract") == "TX"
+                                   and r.get("TradingSession") == "一般"
+                                   and r.get("Open") not in (None, "", "0")]
+                        if not tx_rows:
+                            return None
+                        near = max(tx_rows, key=lambda r: int(r.get("Volume", 0) or 0))
+                        return {
+                            "date":   to_yyyymmdd(query_date),
+                            "open":   float(near["Open"]),
+                            "high":   float(near["High"]),
+                            "low":    float(near["Low"]),
+                            "close":  float(near["Last"]),
+                            "volume": int(near.get("Volume") or 0),
+                        }
+                except Exception:
+                    return None
+
+        results = await asyncio.gather(*[fetch_one(d) for d in missing])
+        new_candles = [r for r in results if r]
+        if new_candles:
+            for c in new_candles:
+                if c["date"] not in existing:
+                    db.merge(TxfCandle(**c))
+            db.commit()
+
+    # ── 4. 讀取 DB 中最近 252 根日K ──
+    rows = (
+        db.query(TxfCandle)
+        .order_by(TxfCandle.date.asc())
+        .all()
+    )
+    rows = rows[-252:]
+    if not rows:
+        return {
+            "candles": [], "ma5": [], "ma10": [], "ma20": [], "ma60": [],
+            "kdj_k": [], "kdj_d": [], "kdj_j": [],
+            "kdj_k10_price": None, "kdj_k20_price": None,
+            "kdj_k80_price": None, "kdj_k90_price": None,
+            "kdj_range_low": None, "kdj_range_high": None,
+            "kdj_cur_k": None, "kdj_cur_d": None, "kdj_cur_j": None,
+        }
+
+    def bar_ts(date_str: str) -> int:
+        d = datetime.strptime(date_str, "%Y%m%d")
+        return _cal.timegm(d.timetuple())
+
+    candles = [{"time": bar_ts(r.date), "open": r.open, "high": r.high,
+                "low": r.low, "close": r.close} for r in rows]
+    ts_list = [c["time"] for c in candles]
+    closes  = pd.Series([r.close  for r in rows])
+    highs   = pd.Series([r.high   for r in rows])
+    lows    = pd.Series([r.low    for r in rows])
+
+    def ma_series(window):
+        s = closes.rolling(window).mean()
+        return [{"time": ts_list[i], "value": round(float(v), 0)}
+                for i, v in enumerate(s) if pd.notna(v)]
+
+    # KDJ(89,9,12)
+    RSV_N, K_W, D_W = 89, 1/9, 1/12
+    low_min  = lows.rolling(RSV_N).min()
+    high_max = highs.rolling(RSV_N).max()
+    denom    = high_max - low_min
+    rsv_raw  = ((closes - low_min) / denom * 100).where(denom > 0)
+
+    k_vals, d_vals, j_vals = [], [], []
+    k_prev, d_prev = 50.0, 50.0
+    for r in rsv_raw:
+        if pd.isna(r):
+            k_vals.append(None); d_vals.append(None); j_vals.append(None)
+        else:
+            k = k_prev * (1 - K_W) + r * K_W
+            d = d_prev * (1 - D_W) + k * D_W
+            j_vals.append(round(3 * k - 2 * d, 2))
+            k_vals.append(round(k, 2)); d_vals.append(round(d, 2))
+            k_prev, d_prev = k, d
+
+    def kdj_series(vals):
+        return [{"time": ts_list[i]} if v is None else {"time": ts_list[i], "value": v}
+                for i, v in enumerate(vals)]
+
+    range_low  = float(low_min.iloc[-1])  if pd.notna(low_min.iloc[-1])  else float(lows.min())
+    range_high = float(high_max.iloc[-1]) if pd.notna(high_max.iloc[-1]) else float(highs.max())
+    rng = range_high - range_low
+
+    return {
+        "candles": candles,
+        "ma5": ma_series(5), "ma10": ma_series(10),
+        "ma20": ma_series(20), "ma60": ma_series(60),
+        "kdj_k": kdj_series(k_vals), "kdj_d": kdj_series(d_vals), "kdj_j": kdj_series(j_vals),
+        "kdj_k10_price":  round(range_low + 0.10 * rng, 0),
+        "kdj_k20_price":  round(range_low + 0.20 * rng, 0),
+        "kdj_k80_price":  round(range_low + 0.80 * rng, 0),
+        "kdj_k90_price":  round(range_low + 0.90 * rng, 0),
+        "kdj_range_low":  round(range_low, 0),
+        "kdj_range_high": round(range_high, 0),
+        "kdj_cur_k": next((v for v in reversed(k_vals) if v is not None), None),
+        "kdj_cur_d": next((v for v in reversed(d_vals) if v is not None), None),
+        "kdj_cur_j": next((v for v in reversed(j_vals) if v is not None), None),
+    }
 
 
 @router.get("/market-overview")

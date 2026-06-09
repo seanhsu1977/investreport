@@ -134,6 +134,18 @@ class RecommendationCache(Base):
     computed_at = Column(DateTime, nullable=False)
 
 
+class TxfCandle(Base):
+    """台指期（TX 近月）日K 快取"""
+    __tablename__ = "txf_candles"
+
+    date    = Column(String, primary_key=True)  # YYYYMMDD
+    open    = Column(Float, nullable=False)
+    high    = Column(Float, nullable=False)
+    low     = Column(Float, nullable=False)
+    close   = Column(Float, nullable=False)
+    volume  = Column(Integer, nullable=True)
+
+
 class StockRecommendationReason(Base):
     """個股推薦理由快取（由 LLM 生成後暫存，附生成時間）"""
     __tablename__ = "stock_recommendation_reasons"

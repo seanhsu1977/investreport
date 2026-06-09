@@ -502,9 +502,9 @@ function RetailChart({
   );
 }
 
-/* ============================ 大盤技術分析 Card ============================ */
+/* ============================ 技術分析 Card（可共用）============================ */
 
-function MarketTechCard() {
+function MarketTechCard({ title, loader }: { title: string; loader: () => Promise<KlineResponse> }) {
   const [kline, setKline] = useState<KlineResponse | null>(null);
   const [klineLoading, setKlineLoading] = useState(true);
   const klineTs = useRef<ITimeScaleApi<UTCTimestamp> | null>(null);
@@ -512,7 +512,7 @@ function MarketTechCard() {
   const syncing  = useRef(false);
 
   useEffect(() => {
-    stocksApi.market_kline("taiex")
+    loader()
       .then(setKline)
       .catch(() => {})
       .finally(() => setKlineLoading(false));
@@ -535,7 +535,7 @@ function MarketTechCard() {
 
   return (
     <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 space-y-4">
-      <h2 className="text-xl font-bold text-gray-900">📊 加權指數技術分析</h2>
+      <h2 className="text-xl font-bold text-gray-900">{title}</h2>
 
       {/* K 線 */}
       <div className="rounded-xl overflow-hidden border border-[#1e3a5f]">
@@ -666,8 +666,9 @@ export default function ChipsPage() {
         </button>
       </div>
 
-      {/* 大盤技術分析（獨立載入，不受籌碼資料影響） */}
-      <MarketTechCard />
+      {/* 大盤 + 台指期技術分析 */}
+      <MarketTechCard title="📊 加權指數技術分析" loader={() => stocksApi.market_kline("taiex")} />
+      <MarketTechCard title="📈 台指期（TX）技術分析" loader={() => stocksApi.txf_kline()} />
 
       {loading ? (
         <p className="text-gray-400">載入中…</p>

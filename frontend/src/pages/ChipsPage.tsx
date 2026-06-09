@@ -578,7 +578,7 @@ function MarketTechCard() {
             <div className="flex items-center gap-3 text-[11px]">
               {([["K", kline.kdj_cur_k, "#3B82F6"], ["D", kline.kdj_cur_d, "#F59E0B"], ["J", kline.kdj_cur_j, "#A78BFA"]] as [string, number | null, string][]).map(([lbl, val, color]) => (
                 <span key={lbl} style={{ color }}>
-                  {lbl} <span className={`font-mono font-bold ${val == null ? "text-white/40" : val >= 80 ? "text-[#EF4444]" : val <= 20 ? "text-[#22C55E]" : "text-white"}`}>
+                  {lbl} <span className={`font-mono font-bold ${val == null ? "text-white/40" : val >= 90 ? "text-[#FCA5A5]" : val >= 80 ? "text-[#EF4444]" : val <= 10 ? "text-[#86EFAC]" : val <= 20 ? "text-[#22C55E]" : "text-white"}`}>
                     {val != null ? val.toFixed(1) : "—"}
                   </span>
                 </span>

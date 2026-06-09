@@ -667,7 +667,9 @@ export default function StockPage() {
                       <span style={{ color }} className="font-bold">{label} </span>
                       <span className={`font-mono font-semibold text-[12px] ${
                         val == null ? "text-white/40" :
+                        val >= 90  ? "text-[#FCA5A5]" :
                         val >= 80  ? "text-[#EF4444]" :
+                        val <= 10  ? "text-[#86EFAC]" :
                         val <= 20  ? "text-[#22C55E]" : "text-white"
                       }`}>
                         {val != null ? val.toFixed(1) : "—"}

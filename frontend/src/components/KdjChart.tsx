@@ -54,18 +54,19 @@ export default function KdjChart({ kdj_k, kdj_d, kdj_j, onTimeScaleReady }: Prop
     const jSeries = chart.addSeries(LineSeries, { color: "#A78BFA", lineWidth: 1, title: "J" });
     jSeries.setData(toLC(kdj_j));
 
-    // Reference lines at 20 and 80
-    const lastTime = kdj_k[kdj_k.length - 1].time as UTCTimestamp;
+    // Reference lines at 10 / 20 / 80 / 90
+    const lastTime  = kdj_k[kdj_k.length - 1].time as UTCTimestamp;
     const firstTime = kdj_k[0].time as UTCTimestamp;
-    const ref20 = chart.addSeries(LineSeries, {
-      color: "#22C55E", lineWidth: 1, lineStyle: 2, title: ""
-    });
-    ref20.setData([{ time: firstTime, value: 20 }, { time: lastTime, value: 20 }]);
-
-    const ref80 = chart.addSeries(LineSeries, {
-      color: "#EF4444", lineWidth: 1, lineStyle: 2, title: ""
-    });
-    ref80.setData([{ time: firstTime, value: 80 }, { time: lastTime, value: 80 }]);
+    const refLines: [number, string, number][] = [
+      [10, "#86EFAC", 1],   // 極低撐：淺綠實線
+      [20, "#22C55E", 2],   // 低撐：綠虛線
+      [80, "#EF4444", 2],   // 高壓：紅虛線
+      [90, "#FCA5A5", 1],   // 極高壓：淺紅實線
+    ];
+    for (const [level, color, lineStyle] of refLines) {
+      const s = chart.addSeries(LineSeries, { color, lineWidth: 1, lineStyle, title: "" });
+      s.setData([{ time: firstTime, value: level }, { time: lastTime, value: level }]);
+    }
 
     chart.timeScale().fitContent();
     onTimeScaleReady?.(chart.timeScale() as ITimeScaleApi<UTCTimestamp>);

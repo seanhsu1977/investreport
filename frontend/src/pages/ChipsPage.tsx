@@ -522,10 +522,10 @@ function MarketTechCard() {
     src: ITimeScaleApi<UTCTimestamp>,
     dst: ITimeScaleApi<UTCTimestamp>,
   ) => {
-    src.subscribeVisibleLogicalRangeChange((range) => {
+    src.subscribeVisibleTimeRangeChange((range) => {
       if (syncing.current || !range) return;
       syncing.current = true;
-      dst.setVisibleLogicalRange(range);
+      dst.setVisibleRange(range as { from: UTCTimestamp; to: UTCTimestamp });
       syncing.current = false;
     });
   };

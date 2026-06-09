@@ -666,9 +666,8 @@ export default function ChipsPage() {
         </button>
       </div>
 
-      {/* 大盤 + 台指期技術分析 */}
+      {/* 大盤技術分析 */}
       <MarketTechCard title="📊 加權指數技術分析" loader={() => stocksApi.market_kline("taiex")} />
-      <MarketTechCard title="📈 台指期（TX）技術分析" loader={() => stocksApi.txf_kline()} />
 
       {loading ? (
         <p className="text-gray-400">載入中…</p>

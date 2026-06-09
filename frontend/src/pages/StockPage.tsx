@@ -67,10 +67,10 @@ export default function StockPage() {
     src: ITimeScaleApi<UTCTimestamp>,
     dst: ITimeScaleApi<UTCTimestamp>,
   ) => {
-    src.subscribeVisibleTimeRangeChange((range) => {
+    src.subscribeVisibleLogicalRangeChange((range) => {
       if (syncing.current || !range) return;
       syncing.current = true;
-      dst.setVisibleRange(range as { from: UTCTimestamp; to: UTCTimestamp });
+      dst.setVisibleLogicalRange(range);
       syncing.current = false;
     });
   };

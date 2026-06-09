@@ -3,7 +3,7 @@ import { createChart, CandlestickSeries, LineSeries, ColorType } from "lightweig
 import type { ITimeScaleApi, UTCTimestamp } from "lightweight-charts";
 
 interface Candle { time: number; open: number; high: number; low: number; close: number; }
-interface MaPoint { time: number; value: number; }
+interface MaPoint { time: number; value?: number; }
 
 interface Props {
   candles: Candle[];

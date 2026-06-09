@@ -2,8 +2,8 @@ import { useEffect, useRef } from "react";
 import { createChart, LineSeries } from "lightweight-charts";
 import type { ITimeScaleApi, UTCTimestamp } from "lightweight-charts";
 
-interface KdjPoint { time: number; value: number }
-type LcPoint = { time: UTCTimestamp; value: number }
+interface KdjPoint { time: number; value?: number }
+type LcPoint = { time: UTCTimestamp; value?: number }
 
 interface Props {
   kdj_k: KdjPoint[];

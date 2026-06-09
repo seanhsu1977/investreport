@@ -752,8 +752,9 @@ def get_market_kline(index: str = Query(default="taiex")):
             k_prev, d_prev = k, d
 
     def kdj_series(vals):
-        return [{"time": ts_list[i], "value": v}
-                for i, v in enumerate(vals) if v is not None]
+        # 包含暖機期的空白點（僅 time），確保與 K 線圖 bar 數一致，logical range 同步才能對齊
+        return [{"time": ts_list[i]} if v is None else {"time": ts_list[i], "value": v}
+                for i, v in enumerate(vals)]
 
     range_low  = float(low_min.iloc[-1]) if pd.notna(low_min.iloc[-1]) else float(lows.min())
     range_high = float(high_max.iloc[-1]) if pd.notna(high_max.iloc[-1]) else float(highs.max())
@@ -991,8 +992,8 @@ def get_stock_kline(stock_code: str, period: str = Query(default="1y")):
             k_prev, d_prev = k, d
 
     def kdj_series(vals):
-        return [{"time": to_ts(idx), "value": v}
-                for idx, v in zip(df.index, vals) if v is not None]
+        return [{"time": to_ts(idx)} if v is None else {"time": to_ts(idx), "value": v}
+                for idx, v in zip(df.index, vals)]
 
     # K=20 / K=80 估算價：用 RSV 同週期的 89 天區間
     range_low  = float(low_min.iloc[-1])  if pd.notna(low_min.iloc[-1])  else float(df["Low"].min())

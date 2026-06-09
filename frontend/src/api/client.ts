@@ -162,7 +162,7 @@ export interface StockSignal {
 }
 
 interface OhlcPoint  { time: number; open: number; high: number; low: number; close: number }
-interface LinePoint  { time: number; value: number }
+interface LinePoint  { time: number; value?: number }
 
 export interface KlineResponse {
   candles: OhlcPoint[];

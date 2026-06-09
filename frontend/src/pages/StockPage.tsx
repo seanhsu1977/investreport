@@ -647,7 +647,7 @@ export default function StockPage() {
                 <div className="px-4 py-3 border-b border-[#DDE2EC] flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <h3 className="text-[13px] font-bold text-[#0D1B2A]">KDJ</h3>
-                    <span className="text-[11px] text-[#6B7A99]">RSV=9 · K/D 權重 1/12 · 89天區間</span>
+                    <span className="text-[11px] text-[#6B7A99]">RSV=89 · K權重 1/9 · D權重 1/12</span>
                   </div>
                   <div className="flex items-center gap-3 text-[11px]">
                     <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-[#3B82F6] inline-block"/>K</span>

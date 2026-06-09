@@ -573,7 +573,7 @@ function MarketTechCard() {
           <div className="px-4 py-2.5 bg-[#0B1E3D] flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="text-[13px] font-bold text-white">KDJ</span>
-              <span className="text-[11px] text-white/50">RSV=9 · 權重 1/12 · 89日區間</span>
+              <span className="text-[11px] text-white/50">RSV=89 · K權重 1/9 · D權重 1/12</span>
             </div>
             <div className="flex items-center gap-3 text-[11px]">
               {([["K", kline.kdj_cur_k, "#3B82F6"], ["D", kline.kdj_cur_d, "#F59E0B"], ["J", kline.kdj_cur_j, "#A78BFA"]] as [string, number | null, string][]).map(([lbl, val, color]) => (

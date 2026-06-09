@@ -728,8 +728,11 @@ def get_market_kline(index: str = Query(default="taiex")):
         return [{"time": ts_list[i], "value": round(float(v), 2)}
                 for i, v in enumerate(s) if pd.notna(v)]
 
-    # ── 自訂 KDJ（同個股參數）──
-    RSV_N, W, RANGE_N = 9, 1 / 12, 89
+    # ── KDJ(89,9,12)：RSV=89天、K權重1/9、D權重1/12 ──
+    RSV_N = 89   # RSV 回看天數（同時也是 K=20/K=80 估算區間）
+    K_W   = 1/9  # K 平滑權重 (M1=9)
+    D_W   = 1/12 # D 平滑權重 (M2=12)
+
     low_min  = lows.rolling(RSV_N).min()
     high_max = highs.rolling(RSV_N).max()
     denom    = high_max - low_min
@@ -741,8 +744,8 @@ def get_market_kline(index: str = Query(default="taiex")):
         if pd.isna(r):
             k_vals.append(None); d_vals.append(None); j_vals.append(None)
         else:
-            k = k_prev * (1 - W) + r * W
-            d = d_prev * (1 - W) + k * W
+            k = k_prev * (1 - K_W) + r * K_W
+            d = d_prev * (1 - D_W) + k * D_W
             j_vals.append(round(3 * k - 2 * d, 2))
             k_vals.append(round(k, 2))
             d_vals.append(round(d, 2))
@@ -752,8 +755,8 @@ def get_market_kline(index: str = Query(default="taiex")):
         return [{"time": ts_list[i], "value": v}
                 for i, v in enumerate(vals) if v is not None]
 
-    range_low  = float(lows.iloc[-RANGE_N:].min())
-    range_high = float(highs.iloc[-RANGE_N:].max())
+    range_low  = float(low_min.iloc[-1]) if pd.notna(low_min.iloc[-1]) else float(lows.min())
+    range_high = float(high_max.iloc[-1]) if pd.notna(high_max.iloc[-1]) else float(highs.max())
     k20_price  = round(range_low + 0.20 * (range_high - range_low), 2)
     k80_price  = round(range_low + 0.80 * (range_high - range_low), 2)
 
@@ -963,10 +966,10 @@ def get_stock_kline(stock_code: str, period: str = Query(default="1y")):
         return [{"time": to_ts(idx), "value": round(float(val), 2)}
                 for idx, val in s.items() if pd.notna(val)]
 
-    # ── KDJ ────────────────────────────────────────────────────────────
-    RSV_N   = 9        # RSV 回看天數
-    W       = 1 / 12   # K / D 平滑權重
-    RANGE_N = 89       # K=20 / K=80 區間天數
+    # ── KDJ(89,9,12)：RSV=89天、K權重1/9、D權重1/12 ──
+    RSV_N = 89   # RSV 回看天數（同時也是 K=20/K=80 估算區間）
+    K_W   = 1/9  # K 平滑權重 (M1=9)
+    D_W   = 1/12 # D 平滑權重 (M2=12)
 
     low_min  = df["Low"].rolling(RSV_N).min()
     high_max = df["High"].rolling(RSV_N).max()
@@ -979,8 +982,8 @@ def get_stock_kline(stock_code: str, period: str = Query(default="1y")):
         if pd.isna(r):
             k_vals.append(None); d_vals.append(None); j_vals.append(None)
         else:
-            k = k_prev * (1 - W) + r * W
-            d = d_prev * (1 - W) + k * W
+            k = k_prev * (1 - K_W) + r * K_W
+            d = d_prev * (1 - D_W) + k * D_W
             j = 3 * k - 2 * d
             k_vals.append(round(k, 2))
             d_vals.append(round(d, 2))
@@ -991,9 +994,9 @@ def get_stock_kline(stock_code: str, period: str = Query(default="1y")):
         return [{"time": to_ts(idx), "value": v}
                 for idx, v in zip(df.index, vals) if v is not None]
 
-    # 89 天價格區間 → K=20 / K=80 估算價
-    range_low  = float(df["Low"].tail(RANGE_N).min())
-    range_high = float(df["High"].tail(RANGE_N).max())
+    # K=20 / K=80 估算價：用 RSV 同週期的 89 天區間
+    range_low  = float(low_min.iloc[-1])  if pd.notna(low_min.iloc[-1])  else float(df["Low"].min())
+    range_high = float(high_max.iloc[-1]) if pd.notna(high_max.iloc[-1]) else float(df["High"].max())
     k20_price  = round(range_low + 0.20 * (range_high - range_low), 2)
     k80_price  = round(range_low + 0.80 * (range_high - range_low), 2)
 

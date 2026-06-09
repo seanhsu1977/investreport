@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { createChart, CandlestickSeries, LineSeries, ColorType } from "lightweight-charts";
+import type { ITimeScaleApi, UTCTimestamp } from "lightweight-charts";
 
 interface Candle { time: number; open: number; high: number; low: number; close: number; }
 interface MaPoint { time: number; value: number; }
@@ -10,9 +11,10 @@ interface Props {
   ma10: MaPoint[];
   ma20: MaPoint[];
   ma60: MaPoint[];
+  onTimeScaleReady?: (ts: ITimeScaleApi<UTCTimestamp>) => void;
 }
 
-export default function KlineChart({ candles, ma5, ma10, ma20, ma60 }: Props) {
+export default function KlineChart({ candles, ma5, ma10, ma20, ma60, onTimeScaleReady }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -73,6 +75,7 @@ export default function KlineChart({ candles, ma5, ma10, ma20, ma60 }: Props) {
     }
 
     chart.timeScale().fitContent();
+    onTimeScaleReady?.(chart.timeScale() as ITimeScaleApi<UTCTimestamp>);
 
     // Responsive resize
     const ro = new ResizeObserver(() => {

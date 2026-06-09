@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { createChart, LineSeries } from "lightweight-charts";
-import type { UTCTimestamp } from "lightweight-charts";
+import type { ITimeScaleApi, UTCTimestamp } from "lightweight-charts";
 
 interface KdjPoint { time: number; value: number }
 type LcPoint = { time: UTCTimestamp; value: number }
@@ -9,10 +9,11 @@ interface Props {
   kdj_k: KdjPoint[];
   kdj_d: KdjPoint[];
   kdj_j: KdjPoint[];
+  onTimeScaleReady?: (ts: ITimeScaleApi<UTCTimestamp>) => void;
 }
 
 // KDJ oscillator chart (0–100 range, K/D/J lines, 20/80 reference)
-export default function KdjChart({ kdj_k, kdj_d, kdj_j }: Props) {
+export default function KdjChart({ kdj_k, kdj_d, kdj_j, onTimeScaleReady }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -67,6 +68,7 @@ export default function KdjChart({ kdj_k, kdj_d, kdj_j }: Props) {
     ref80.setData([{ time: firstTime, value: 80 }, { time: lastTime, value: 80 }]);
 
     chart.timeScale().fitContent();
+    onTimeScaleReady?.(chart.timeScale() as ITimeScaleApi<UTCTimestamp>);
 
     // Responsive resize
     const ro = new ResizeObserver(() => {

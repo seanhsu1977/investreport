@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, Link, useNavigate, useLocation } from "react-router-dom";
 import {
   stocksApi, watchlistApi, fundamentalsApi,
@@ -13,6 +13,7 @@ import { usePostMaterials } from "../hooks/usePostMaterials";
 import KlineChart from "../components/KlineChart";
 import KdjChart from "../components/KdjChart";
 import { type KlineResponse } from "../api/client";
+import type { ITimeScaleApi, UTCTimestamp } from "lightweight-charts";
 
 // ── constants ─────────────────────────────────────────────────────────────────
 
@@ -58,6 +59,21 @@ export default function StockPage() {
   const [activeTab, setActiveTab] = useState<StockTabKey>("reports");
   const [kline, setKline] = useState<KlineResponse | null>(null);
   const [klineLoading, setKlineLoading] = useState(true);
+  // time-scale sync between K-line chart and KDJ chart
+  const klineTs = useRef<ITimeScaleApi<UTCTimestamp> | null>(null);
+  const kdjTs   = useRef<ITimeScaleApi<UTCTimestamp> | null>(null);
+  const syncing  = useRef(false);
+  const syncCharts = (
+    src: ITimeScaleApi<UTCTimestamp>,
+    dst: ITimeScaleApi<UTCTimestamp>,
+  ) => {
+    src.subscribeVisibleLogicalRangeChange((range) => {
+      if (syncing.current || !range) return;
+      syncing.current = true;
+      dst.setVisibleLogicalRange(range);
+      syncing.current = false;
+    });
+  };
 
   const fetchPrice = () => {
     if (!code) return;
@@ -610,7 +626,13 @@ export default function StockPage() {
                   </svg>
                 </div>
               ) : kline && kline.candles.length > 0 ? (
-                <KlineChart {...kline} />
+                <KlineChart {...kline} onTimeScaleReady={(ts) => {
+                  klineTs.current = ts;
+                  if (kdjTs.current) {
+                    syncCharts(ts, kdjTs.current);
+                    syncCharts(kdjTs.current, ts);
+                  }
+                }} />
               ) : (
                 <div className="h-[300px] flex items-center justify-center bg-[#122548] text-white/40 text-sm">
                   無法載入 K 線資料
@@ -654,7 +676,15 @@ export default function StockPage() {
                   ))}
                 </div>
 
-                <KdjChart kdj_k={kline.kdj_k} kdj_d={kline.kdj_d} kdj_j={kline.kdj_j} />
+                <KdjChart kdj_k={kline.kdj_k} kdj_d={kline.kdj_d} kdj_j={kline.kdj_j}
+                  onTimeScaleReady={(ts) => {
+                    kdjTs.current = ts;
+                    if (klineTs.current) {
+                      syncCharts(ts, klineTs.current);
+                      syncCharts(klineTs.current, ts);
+                    }
+                  }}
+                />
 
                 {/* K=20 / K=80 price estimates */}
                 {kline.kdj_k20_price != null && kline.kdj_k80_price != null && (

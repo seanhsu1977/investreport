@@ -623,7 +623,7 @@ function TechAnalysisPanel({ data }: { data: MarketIndex }) {
 
 /* ============================ 技術分析 Card（可共用）============================ */
 
-function MarketTechCard({ title, loader, overviewKey }: { title: string; loader: () => Promise<KlineResponse>; overviewKey: "taiex" | "twoii" }) {
+function MarketTechCard({ title, loader, overviewKey }: { title: string; loader: () => Promise<KlineResponse>; overviewKey: string }) {
   const [kline, setKline] = useState<KlineResponse | null>(null);
   const [klineLoading, setKlineLoading] = useState(true);
   const [overview, setOverview] = useState<MarketIndex | null>(null);
@@ -793,7 +793,7 @@ export default function ChipsPage() {
       </div>
 
       {/* 大盤技術分析 */}
-      <MarketTechCard title="📊 加權指數技術分析" loader={() => stocksApi.market_kline("taiex")} overviewKey="taiex" />
+      <MarketTechCard title="📊 加權指數技術分析" loader={() => stocksApi.market_kline("taiex")} overviewKey="TWII" />
 
       {loading ? (
         <p className="text-gray-400">載入中…</p>

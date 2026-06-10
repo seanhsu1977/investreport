@@ -11,7 +11,7 @@ import {
   YAxis,
   Cell,
 } from "recharts";
-import { chipsApi, stocksApi, type ChipSnapshot, type InstitutionPosition, type KlineResponse } from "../api/client";
+import { chipsApi, stocksApi, type ChipSnapshot, type InstitutionPosition, type KlineResponse, type MarketIndex, type TowerSignal } from "../api/client";
 import KlineChart from "../components/KlineChart";
 import KdjChart from "../components/KdjChart";
 import type { ITimeScaleApi, UTCTimestamp } from "lightweight-charts";
@@ -502,20 +502,143 @@ function RetailChart({
   );
 }
 
+/* ============================ 技術分析面板 ============================ */
+
+function TowerBadge({ tower }: { tower: TowerSignal | null }) {
+  if (!tower) return <span className="text-gray-400 text-sm">—</span>;
+  const isPos = tower.color === "陽";
+  const isTurn = tower.signal.startsWith("轉");
+  return (
+    <div className="flex items-center gap-2 flex-wrap">
+      <span className={`text-sm font-bold px-2 py-0.5 rounded ${isPos ? "bg-rose-100 text-rose-600" : "bg-emerald-100 text-emerald-700"}`}>
+        {tower.color}棒 × {tower.count} 根
+      </span>
+      {isTurn && (
+        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${isPos ? "border-rose-400 text-rose-500 bg-rose-50" : "border-emerald-500 text-emerald-600 bg-emerald-50"}`}>
+          ⚡ {tower.signal}
+        </span>
+      )}
+      {!isTurn && (
+        <span className="text-xs text-gray-500">{tower.signal}</span>
+      )}
+    </div>
+  );
+}
+
+function SrList({ values, color }: { values: number[]; color: "red" | "green" }) {
+  if (!values.length) return <span className="text-gray-400 text-sm">—</span>;
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {values.map((v) => (
+        <span key={v} className={`text-xs font-mono px-2 py-0.5 rounded ${color === "red" ? "bg-rose-50 text-rose-600" : "bg-emerald-50 text-emerald-700"}`}>
+          {v.toLocaleString("zh-TW", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function TechRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-start gap-3 py-2.5 border-b border-gray-100 last:border-0">
+      <span className="text-xs text-gray-400 w-20 shrink-0 pt-0.5">{label}</span>
+      <div className="flex-1">{children}</div>
+    </div>
+  );
+}
+
+function SignalBadge({ text }: { text: string | null | undefined }) {
+  if (!text) return <span className="text-gray-400 text-sm">—</span>;
+  const isPositive = ["多頭排列", "量增", "超買"].includes(text);
+  const isNegative = ["空頭排列", "超賣"].includes(text);
+  const isNeutral  = ["均線糾結", "量持平", "量縮", "正常", "無"].includes(text);
+  const cls = isPositive ? "bg-rose-50 text-rose-600" : isNegative ? "bg-emerald-50 text-emerald-700" : "bg-gray-100 text-gray-600";
+  return <span className={`text-xs font-medium px-2 py-0.5 rounded ${cls}`}>{text}</span>;
+}
+
+function TechAnalysisPanel({ data }: { data: MarketIndex }) {
+  const bbPos = data.bb_pct_b != null ? `%B = ${(data.bb_pct_b * 100).toFixed(1)}%` : null;
+  const suggestionColor = data.suggestion.includes("多") || data.suggestion.includes("買")
+    ? "text-rose-600" : data.suggestion.includes("空") || data.suggestion.includes("賣")
+    ? "text-emerald-700" : "text-gray-700";
+
+  return (
+    <div className="rounded-xl overflow-hidden border border-[#1e3a5f]">
+      <div className="px-4 py-2.5 bg-[#0B1E3D]">
+        <span className="text-[13px] font-bold text-white">技術分析</span>
+      </div>
+      <div className="bg-white px-4 py-1">
+        <TechRow label="均線">
+          <div className="flex items-center gap-2 flex-wrap">
+            <SignalBadge text={data.ma_signal} />
+            <span className="text-xs text-gray-500">
+              MA5 <span className="font-mono font-semibold text-amber-500">{data.ma5.toLocaleString("zh-TW", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              &nbsp;·&nbsp;
+              MA20 <span className="font-mono font-semibold text-purple-500">{data.ma20.toLocaleString("zh-TW", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            </span>
+          </div>
+        </TechRow>
+        <TechRow label="成交量">
+          <SignalBadge text={data.volume_signal} />
+        </TechRow>
+        <TechRow label="RSI">
+          <div className="flex items-center gap-2">
+            {data.rsi != null && (
+              <span className={`text-sm font-bold font-mono ${data.rsi >= 70 ? "text-rose-500" : data.rsi <= 30 ? "text-emerald-600" : "text-gray-700"}`}>
+                {data.rsi.toFixed(1)}
+              </span>
+            )}
+            <SignalBadge text={data.rsi_signal} />
+          </div>
+        </TechRow>
+        <TechRow label="布林通道">
+          <div className="flex items-center gap-2 flex-wrap">
+            {data.bb_signal && <SignalBadge text={data.bb_signal} />}
+            {data.bb_upper != null && data.bb_lower != null && (
+              <span className="text-xs text-gray-500 font-mono">
+                {data.bb_lower.toLocaleString("zh-TW", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                &nbsp;–&nbsp;
+                {data.bb_upper.toLocaleString("zh-TW", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+              </span>
+            )}
+            {bbPos && <span className="text-xs text-gray-400">{bbPos}</span>}
+          </div>
+        </TechRow>
+        <TechRow label="寶塔線">
+          <TowerBadge tower={data.tower} />
+        </TechRow>
+        <TechRow label="阻力">
+          <SrList values={data.resistance} color="red" />
+        </TechRow>
+        <TechRow label="支撐">
+          <SrList values={data.support} color="green" />
+        </TechRow>
+        <TechRow label="綜合建議">
+          <span className={`text-sm font-semibold ${suggestionColor}`}>{data.suggestion}</span>
+        </TechRow>
+      </div>
+    </div>
+  );
+}
+
 /* ============================ 技術分析 Card（可共用）============================ */
 
-function MarketTechCard({ title, loader }: { title: string; loader: () => Promise<KlineResponse> }) {
+function MarketTechCard({ title, loader, overviewKey }: { title: string; loader: () => Promise<KlineResponse>; overviewKey: "taiex" | "twoii" }) {
   const [kline, setKline] = useState<KlineResponse | null>(null);
   const [klineLoading, setKlineLoading] = useState(true);
+  const [overview, setOverview] = useState<MarketIndex | null>(null);
   const klineTs = useRef<ITimeScaleApi<UTCTimestamp> | null>(null);
   const kdjTs   = useRef<ITimeScaleApi<UTCTimestamp> | null>(null);
   const syncing  = useRef(false);
 
   useEffect(() => {
-    loader()
-      .then(setKline)
-      .catch(() => {})
-      .finally(() => setKlineLoading(false));
+    Promise.all([
+      loader().catch(() => null),
+      stocksApi.market_overview().catch(() => null),
+    ]).then(([kl, ov]) => {
+      if (kl) setKline(kl);
+      if (ov) setOverview(ov[overviewKey] ?? null);
+    }).finally(() => setKlineLoading(false));
   }, []);
 
   const syncCharts = (
@@ -612,6 +735,9 @@ function MarketTechCard({ title, loader }: { title: string; loader: () => Promis
           )}
         </div>
       )}
+
+      {/* 技術指標文字摘要 */}
+      {!klineLoading && overview && <TechAnalysisPanel data={overview} />}
     </div>
   );
 }
@@ -667,7 +793,7 @@ export default function ChipsPage() {
       </div>
 
       {/* 大盤技術分析 */}
-      <MarketTechCard title="📊 加權指數技術分析" loader={() => stocksApi.market_kline("taiex")} />
+      <MarketTechCard title="📊 加權指數技術分析" loader={() => stocksApi.market_kline("taiex")} overviewKey="taiex" />
 
       {loading ? (
         <p className="text-gray-400">載入中…</p>

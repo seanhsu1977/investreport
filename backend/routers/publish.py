@@ -674,6 +674,25 @@ def _serialize_daily(a: DailyArticle, *, include_content: bool = False) -> dict:
     }
     if include_content:
         out["content"] = a.content
+        # 從 raw_context 提取可比對的資料來源連結
+        if a.raw_context:
+            try:
+                import json as _json
+                ctx = _json.loads(a.raw_context)
+                code = ctx.get("topic", {}).get("code", "")
+                etf_url = ctx.get("etf", {}).get("source_url", "")
+                links = []
+                if code:
+                    links.append({"label": f"{code} 個股行情", "url": f"https://www.nstock.tw/stock_info?stock_id={code}"})
+                    links.append({"label": f"{code} 法人籌碼", "url": f"https://www.nstock.tw/institutional_investors?stock_id={code}"})
+                    links.append({"label": f"{code} 月營收", "url": f"https://www.nstock.tw/monthly_revenue?stock_id={code}"})
+                if etf_url:
+                    links.append({"label": "00981A ETF 操作明細", "url": etf_url})
+                out["source_links"] = links
+            except Exception:
+                out["source_links"] = []
+        else:
+            out["source_links"] = []
     else:
         out["preview"] = (a.content or "")[:200]
     return out

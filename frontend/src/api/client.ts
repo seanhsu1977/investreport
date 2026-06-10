@@ -379,6 +379,10 @@ export const etfTrackerApi = {
     api.post<{ etf_code: string; date: string; article_id: number; count: number }>(
       `/etf-tracker/sync`, null, { params: { etf, date } }
     ).then((r) => r.data),
+  backfill: (etf = "00981A", days = 10) =>
+    api.post<{ etf_code: string; synced: number; no_article: number; errors: number; results: { date: string; status: string; count?: number }[] }>(
+      `/etf-tracker/backfill`, null, { params: { etf, days } }
+    ).then((r) => r.data),
 };
 
 export const chipsApi = {

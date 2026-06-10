@@ -191,3 +191,92 @@ def etf_tracker_sync(
         "article_id": data["article_id"],
         "count": upserted,
     }
+
+
+# ──────────────────────────────────────────────────────────────────────
+# 批次回補：掃描最近 N 個交易日
+# ──────────────────────────────────────────────────────────────────────
+
+def _sync_one(etf: str, date: str, db: Session) -> dict:
+    """同步單一日期，回傳結果 dict（不拋例外）。"""
+    date_nstock = date.replace("-", "/")
+    try:
+        data = nstock_etf.fetch_today(date_nstock)
+    except Exception as e:
+        return {"date": date, "status": "error", "detail": str(e)}
+
+    if data is None:
+        return {"date": date, "status": "no_article"}
+
+    upserted = 0
+    for stock in data["stocks"]:
+        act = stock["action"]
+        delta = stock["shares"] if act == "buy" else (-stock["shares"] if act == "sell" else 0)
+        existing = (
+            db.query(EtfDailyChange)
+            .filter_by(etf_code=etf, date=date, stock_code=stock["code"])
+            .first()
+        )
+        if existing:
+            existing.shares_delta = delta
+            existing.action = act
+            existing.stock_name = stock["name"]
+            existing.price = stock.get("price")
+            existing.change_pct = stock.get("change_pct")
+            existing.nstock_article_id = data["article_id"]
+        else:
+            db.add(EtfDailyChange(
+                etf_code=etf, date=date,
+                stock_code=stock["code"], stock_name=stock["name"],
+                shares_delta=delta, action=act,
+                price=stock.get("price"), change_pct=stock.get("change_pct"),
+                nstock_article_id=data["article_id"],
+            ))
+        upserted += 1
+    db.commit()
+    return {"date": date, "status": "ok", "count": upserted}
+
+
+@router.post("/etf-tracker/backfill")
+def etf_tracker_backfill(
+    etf: str = "00981A",
+    days: int = 10,
+    db: Session = Depends(get_db),
+):
+    """往前回補最多 `days` 個交易日（跳過週末）。
+
+    每個日期獨立嘗試，失敗不中斷；回傳每日結果摘要。
+    """
+    if etf not in SUPPORTED_ETFS:
+        raise HTTPException(status_code=400, detail=f"ETF {etf} 尚未支援")
+    if not (1 <= days <= 60):
+        raise HTTPException(status_code=400, detail="days 需介於 1–60")
+
+    from datetime import date as _date, timedelta as _td
+    today = datetime.now(TPE).date()
+    results = []
+    checked = 0
+    d = today
+
+    while len([r for r in results if r["status"] in ("ok", "no_article")]) < days and checked < days * 3:
+        if d.weekday() < 5:  # 週一~五
+            result = _sync_one(etf, d.isoformat(), db)
+            results.append(result)
+        d -= _td(days=1)
+        checked += 1
+
+    ok = [r for r in results if r["status"] == "ok"]
+    no_article = [r for r in results if r["status"] == "no_article"]
+    errors = [r for r in results if r["status"] == "error"]
+
+    logger.info(
+        "ETF %s backfill: ok=%d, no_article=%d, errors=%d",
+        etf, len(ok), len(no_article), len(errors),
+    )
+    return {
+        "etf_code": etf,
+        "synced": len(ok),
+        "no_article": len(no_article),
+        "errors": len(errors),
+        "results": results,
+    }

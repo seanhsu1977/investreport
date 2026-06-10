@@ -112,6 +112,8 @@ export default function EtfTrackerPage() {
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
+  const [backfilling, setBackfilling] = useState(false);
+  const [backfillMsg, setBackfillMsg] = useState<string | null>(null);
   const [showFlat, setShowFlat] = useState(false);
 
   // 載入已有日期清單
@@ -151,7 +153,7 @@ export default function EtfTrackerPage() {
   const goPrev = () => { if (hasPrev) setDate(availableDates[dateIdx + 1]); };
   const goNext = () => { if (hasNext) setDate(availableDates[dateIdx - 1]); };
 
-  // 同步
+  // 同步單日
   const handleSync = async () => {
     setSyncing(true);
     setSyncError(null);
@@ -167,6 +169,26 @@ export default function EtfTrackerPage() {
       setSyncError(msg);
     } finally {
       setSyncing(false);
+    }
+  };
+
+  // 回補 10 天
+  const handleBackfill = async () => {
+    setBackfilling(true);
+    setBackfillMsg(null);
+    try {
+      const r = await etfTrackerApi.backfill(ETF_CODE, 10);
+      setBackfillMsg(`回補完成：成功 ${r.synced} 天，無文章 ${r.no_article} 天${r.errors > 0 ? `，錯誤 ${r.errors} 天` : ""}`);
+      await refreshDates();
+      await loadData(date);
+    } catch (e: unknown) {
+      const msg =
+        (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+        ?? (e as Error)?.message
+        ?? "回補失敗";
+      setBackfillMsg(`✗ ${msg}`);
+    } finally {
+      setBackfilling(false);
     }
   };
 
@@ -265,12 +287,24 @@ export default function EtfTrackerPage() {
           <div className="text-center py-14 text-gray-500">
             <p className="text-sm mb-1">尚無 {date} 的持股資料</p>
             <p className="text-xs text-gray-400 mb-4">nstock 通常在每個交易日 19:30 後更新</p>
-            <button
-              onClick={handleSync}
-              className="text-blue-600 text-sm font-medium hover:underline"
-            >
-              點此從 nstock 同步
-            </button>
+            <div className="flex flex-col items-center gap-2">
+              <button
+                onClick={handleSync}
+                className="text-blue-600 text-sm font-medium hover:underline"
+              >
+                同步此日
+              </button>
+              <button
+                onClick={handleBackfill}
+                disabled={backfilling}
+                className="text-sm text-gray-500 hover:text-gray-700 disabled:opacity-50"
+              >
+                {backfilling ? "回補中…" : "回補最近 10 天"}
+              </button>
+            </div>
+            {backfillMsg && (
+              <p className="mt-3 text-xs text-gray-600">{backfillMsg}</p>
+            )}
           </div>
         )}
 
@@ -333,6 +367,20 @@ export default function EtfTrackerPage() {
                 )}
               </div>
             )}
+
+            {/* 回補入口 */}
+            <div className="pt-2 border-t border-gray-200 flex items-center justify-between">
+              <button
+                onClick={handleBackfill}
+                disabled={backfilling}
+                className="text-xs text-gray-400 hover:text-gray-600 disabled:opacity-50 transition"
+              >
+                {backfilling ? "回補中…" : "↺ 回補最近 10 天歷史"}
+              </button>
+              {backfillMsg && (
+                <span className="text-xs text-gray-500">{backfillMsg}</span>
+              )}
+            </div>
           </>
         )}
       </div>

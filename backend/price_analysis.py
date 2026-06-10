@@ -47,48 +47,60 @@ def _compute_rsi(closes: pd.Series, period: int = 14) -> float | None:
     return round(float(val), 1) if pd.notna(val) else None
 
 
-def _compute_tower(closes: pd.Series, n: int = 3) -> dict | None:
-    """三線轉折（寶塔線）：回傳當前顏色、連續根數、轉折訊號"""
-    if len(closes) < 5:
+def _compute_tower(
+    closes: pd.Series,
+    highs: pd.Series,
+    lows: pd.Series,
+    n: int = 4,
+) -> dict | None:
+    """寶塔線（台灣券商定義）：
+    紅棒（陽）= 今日收盤 > 前 n 日每日最高價的最大值
+    黑棒（陰）= 今日收盤 < 前 n 日每日最低價的最小值
+    兩者都不符合 → 不新增磚（中性，維持前一狀態）
+    n 預設 4
+
+    回傳：{"color": "陽"/"陰", "count": 連續磚數, "signal": 轉陽/持續陽/…}
+    """
+    if len(closes) < n + 1:
         return None
+
     prices = closes.tolist()
-    lines: list[list] = []  # [low, high, color]  1=陽 -1=陰
+    hi     = highs.tolist()
+    lo     = lows.tolist()
 
-    p0, p1 = prices[0], prices[1]
-    lines.append([min(p0, p1), max(p0, p1), 1 if p1 >= p0 else -1])
+    bricks: list[int] = []   # 1=紅磚, -1=黑磚（中性日不加入）
 
-    for price in prices[2:]:
-        last = lines[-1]
-        color = last[2]
-        ref = lines[-n:]
+    for i in range(n, len(prices)):
+        c = prices[i]
+        max_prev_high = max(hi[i - j] for j in range(1, n + 1))
+        min_prev_low  = min(lo[i - j] for j in range(1, n + 1))
 
-        if color == 1:
-            if price > last[1]:
-                lines.append([last[1], price, 1])
-            elif price < min(l[0] for l in ref):
-                lines.append([price, min(l[0] for l in ref), -1])
-        else:
-            if price < last[0]:
-                lines.append([price, last[0], -1])
-            elif price > max(l[1] for l in ref):
-                lines.append([max(l[1] for l in ref), price, 1])
+        if c > max_prev_high:
+            bricks.append(1)     # 紅棒：突破前 n 日所有最高價
+        elif c < min_prev_low:
+            bricks.append(-1)    # 黑棒：跌破前 n 日所有最低價
+        # 中性：不加磚
 
-    last = lines[-1]
-    color_str = "陽" if last[2] == 1 else "陰"
+    if not bricks:
+        return None
 
+    last_color = bricks[-1]
+
+    # 連續同色磚數（從最近往前數，遇到異色停止）
     count = 0
-    for line in reversed(lines):
-        if line[2] == last[2]:
+    for b in reversed(bricks):
+        if b == last_color:
             count += 1
         else:
             break
 
-    if len(lines) >= 2 and lines[-2][2] != last[2]:
-        signal = "轉陽" if last[2] == 1 else "轉陰"
+    # 是否剛發生翻轉（上一根磚為異色）
+    if len(bricks) >= 2 and bricks[-2] != last_color:
+        signal = "轉陽" if last_color == 1 else "轉陰"
     else:
-        signal = "持續陽" if last[2] == 1 else "持續陰"
+        signal = "持續陽" if last_color == 1 else "持續陰"
 
-    return {"color": color_str, "count": count, "signal": signal}
+    return {"color": "陽" if last_color == 1 else "陰", "count": count, "signal": signal}
 
 
 def _dedup_levels(levels: list[float], limit: int = 2) -> list[float]:
@@ -322,7 +334,7 @@ def _build_index_data_from_nstock(key: str, meta: dict) -> dict | None:
 
     suggestion = _make_suggestion(ma_signal, volume_signal, rsi, change_pct, bb_sig, change_pct_today=change_pct)
     levels = _find_levels(closes, highs, lows, current, volumes)
-    tower  = _compute_tower(closes)
+    tower  = _compute_tower(closes, highs, lows)
 
     return {
         "name": meta["name"],
@@ -385,7 +397,7 @@ def _build_index_data_from_yf(key: str, meta: dict) -> dict | None:
     bb = _compute_bollinger(closes, current)
     suggestion = _make_suggestion(ma_signal, volume_signal, rsi, change_pct, bb["signal"], change_pct_today=change_pct)
     levels = _find_levels(closes, highs, lows, current, volumes)
-    tower  = _compute_tower(closes)
+    tower  = _compute_tower(closes, highs, lows)
 
     return {
         "name": meta["name"],
@@ -515,7 +527,7 @@ def get_signals(code: str) -> dict | None:
 
             suggestion = _make_suggestion(ma_signal, volume_signal, rsi, price_change_5d, bb_sig)
             levels = _find_levels(closes, highs, lows, current_price, volumes)
-            tower  = _compute_tower(closes)
+            tower  = _compute_tower(closes, highs, lows)
 
             result = {
                 "current_price": round(current_price, 2),
@@ -585,7 +597,7 @@ def get_signals(code: str) -> dict | None:
         bb = _compute_bollinger(closes, current_price)
         suggestion = _make_suggestion(ma_signal, volume_signal, rsi, price_change_5d, bb["signal"])
         levels = _find_levels(closes, highs, lows, current_price, volumes)
-        tower  = _compute_tower(closes)
+        tower  = _compute_tower(closes, highs, lows)
 
         result = {
             "current_price": current_price,

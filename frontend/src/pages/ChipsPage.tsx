@@ -712,21 +712,41 @@ function MarketTechCard({ title, loader }: { title: string; loader: () => Promis
             }}
           />
           {kline.kdj_k10_price != null && kline.kdj_k90_price != null && (
-            <div className="grid grid-cols-5 px-3 py-3 bg-[#0B1E3D] border-t border-[#1e3a5f] text-center text-[11px]">
-              {([
-                ["K=10", kline.kdj_k10_price,  "text-[#22C55E]"],
-                ["K=20", kline.kdj_k20_price,  "text-[#22C55E]"],
-                ["90-10 差距", kline.kdj_k90_price! - kline.kdj_k10_price!, "text-white"],
-                ["K=80", kline.kdj_k80_price,  "text-[#EF4444]"],
-                ["K=90", kline.kdj_k90_price,  "text-[#EF4444]"],
-              ] as [string, number | null, string][]).map(([label, val, cls], i, arr) => (
-                <div key={label} className={`${i > 0 && i < arr.length ? "border-l border-[#1e3a5f]" : ""}`}>
-                  <div className="text-[10px] text-white/50 mb-0.5">{label}</div>
-                  <div className={`font-bold tabular-nums text-[13px] ${cls}`}>
-                    {val != null ? formatPrice(val) : "—"}
-                  </div>
+            <div className="bg-[#0B1E3D] border-t border-[#1e3a5f]">
+              <div className="grid grid-cols-2 divide-x divide-[#1e3a5f]">
+                <div className="grid grid-cols-2 divide-x divide-[#1e3a5f]">
+                  {([
+                    ["K=10", kline.kdj_k10_price, "text-[#22C55E]"],
+                    ["K=20", kline.kdj_k20_price, "text-[#22C55E]"],
+                  ] as [string, number | null, string][]).map(([label, val, cls]) => (
+                    <div key={label} className="text-center py-2">
+                      <div className="text-[10px] text-white/50 mb-0.5">{label}</div>
+                      <div className={`font-bold tabular-nums text-[12px] ${cls}`}>
+                        {val != null ? formatPrice(val) : "—"}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
+                <div className="grid grid-cols-2 divide-x divide-[#1e3a5f]">
+                  {([
+                    ["K=80", kline.kdj_k80_price, "text-[#EF4444]"],
+                    ["K=90", kline.kdj_k90_price, "text-[#EF4444]"],
+                  ] as [string, number | null, string][]).map(([label, val, cls]) => (
+                    <div key={label} className="text-center py-2">
+                      <div className="text-[10px] text-white/50 mb-0.5">{label}</div>
+                      <div className={`font-bold tabular-nums text-[12px] ${cls}`}>
+                        {val != null ? formatPrice(val) : "—"}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="border-t border-[#1e3a5f] text-center py-2">
+                <div className="text-[10px] text-white/50 mb-0.5">90-10 差距</div>
+                <div className="font-bold tabular-nums text-[12px] text-white">
+                  {formatPrice(kline.kdj_k90_price - kline.kdj_k10_price)}
+                </div>
+              </div>
             </div>
           )}
         </div>

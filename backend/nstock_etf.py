@@ -91,12 +91,12 @@ def parse_etf_article(article_id: int) -> dict:
         if len(cells) != 4:
             continue
 
-        # cell 2: 收盤價 + 漲跌幅 (兩個 div)，紅綠決定漲跌符號
+        # cell 2: 收盤價 + 漲跌幅 (兩個 div)
+        # nstock 的百分比文字本身已含正負號（如 "-0.39"、"+5.37"），直接 parse 即可。
+        # 早期用 color_sign 推斷方向，但 (-0.39%) strip 後是 "-0.39"，再乘 color_sign(-1) 會反號。
         price_divs = cells[1].find_all("div")
         price_text = price_divs[0].get_text(strip=True) if price_divs else ""
         pct_text = price_divs[1].get_text(strip=True).strip("()%") if len(price_divs) > 1 else ""
-        cls = " ".join(cells[1].get("class") or [])
-        color_sign = -1 if "green" in cls else (1 if "red" in cls else 0)
 
         # cell 3: 成交量
         volume_text = cells[2].get_text(strip=True).replace(",", "")
@@ -118,7 +118,7 @@ def parse_etf_article(article_id: int) -> dict:
         except ValueError:
             price = None
         try:
-            change_pct = float(pct_text) * color_sign if pct_text else None
+            change_pct = float(pct_text) if pct_text else None
         except ValueError:
             change_pct = None
         volume = int(volume_text) if volume_text.isdigit() else None

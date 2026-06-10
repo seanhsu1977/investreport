@@ -53,52 +53,68 @@ def _compute_tower(
     lows: pd.Series,
     n: int = 4,
 ) -> dict | None:
-    """寶塔線（台灣券商慣用定義）：
-    紅棒（陽）= 今日收盤 > 前 n 日收盤的最大值
-    黑棒（陰）= 今日收盤 < 前 n 日收盤的最小值
-    兩者都不符合 → 不新增磚（中性，維持前一狀態）
-    n 預設 4
+    """寶塔線（台灣券商定義，n=4）：
+    紅棒（陽）= 今日收盤 > 前 n 日每日最高價的最大值
+    黑棒（陰）= 今日收盤 < 前 n 日每日最低價的最小值
+    中性日（兩者都不符合）= 不反轉，繼承前一根顏色延伸計數
 
-    回傳：{"color": "陽"/"陰", "count": 連續磚數, "signal": 轉陽/持續陽/…}
+    連續根數 = 自上次顏色轉換後（含轉換當日）到今日的所有交易日數，
+              含中性日（因為中性日不代表訊號消失，只是延伸）。
+
+    回傳：{"color": "陽"/"陰", "count": 連續根數, "signal": 轉陽/持續陽/…}
     """
     if len(closes) < n + 1:
         return None
 
     prices = closes.tolist()
+    hi     = highs.tolist()
+    lo     = lows.tolist()
 
-    bricks: list[int] = []   # 1=紅磚, -1=黑磚（中性日不加入）
+    # 每個交易日的顏色：1=陽, -1=陰, 0=尚未有訊號
+    # 中性日繼承前一日顏色（沒有反轉就不重置）
+    colors: list[int] = []
+    last_brick_color = 0   # 最後一次實際產生磚的顏色
+    prev_brick_color = 0   # 上上次磚的顏色（用於判斷是否轉向）
+    turned = False         # 最近是否剛發生反轉
 
     for i in range(n, len(prices)):
         c = prices[i]
-        max_prev_close = max(prices[i - j] for j in range(1, n + 1))
-        min_prev_close = min(prices[i - j] for j in range(1, n + 1))
+        max_prev_high = max(hi[i - j] for j in range(1, n + 1))
+        min_prev_low  = min(lo[i - j] for j in range(1, n + 1))
 
-        if c > max_prev_close:
-            bricks.append(1)     # 紅棒：突破前 n 日所有收盤
-        elif c < min_prev_close:
-            bricks.append(-1)    # 黑棒：跌破前 n 日所有收盤
-        # 中性：不加磚
+        if c > max_prev_high:
+            if last_brick_color != 1:
+                prev_brick_color = last_brick_color
+                turned = True
+            else:
+                turned = False
+            last_brick_color = 1
+        elif c < min_prev_low:
+            if last_brick_color != -1:
+                prev_brick_color = last_brick_color
+                turned = True
+            else:
+                turned = False
+            last_brick_color = -1
+        # 中性日：last_brick_color 不變，turned 不重置
 
-    if not bricks:
+        colors.append(last_brick_color)
+
+    if not colors or last_brick_color == 0:
         return None
 
-    last_color = bricks[-1]
-
-    # 連續同色磚數（從最近往前數，遇到異色停止）
+    # 連續根數：從尾端往前，計算同色連續天數（含中性延伸）
     count = 0
-    for b in reversed(bricks):
-        if b == last_color:
+    for col in reversed(colors):
+        if col == last_brick_color:
             count += 1
         else:
-            break
+            break   # 遇到異色（不含0，因為0只在最初暖機期才出現）
 
-    # 是否剛發生翻轉（上一根磚為異色）
-    if len(bricks) >= 2 and bricks[-2] != last_color:
-        signal = "轉陽" if last_color == 1 else "轉陰"
-    else:
-        signal = "持續陽" if last_color == 1 else "持續陰"
+    signal = ("轉陽" if last_brick_color == 1 else "轉陰") if count == 1 else \
+             ("持續陽" if last_brick_color == 1 else "持續陰")
 
-    return {"color": "陽" if last_color == 1 else "陰", "count": count, "signal": signal}
+    return {"color": "陽" if last_brick_color == 1 else "陰", "count": count, "signal": signal}
 
 
 def _dedup_levels(levels: list[float], limit: int = 2) -> list[float]:

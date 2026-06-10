@@ -53,9 +53,9 @@ def _compute_tower(
     lows: pd.Series,
     n: int = 4,
 ) -> dict | None:
-    """寶塔線（台灣券商定義）：
-    紅棒（陽）= 今日收盤 > 前 n 日每日最高價的最大值
-    黑棒（陰）= 今日收盤 < 前 n 日每日最低價的最小值
+    """寶塔線（台灣券商慣用定義）：
+    紅棒（陽）= 今日收盤 > 前 n 日收盤的最大值
+    黑棒（陰）= 今日收盤 < 前 n 日收盤的最小值
     兩者都不符合 → 不新增磚（中性，維持前一狀態）
     n 預設 4
 
@@ -65,20 +65,18 @@ def _compute_tower(
         return None
 
     prices = closes.tolist()
-    hi     = highs.tolist()
-    lo     = lows.tolist()
 
     bricks: list[int] = []   # 1=紅磚, -1=黑磚（中性日不加入）
 
     for i in range(n, len(prices)):
         c = prices[i]
-        max_prev_high = max(hi[i - j] for j in range(1, n + 1))
-        min_prev_low  = min(lo[i - j] for j in range(1, n + 1))
+        max_prev_close = max(prices[i - j] for j in range(1, n + 1))
+        min_prev_close = min(prices[i - j] for j in range(1, n + 1))
 
-        if c > max_prev_high:
-            bricks.append(1)     # 紅棒：突破前 n 日所有最高價
-        elif c < min_prev_low:
-            bricks.append(-1)    # 黑棒：跌破前 n 日所有最低價
+        if c > max_prev_close:
+            bricks.append(1)     # 紅棒：突破前 n 日所有收盤
+        elif c < min_prev_close:
+            bricks.append(-1)    # 黑棒：跌破前 n 日所有收盤
         # 中性：不加磚
 
     if not bricks:

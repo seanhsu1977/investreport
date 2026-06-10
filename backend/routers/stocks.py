@@ -825,7 +825,8 @@ async def get_txf_kline(db: Session = Depends(get_db)):
         return _cal.timegm(d.timetuple())
 
     candles = [{"time": bar_ts(r.date), "open": r.open, "high": r.high,
-                "low": r.low, "close": r.close} for r in rows]
+                "low": r.low, "close": r.close,
+                "volume": r.volume or 0} for r in rows]
     ts_list = [c["time"] for c in candles]
     closes  = pd.Series([r.close  for r in rows])
     highs   = pd.Series([r.high   for r in rows])
@@ -920,11 +921,12 @@ def get_market_kline(index: str = Query(default="taiex")):
 
     candles = [
         {
-            "time":  bar_ts(b),
-            "open":  round(float(b["開盤價"]), 2),
-            "high":  round(float(b["最高價"]), 2),
-            "low":   round(float(b["最低價"]), 2),
-            "close": round(float(b["收盤價"]), 2),
+            "time":   bar_ts(b),
+            "open":   round(float(b["開盤價"]), 2),
+            "high":   round(float(b["最高價"]), 2),
+            "low":    round(float(b["最低價"]), 2),
+            "close":  round(float(b["收盤價"]), 2),
+            "volume": int(b["成交量"]) if b.get("成交量") else 0,
         }
         for b in bars
     ]
@@ -1174,7 +1176,8 @@ def get_stock_kline(stock_code: str, period: str = Query(default="1y")):
 
     candles = [
         {"time": to_ts(idx), "open": round(row.Open, 2), "high": round(row.High, 2),
-         "low": round(row.Low, 2), "close": round(row.Close, 2)}
+         "low": round(row.Low, 2), "close": round(row.Close, 2),
+         "volume": int(row.Volume) if pd.notna(row.Volume) else 0}
         for idx, row in df.iterrows()
     ]
 

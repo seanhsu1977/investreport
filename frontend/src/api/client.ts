@@ -161,7 +161,7 @@ export interface StockSignal {
   updated_at: string;
 }
 
-interface OhlcPoint  { time: number; open: number; high: number; low: number; close: number }
+interface OhlcPoint  { time: number; open: number; high: number; low: number; close: number; volume?: number }
 interface LinePoint  { time: number; value?: number }
 
 export interface KlineResponse {

@@ -1,8 +1,8 @@
 import { useEffect, useRef } from "react";
-import { createChart, CandlestickSeries, LineSeries, ColorType } from "lightweight-charts";
+import { createChart, CandlestickSeries, LineSeries, HistogramSeries, ColorType } from "lightweight-charts";
 import type { ITimeScaleApi, UTCTimestamp } from "lightweight-charts";
 
-interface Candle { time: number; open: number; high: number; low: number; close: number; }
+interface Candle { time: number; open: number; high: number; low: number; close: number; volume?: number; }
 interface MaPoint { time: number; value?: number; }
 
 interface Props {
@@ -43,6 +43,29 @@ export default function KlineChart({ candles, ma5, ma10, ma20, ma60, onTimeScale
       height: 300,
     });
 
+    // Volume histogram (bottom 20% of chart, separate scale)
+    const hasVolume = candles.some(c => (c.volume ?? 0) > 0);
+    if (hasVolume) {
+      const volSeries = chart.addSeries(HistogramSeries, {
+        priceScaleId: "volume",
+        priceLineVisible: false,
+        lastValueVisible: false,
+      });
+      chart.priceScale("volume").applyOptions({
+        scaleMargins: { top: 0.82, bottom: 0 },
+        borderVisible: false,
+      });
+      volSeries.setData(
+        candles.map((c, i) => ({
+          time: c.time as UTCTimestamp,
+          value: c.volume ?? 0,
+          color: i > 0 && c.close >= candles[i - 1].close
+            ? "rgba(229,57,53,0.45)"
+            : "rgba(30,139,74,0.45)",
+        }))
+      );
+    }
+
     // Candlestick series
     const candleSeries = chart.addSeries(CandlestickSeries, {
       upColor: "#E53935",
@@ -51,6 +74,10 @@ export default function KlineChart({ candles, ma5, ma10, ma20, ma60, onTimeScale
       borderDownColor: "#1E8B4A",
       wickUpColor: "#E53935",
       wickDownColor: "#1E8B4A",
+      priceScaleId: "right",
+    });
+    chart.priceScale("right").applyOptions({
+      scaleMargins: { top: 0.05, bottom: 0.22 },
     });
     candleSeries.setData(candles as any);
 

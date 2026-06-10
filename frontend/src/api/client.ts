@@ -352,6 +352,35 @@ export interface ChipSnapshot {
   fetched_at?: string;
 }
 
+export interface EtfStock {
+  code: string;
+  name: string;
+  shares_delta: number;       // >0 buy, <0 sell, 0 flat
+  action: "buy" | "sell" | "flat";
+  price: number | null;
+  change_pct: number | null;
+  consecutive_buy_days: number;
+  is_new: boolean;
+}
+
+export interface EtfDailyData {
+  etf_code: string;
+  date: string;
+  stocks: EtfStock[];
+  has_data: boolean;
+}
+
+export const etfTrackerApi = {
+  dates: (etf = "00981A") =>
+    api.get<{ etf_code: string; dates: string[] }>(`/etf-tracker/dates?etf=${etf}`).then((r) => r.data),
+  daily: (etf = "00981A", date?: string) =>
+    api.get<EtfDailyData>(`/etf-tracker/daily`, { params: { etf, date } }).then((r) => r.data),
+  sync: (etf = "00981A", date?: string) =>
+    api.post<{ etf_code: string; date: string; article_id: number; count: number }>(
+      `/etf-tracker/sync`, null, { params: { etf, date } }
+    ).then((r) => r.data),
+};
+
 export const chipsApi = {
   latest: () => api.get<ChipSnapshot>("/chips/latest").then((r) => r.data),
   history: (days: number) =>

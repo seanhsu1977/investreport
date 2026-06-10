@@ -155,6 +155,24 @@ class StockRecommendationReason(Base):
     generated_at = Column(DateTime, nullable=False)
 
 
+class EtfDailyChange(Base):
+    """ETF 每日成份股持股變化紀錄（來源：nstock ETF小百科）。"""
+    __tablename__ = "etf_daily_changes"
+
+    id         = Column(Integer, primary_key=True)
+    etf_code   = Column(String, nullable=False, index=True)   # "00981A"
+    date       = Column(String, nullable=False, index=True)   # "YYYY-MM-DD"
+    stock_code = Column(String, nullable=False)
+    stock_name = Column(String)
+    shares_delta     = Column(Integer, default=0)   # >0 buy, <0 sell, 0 flat
+    action           = Column(String, default="flat")  # "buy"|"sell"|"flat"
+    price            = Column(Float, nullable=True)
+    change_pct       = Column(Float, nullable=True)
+    nstock_article_id = Column(Integer, nullable=True)
+
+    __table_args__ = (UniqueConstraint("etf_code", "date", "stock_code"),)
+
+
 class DailyArticle(Base):
     """每日 00981A × 投顧報告 自動生成的草稿文章。"""
     __tablename__ = "daily_articles"

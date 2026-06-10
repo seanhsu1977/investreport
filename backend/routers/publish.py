@@ -677,17 +677,33 @@ def _serialize_daily(a: DailyArticle, *, include_content: bool = False) -> dict:
         # 從 raw_context 提取可比對的資料來源連結
         if a.raw_context:
             try:
-                import json as _json
-                ctx = _json.loads(a.raw_context)
-                code = ctx.get("topic", {}).get("code", "")
+                ctx = json.loads(a.raw_context)
+                code    = ctx.get("topic", {}).get("code", "")
                 etf_url = ctx.get("etf", {}).get("source_url", "")
                 links = []
+                # nstock 個股資料頁
                 if code:
-                    links.append({"label": f"{code} 個股行情", "url": f"https://www.nstock.tw/stock_info?stock_id={code}"})
-                    links.append({"label": f"{code} 法人籌碼", "url": f"https://www.nstock.tw/institutional_investors?stock_id={code}"})
-                    links.append({"label": f"{code} 月營收", "url": f"https://www.nstock.tw/monthly_revenue?stock_id={code}"})
+                    links.append({"label": f"{code} 個股行情",  "url": f"https://www.nstock.tw/stock_info?stock_id={code}"})
+                    links.append({"label": f"{code} 法人籌碼",  "url": f"https://www.nstock.tw/institutional_investors?stock_id={code}"})
+                    links.append({"label": f"{code} 月營收",    "url": f"https://www.nstock.tw/monthly_revenue?stock_id={code}"})
+                # ETF 操作明細
                 if etf_url:
                     links.append({"label": "00981A ETF 操作明細", "url": etf_url})
+                # 引用的投顧報告（Google Drive）
+                seen_ids: set = set()
+                for r in ctx.get("reports", []):
+                    fid  = r.get("_drive_file_id", "")
+                    name = r.get("_source_filename", "") or r.get("analyst", "") or fid
+                    date = r.get("date", "")
+                    if fid and fid not in seen_ids:
+                        seen_ids.add(fid)
+                        label = f"報告｜{name}"
+                        if date:
+                            label = f"報告｜{date} {name}"
+                        links.append({
+                            "label": label,
+                            "url": f"https://drive.google.com/file/d/{fid}/view",
+                        })
                 out["source_links"] = links
             except Exception:
                 out["source_links"] = []

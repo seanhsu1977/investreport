@@ -136,6 +136,9 @@ def _gather_context(db, topic: dict, etf_data: dict, target_date: date) -> dict:
             "target_price": r.target_price,
             "summary": (r.summary or "")[:300],
             "key_points": json.loads(r.key_points)[:5] if r.key_points else [],
+            # 供 source_links 使用（不影響 LLM prompt，LLM 不需理會這兩欄）
+            "_drive_file_id": r.drive_file_id,
+            "_source_filename": r.source_filename or "",
         })
 
     # 2. 量價技術訊號（yfinance）

@@ -767,7 +767,10 @@ async def refresh_daily(
     target = (
         datetime.strptime(date, "%Y-%m-%d").date() if date else _today_tpe()
     )
-    aid = await asyncio.to_thread(generate_for_date, target, force=force)
+    try:
+        aid = await asyncio.to_thread(generate_for_date, target, force=force)
+    except Exception as e:
+        raise HTTPException(500, f"生成失敗：{type(e).__name__}: {e}") from e
     if not aid:
         raise HTTPException(
             404,

@@ -11,7 +11,7 @@ import {
   YAxis,
   Cell,
 } from "recharts";
-import { chipsApi, stocksApi, type ChipSnapshot, type InstitutionPosition, type KlineResponse, type MarketIndex, type TowerSignal } from "../api/client";
+import { chipsApi, stocksApi, type ChipSnapshot, type InstitutionPosition, type KlineResponse, type KlineTechnical, type TowerSignal } from "../api/client";
 import KlineChart from "../components/KlineChart";
 import KdjChart from "../components/KdjChart";
 import type { ITimeScaleApi, UTCTimestamp } from "lightweight-charts";
@@ -556,7 +556,7 @@ function SignalBadge({ text }: { text: string | null | undefined }) {
   return <span className={`text-xs font-medium px-2 py-0.5 rounded ${cls}`}>{text}</span>;
 }
 
-function TechAnalysisPanel({ data }: { data: MarketIndex }) {
+function TechAnalysisPanel({ data }: { data: KlineTechnical }) {
   const bbPos = data.bb_pct_b != null ? `%B = ${(data.bb_pct_b * 100).toFixed(1)}%` : null;
   const suggestionColor = data.suggestion.includes("多") || data.suggestion.includes("買")
     ? "text-rose-600" : data.suggestion.includes("空") || data.suggestion.includes("賣")
@@ -623,11 +623,9 @@ function TechAnalysisPanel({ data }: { data: MarketIndex }) {
 
 /* ============================ 技術分析 Card（可共用）============================ */
 
-function MarketTechCard({ title, loader, overviewKey }: { title: string; loader: () => Promise<KlineResponse>; overviewKey: string }) {
+function MarketTechCard({ title, loader }: { title: string; loader: () => Promise<KlineResponse> }) {
   const [kline, setKline] = useState<KlineResponse | null>(null);
   const [klineLoading, setKlineLoading] = useState(true);
-  const [overview, setOverview] = useState<MarketIndex | null>(null);
-  const [ovLoading, setOvLoading] = useState(true);
   const klineTs = useRef<ITimeScaleApi<UTCTimestamp> | null>(null);
   const kdjTs   = useRef<ITimeScaleApi<UTCTimestamp> | null>(null);
   const syncing  = useRef(false);
@@ -637,11 +635,6 @@ function MarketTechCard({ title, loader, overviewKey }: { title: string; loader:
       .then((kl) => { if (kl) setKline(kl); })
       .catch(() => {})
       .finally(() => setKlineLoading(false));
-
-    stocksApi.market_overview()
-      .then((ov) => { if (ov && ov[overviewKey]) setOverview(ov[overviewKey]); })
-      .catch(() => {})
-      .finally(() => setOvLoading(false));
   }, []);
 
   const syncCharts = (
@@ -740,10 +733,8 @@ function MarketTechCard({ title, loader, overviewKey }: { title: string; loader:
       )}
 
       {/* 技術指標文字摘要 */}
-      {ovLoading ? (
-        <div className="rounded-xl border border-gray-100 px-4 py-3 text-sm text-gray-400">技術分析載入中…</div>
-      ) : overview ? (
-        <TechAnalysisPanel data={overview} />
+      {klineLoading ? null : kline?.technical ? (
+        <TechAnalysisPanel data={kline.technical} />
       ) : (
         <div className="rounded-xl border border-gray-200 px-4 py-3 text-sm text-gray-400">技術分析資料暫無法取得</div>
       )}
@@ -802,7 +793,7 @@ export default function ChipsPage() {
       </div>
 
       {/* 大盤技術分析 */}
-      <MarketTechCard title="📊 加權指數技術分析" loader={() => stocksApi.market_kline("taiex")} overviewKey="TWII" />
+      <MarketTechCard title="📊 加權指數技術分析" loader={() => stocksApi.market_kline("taiex")} />
 
       {loading ? (
         <p className="text-gray-400">載入中…</p>

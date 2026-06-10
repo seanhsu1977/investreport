@@ -164,6 +164,24 @@ export interface StockSignal {
 interface OhlcPoint  { time: number; open: number; high: number; low: number; close: number; volume?: number }
 interface LinePoint  { time: number; value?: number }
 
+export interface KlineTechnical {
+  current: number;
+  ma5: number;
+  ma20: number;
+  ma_signal: string;
+  volume_signal: string | null;
+  rsi: number | null;
+  rsi_signal: string;
+  bb_upper: number | null;
+  bb_lower: number | null;
+  bb_pct_b: number | null;
+  bb_signal: string | null;
+  tower: TowerSignal | null;
+  resistance: number[];
+  support: number[];
+  suggestion: string;
+}
+
 export interface KlineResponse {
   candles: OhlcPoint[];
   ma5: LinePoint[]; ma10: LinePoint[]; ma20: LinePoint[]; ma60: LinePoint[];
@@ -177,6 +195,7 @@ export interface KlineResponse {
   kdj_cur_k: number | null;
   kdj_cur_d: number | null;
   kdj_cur_j: number | null;
+  technical?: KlineTechnical | null;
 }
 
 export const stocksApi = {

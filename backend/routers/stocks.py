@@ -1001,6 +1001,70 @@ def get_market_kline(index: str = Query(default="taiex")):
     last_d = next((v for v in reversed(d_vals) if v is not None), None)
     last_j = next((v for v in reversed(j_vals) if v is not None), None)
 
+    # ── 技術分析摘要（直接從已有資料計算，不需再呼叫 market_overview）──
+    try:
+        from price_analysis import _compute_tower, _find_levels, _make_suggestion
+        _ma5_val  = float(closes.iloc[-5:].mean())
+        _ma20_val = float(closes.rolling(20).mean().iloc[-1]) if len(closes) >= 20 else float(closes.mean())
+        _ma_signal = ("多頭排列" if _ma5_val > _ma20_val * 1.005
+                      else "空頭排列" if _ma5_val < _ma20_val * 0.995
+                      else "均線糾結")
+
+        # RSI(14)
+        _delta = closes.diff()
+        _gain  = _delta.clip(lower=0).rolling(14).mean()
+        _loss  = (-_delta.clip(upper=0)).rolling(14).mean()
+        _rs    = _gain / _loss.replace(0, float("nan"))
+        _rsi_val = round(float(100 - 100 / (1 + _rs.iloc[-1])), 1) if pd.notna(_rs.iloc[-1]) else None
+        _rsi_signal = ("超買" if _rsi_val and _rsi_val >= 70 else "超賣" if _rsi_val and _rsi_val <= 30 else "正常")
+
+        # 布林通道(20)
+        _bb_mid   = closes.rolling(20).mean()
+        _bb_std   = closes.rolling(20).std()
+        _bb_upper = round(float((_bb_mid + 2 * _bb_std).iloc[-1]), 2) if pd.notna(_bb_std.iloc[-1]) else None
+        _bb_lower = round(float((_bb_mid - 2 * _bb_std).iloc[-1]), 2) if pd.notna(_bb_std.iloc[-1]) else None
+        _cur = float(closes.iloc[-1])
+        if _bb_upper and _bb_lower and (_bb_upper - _bb_lower) > 0:
+            _pct_b = round((_cur - _bb_lower) / (_bb_upper - _bb_lower), 3)
+            _bb_sig = ("突破上軌" if _pct_b > 1.0 else "近上軌" if _pct_b >= 0.8
+                       else "跌破下軌" if _pct_b < 0.0 else "近下軌" if _pct_b <= 0.2
+                       else "帶內整理")
+        else:
+            _pct_b, _bb_sig = None, None
+
+        # 成交量訊號
+        _vols = pd.Series([c.get("volume", 0) for c in candles])
+        _vol1  = float(_vols.iloc[-1])
+        _vol20 = float(_vols[_vols > 0].iloc[-20:].mean()) if (_vols > 0).sum() >= 5 else 0
+        _vsig  = (None if _vol1 == 0 else "量增" if _vol20 > 0 and _vol1 > _vol20 * 1.2
+                  else "量縮" if _vol20 > 0 and _vol1 < _vol20 * 0.8 else "量持平")
+
+        _tower = _compute_tower(closes, highs, lows)
+        _levels = _find_levels(closes, highs, lows, _cur,
+                               pd.Series([float(b.get("成交量", 0)) for b in bars]))
+        _change_pct = round((_cur - float(bars[-2]["收盤價"])) / float(bars[-2]["收盤價"]) * 100, 2) if len(bars) >= 2 else 0.0
+        _suggestion = _make_suggestion(_ma_signal, _vsig, _rsi_val, _change_pct, _bb_sig, change_pct_today=_change_pct)
+
+        technical = {
+            "current": round(_cur, 2),
+            "ma5":  round(_ma5_val, 2),
+            "ma20": round(_ma20_val, 2),
+            "ma_signal":     _ma_signal,
+            "volume_signal": _vsig,
+            "rsi":           _rsi_val,
+            "rsi_signal":    _rsi_signal,
+            "bb_upper":      _bb_upper,
+            "bb_lower":      _bb_lower,
+            "bb_pct_b":      _pct_b,
+            "bb_signal":     _bb_sig,
+            "tower":         _tower,
+            "resistance":    _levels["resistance"],
+            "support":       _levels["support"],
+            "suggestion":    _suggestion,
+        }
+    except Exception:
+        technical = None
+
     return {
         "candles": candles,
         "ma5":  ma_series(5),
@@ -1019,6 +1083,7 @@ def get_market_kline(index: str = Query(default="taiex")):
         "kdj_cur_k": last_k,
         "kdj_cur_d": last_d,
         "kdj_cur_j": last_j,
+        "technical": technical,
     }
 
 

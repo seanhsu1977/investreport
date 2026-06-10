@@ -627,18 +627,21 @@ function MarketTechCard({ title, loader, overviewKey }: { title: string; loader:
   const [kline, setKline] = useState<KlineResponse | null>(null);
   const [klineLoading, setKlineLoading] = useState(true);
   const [overview, setOverview] = useState<MarketIndex | null>(null);
+  const [ovLoading, setOvLoading] = useState(true);
   const klineTs = useRef<ITimeScaleApi<UTCTimestamp> | null>(null);
   const kdjTs   = useRef<ITimeScaleApi<UTCTimestamp> | null>(null);
   const syncing  = useRef(false);
 
   useEffect(() => {
-    Promise.all([
-      loader().catch(() => null),
-      stocksApi.market_overview().catch(() => null),
-    ]).then(([kl, ov]) => {
-      if (kl) setKline(kl);
-      if (ov) setOverview(ov[overviewKey] ?? null);
-    }).finally(() => setKlineLoading(false));
+    loader()
+      .then((kl) => { if (kl) setKline(kl); })
+      .catch(() => {})
+      .finally(() => setKlineLoading(false));
+
+    stocksApi.market_overview()
+      .then((ov) => { if (ov && ov[overviewKey]) setOverview(ov[overviewKey]); })
+      .catch(() => {})
+      .finally(() => setOvLoading(false));
   }, []);
 
   const syncCharts = (
@@ -737,7 +740,13 @@ function MarketTechCard({ title, loader, overviewKey }: { title: string; loader:
       )}
 
       {/* 技術指標文字摘要 */}
-      {!klineLoading && overview && <TechAnalysisPanel data={overview} />}
+      {ovLoading ? (
+        <div className="rounded-xl border border-gray-100 px-4 py-3 text-sm text-gray-400">技術分析載入中…</div>
+      ) : overview ? (
+        <TechAnalysisPanel data={overview} />
+      ) : (
+        <div className="rounded-xl border border-gray-200 px-4 py-3 text-sm text-gray-400">技術分析資料暫無法取得</div>
+      )}
     </div>
   );
 }

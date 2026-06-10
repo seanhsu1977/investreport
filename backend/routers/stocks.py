@@ -896,10 +896,12 @@ def get_market_kline(index: str = Query(default="taiex")):
     import nstock as ns
     import pandas as pd
     import calendar as _cal
-    from datetime import datetime
+    from datetime import datetime, timezone, timedelta
 
     nid_map = {"taiex": "IX0001", "twoii": "IX0043"}
+    market_type_map = {"taiex": 1, "twoii": 2}
     nid = nid_map.get(index, "IX0001")
+    market_type = market_type_map.get(index, 1)
 
     daily = ns.get_daily(nid)
     if not daily or not daily.get("日K"):
@@ -918,6 +920,24 @@ def get_market_kline(index: str = Query(default="taiex")):
     def bar_ts(b: dict) -> int:
         d = datetime.strptime(str(b["交易日"]), "%Y%m%d")
         return _cal.timegm(d.timetuple())
+
+    # 補入今日盤中棒：若 get_daily 快取尚未含今日，從即時報價補充
+    tpe_today = datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d")
+    latest_bar_date = datetime.strptime(str(bars[-1]["交易日"]), "%Y%m%d").strftime("%Y-%m-%d")
+    if latest_bar_date < tpe_today:
+        rt = ns.find_index_quote(nid, market_type)
+        if rt and rt.get("最近交易日期") == tpe_today:
+            try:
+                bars.append({
+                    "交易日": tpe_today.replace("-", ""),
+                    "開盤價": rt["開盤價"],
+                    "最高價": rt["最高價"],
+                    "最低價": rt["最低價"],
+                    "收盤價": rt["當盤成交價"],
+                    "成交量": 0,   # 盤中不顯示量棒（單位與歷史不同）
+                })
+            except (KeyError, TypeError):
+                pass
 
     candles = [
         {

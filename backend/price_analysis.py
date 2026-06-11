@@ -54,8 +54,9 @@ def _compute_tower(
     n: int = 4,
 ) -> dict | None:
     """寶塔線（台灣券商定義，n=4）：
-    紅棒（陽）= 今日收盤 > 前 n 日每日最高價的最大值
-    黑棒（陰）= 今日收盤 < 前 n 日每日最低價的最小值
+    n = 窗口大小（含今日），與前 n-1 天的 H/L 比對。
+    紅棒（陽）= 今日收盤 > 前 (n-1) 日每日最高價的最大值
+    黑棒（陰）= 今日收盤 < 前 (n-1) 日每日最低價的最小值
     中性日（兩者都不符合）= 不反轉，繼承前一根顏色延伸計數
 
     連續根數 = 自上次顏色轉換後（含轉換當日）到今日的所有交易日數，
@@ -63,7 +64,7 @@ def _compute_tower(
 
     回傳：{"color": "陽"/"陰", "count": 連續根數, "signal": 轉陽/持續陽/…}
     """
-    if len(closes) < n + 1:
+    if len(closes) < n:
         return None
 
     prices = closes.tolist()
@@ -77,10 +78,10 @@ def _compute_tower(
     prev_brick_color = 0   # 上上次磚的顏色（用於判斷是否轉向）
     turned = False         # 最近是否剛發生反轉
 
-    for i in range(n, len(prices)):
+    for i in range(n - 1, len(prices)):
         c = prices[i]
-        max_prev_high = max(hi[i - j] for j in range(1, n + 1))
-        min_prev_low  = min(lo[i - j] for j in range(1, n + 1))
+        max_prev_high = max(hi[i - j] for j in range(1, n))   # 前 n-1 天
+        min_prev_low  = min(lo[i - j] for j in range(1, n))   # 前 n-1 天
 
         if c > max_prev_high:
             if last_brick_color != 1:

@@ -1353,26 +1353,31 @@ def tower_debug(stock_code: str):
     if hist.empty:
         raise HTTPException(404, "no data")
 
+    opens  = hist["Open"]
     closes = hist["Close"]
     highs  = hist["High"]
     lows   = hist["Low"]
-    n = 4
+    n = 4  # 窗口大小（含今日），與前 n-1 天比對
     rows = []
     prices = closes.tolist()
+    op = opens.tolist()
     hi = highs.tolist()
     lo = lows.tolist()
     dates = [str(d.date()) for d in hist.index]
     last_brick_color = 0
-    for i in range(n, len(prices)):
+    for i in range(n - 1, len(prices)):
         c = prices[i]
-        max_prev_high = max(hi[i - j] for j in range(1, n + 1))
-        min_prev_low  = min(lo[i - j] for j in range(1, n + 1))
+        max_prev_high = max(hi[i - j] for j in range(1, n))   # 前 n-1 天
+        min_prev_low  = min(lo[i - j] for j in range(1, n))   # 前 n-1 天
         if c > max_prev_high:
             last_brick_color = 1
         elif c < min_prev_low:
             last_brick_color = -1
         rows.append({
             "date": dates[i],
+            "open": round(op[i], 2),
+            "high": round(hi[i], 2),
+            "low":  round(lo[i], 2),
             "close": round(c, 2),
             "max_prev_high": round(max_prev_high, 2),
             "min_prev_low": round(min_prev_low, 2),

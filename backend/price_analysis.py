@@ -541,7 +541,15 @@ def get_signals(code: str) -> dict | None:
 
             suggestion = _make_suggestion(ma_signal, volume_signal, rsi, price_change_5d, bb_sig)
             levels = _find_levels(closes, highs, lows, current_price, volumes)
-            tower  = _compute_tower(closes, highs, lows)
+            # 寶塔線用 yfinance 資料，與 K 線圖保持一致
+            try:
+                _yf_hist = _fetch_history(code)
+                if not _yf_hist.empty and len(_yf_hist) >= 10:
+                    tower = _compute_tower(_yf_hist["Close"], _yf_hist["High"], _yf_hist["Low"])
+                else:
+                    tower = _compute_tower(closes, highs, lows)
+            except Exception:
+                tower = _compute_tower(closes, highs, lows)
 
             result = {
                 "current_price": round(current_price, 2),

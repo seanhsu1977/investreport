@@ -103,27 +103,13 @@ def _compute_tower(
     if not colors or last_brick_color == 0:
         return None
 
-    # 連續根數：從尾端往前，只計算「實際確認的陽/陰棒」天數
-    # 中性日（繼承色但未突破高低點）不計入根數，但不終止計數
+    # 連續根數：從尾端往前，計算同色連續天數（含中性延伸）
     count = 0
-    for i in range(len(prices) - 1, n - 1, -1):
-        c = prices[i]
-        max_prev_high = max(hi[i - j] for j in range(1, n + 1))
-        min_prev_low  = min(lo[i - j] for j in range(1, n + 1))
-        if c > max_prev_high:        # 實際陽棒
-            if last_brick_color == 1:
-                count += 1
-            else:
-                break                # 反向磚，停止
-        elif c < min_prev_low:       # 實際陰棒
-            if last_brick_color == -1:
-                count += 1
-            else:
-                break                # 反向磚，停止
-        # 中性日：跳過，不計不中斷
-
-    if count == 0:
-        count = 1  # 至少1根（當日已確認顏色）
+    for col in reversed(colors):
+        if col == last_brick_color:
+            count += 1
+        else:
+            break
 
     signal = ("轉陽" if last_brick_color == 1 else "轉陰") if count == 1 else \
              ("持續陽" if last_brick_color == 1 else "持續陰")

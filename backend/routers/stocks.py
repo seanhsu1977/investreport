@@ -1340,6 +1340,47 @@ def get_stock_kline(stock_code: str, period: str = Query(default="1y")):
     }
 
 
+@router.get("/{stock_code}/tower-debug")
+def tower_debug(stock_code: str):
+    """顯示寶塔線計算的原始資料，供除錯用"""
+    import yfinance as yf
+    import pandas as pd
+    ticker = yf.Ticker(f"{stock_code}.TW")
+    hist = ticker.history(period="3mo", interval="1d", auto_adjust=True)
+    if hist.empty:
+        ticker = yf.Ticker(f"{stock_code}.TWO")
+        hist = ticker.history(period="3mo", interval="1d", auto_adjust=True)
+    if hist.empty:
+        raise HTTPException(404, "no data")
+
+    closes = hist["Close"]
+    highs  = hist["High"]
+    lows   = hist["Low"]
+    n = 4
+    rows = []
+    prices = closes.tolist()
+    hi = highs.tolist()
+    lo = lows.tolist()
+    dates = [str(d.date()) for d in hist.index]
+    last_brick_color = 0
+    for i in range(n, len(prices)):
+        c = prices[i]
+        max_prev_high = max(hi[i - j] for j in range(1, n + 1))
+        min_prev_low  = min(lo[i - j] for j in range(1, n + 1))
+        if c > max_prev_high:
+            last_brick_color = 1
+        elif c < min_prev_low:
+            last_brick_color = -1
+        rows.append({
+            "date": dates[i],
+            "close": round(c, 2),
+            "max_prev_high": round(max_prev_high, 2),
+            "min_prev_low": round(min_prev_low, 2),
+            "brick": "陽" if last_brick_color == 1 else ("陰" if last_brick_color == -1 else "—"),
+        })
+    return {"rows": rows[-20:]}  # 最近20天
+
+
 @router.get("/{stock_code}/reports")
 def get_stock_reports(stock_code: str, db: Session = Depends(get_db)):
     """取得某個股的所有報告 + 提及該股的市場新聞"""

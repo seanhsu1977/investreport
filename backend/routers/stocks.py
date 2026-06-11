@@ -658,7 +658,13 @@ async def stream_recommendation_reason(
                     wait = 2 ** attempt * 3  # 3s, 6s
                     time.sleep(wait)
                     continue
-                yield f"data: {json.dumps({'error': msg}, ensure_ascii=False)}\n\n"
+                if "503" in msg or "UNAVAILABLE" in msg:
+                    friendly = "AI 模型目前需求量大，請稍後再試"
+                elif "429" in msg or "quota" in msg.lower():
+                    friendly = "AI 配額暫時用盡，請稍後再試"
+                else:
+                    friendly = "生成失敗，請稍後再試"
+                yield f"data: {json.dumps({'error': friendly}, ensure_ascii=False)}\n\n"
                 yield "data: [DONE]\n\n"
                 return
 

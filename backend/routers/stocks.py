@@ -887,6 +887,105 @@ async def get_txf_kline(db: Session = Depends(get_db)):
     }
 
 
+@router.get("/market-technical/history")
+def get_market_technical_history(
+    index: str = Query(default="taiex"),
+    days: int  = Query(default=30, ge=1, le=365),
+    db: Session = Depends(get_db),
+):
+    """大盤技術指標歷史快照（復盤用）"""
+    from models import MarketTechnicalSnapshot
+    rows = (
+        db.query(MarketTechnicalSnapshot)
+        .filter(MarketTechnicalSnapshot.index_key == index)
+        .order_by(MarketTechnicalSnapshot.date.desc())
+        .limit(days)
+        .all()
+    )
+    return [{"date": r.date, **json.loads(r.payload)} for r in rows]
+
+
+@router.post("/market-technical/save")
+def save_market_technical(
+    index: str = Query(default="taiex"),
+    db: Session = Depends(get_db),
+):
+    """儲存今日大盤技術指標快照（可手動觸發或由排程呼叫）"""
+    from models import MarketTechnicalSnapshot
+    import nstock as ns
+    import pandas as pd
+    from price_analysis import _compute_tower, _find_levels, _make_suggestion
+
+    _INDEX_MAP = {
+        "taiex": {"nstock_id": "TWII", "market_type": "TWS"},
+        "twoii": {"nstock_id": "TWO",  "market_type": "TWO"},
+    }
+    meta = _INDEX_MAP.get(index)
+    if not meta:
+        raise HTTPException(400, "unknown index")
+
+    nid, mtype = meta["nstock_id"], meta["market_type"]
+    daily = ns.get_daily(nid)
+    if not daily or not daily.get("日K"):
+        raise HTTPException(503, "nstock data unavailable")
+
+    bars = daily["日K"][:60]
+    closes = pd.Series([float(b["收盤價"]) for b in reversed(bars)])
+    highs  = pd.Series([float(b["最高價"]) for b in reversed(bars)])
+    lows   = pd.Series([float(b["最低價"]) for b in reversed(bars)])
+    volumes= pd.Series([float(b.get("成交量", 0)) for b in reversed(bars)])
+
+    cur = float(closes.iloc[-1])
+    ma5  = round(float(closes.iloc[-5:].mean()), 2)
+    ma20 = round(float(bars[0].get("SD20") or closes.iloc[-20:].mean()), 2)
+    ma_signal = ("多頭排列" if ma5 > ma20 * 1.005 else "空頭排列" if ma5 < ma20 * 0.995 else "均線糾結")
+
+    delta = closes.diff()
+    gain  = delta.clip(lower=0).rolling(14).mean()
+    loss  = (-delta.clip(upper=0)).rolling(14).mean()
+    rs    = gain / loss.replace(0, float("nan"))
+    rsi   = round(float(100 - 100 / (1 + rs.iloc[-1])), 1) if pd.notna(rs.iloc[-1]) else None
+    rsi_signal = ("超買" if rsi and rsi >= 70 else "超賣" if rsi and rsi <= 30 else "正常")
+
+    bb_mid = closes.rolling(20).mean(); bb_std = closes.rolling(20).std()
+    bb_u = round(float((bb_mid + 2*bb_std).iloc[-1]), 2) if pd.notna(bb_std.iloc[-1]) else None
+    bb_l = round(float((bb_mid - 2*bb_std).iloc[-1]), 2) if pd.notna(bb_std.iloc[-1]) else None
+    pct_b = round((cur - bb_l) / (bb_u - bb_l), 3) if bb_u and bb_l and (bb_u - bb_l) > 0 else None
+    bb_sig = (None if pct_b is None else
+              "突破上軌" if pct_b > 1.0 else "近上軌" if pct_b >= 0.8 else
+              "跌破下軌" if pct_b < 0.0 else "近下軌" if pct_b <= 0.2 else "帶內整理")
+
+    vol1  = float(volumes.iloc[-1])
+    vol20 = float(volumes[volumes > 0].iloc[-20:].mean()) if (volumes > 0).sum() >= 5 else 0
+    vsig  = (None if vol1 == 0 else "量增" if vol20 > 0 and vol1 > vol20 * 1.2
+             else "量縮" if vol20 > 0 and vol1 < vol20 * 0.8 else "量持平")
+
+    tower  = _compute_tower(closes, highs, lows)
+    levels = _find_levels(closes, highs, lows, cur, volumes)
+    suggestion = _make_suggestion(ma_signal, vsig, rsi, None, bb_sig)
+
+    payload = {
+        "current": round(cur, 2), "ma5": ma5, "ma20": ma20,
+        "ma_signal": ma_signal, "volume_signal": vsig,
+        "rsi": rsi, "rsi_signal": rsi_signal,
+        "bb_upper": bb_u, "bb_lower": bb_l, "bb_pct_b": pct_b, "bb_signal": bb_sig,
+        "tower": tower, "resistance": levels["resistance"], "support": levels["support"],
+        "suggestion": suggestion,
+    }
+
+    from datetime import timezone, timedelta
+    today = datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d")
+    existing = db.query(MarketTechnicalSnapshot).filter_by(date=today, index_key=index).first()
+    if existing:
+        existing.payload = json.dumps(payload, ensure_ascii=False)
+        existing.saved_at = datetime.utcnow()
+    else:
+        db.add(MarketTechnicalSnapshot(date=today, index_key=index,
+                                       payload=json.dumps(payload, ensure_ascii=False)))
+    db.commit()
+    return {"date": today, "index": index, "saved": True}
+
+
 @router.get("/market-overview")
 async def get_market_overview_api():
     """大盤加權 / 上櫃指數即時資料與技術訊號"""

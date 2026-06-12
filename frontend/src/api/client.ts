@@ -220,6 +220,12 @@ export const stocksApi = {
     api.get<Record<string, MarketIndex>>("/stocks/market-overview").then((r) => r.data),
   market_kline: (index: "taiex" | "twoii" = "taiex") =>
     api.get<KlineResponse>(`/stocks/market-kline?index=${index}`).then((r) => r.data),
+  market_technical_history: (index: "taiex" | "twoii" = "taiex", days = 30) =>
+    api.get<(KlineTechnical & { date: string })[]>(
+      `/stocks/market-technical/history?index=${index}&days=${days}`
+    ).then((r) => r.data),
+  save_market_technical: (index: "taiex" | "twoii" = "taiex") =>
+    api.post(`/stocks/market-technical/save?index=${index}`).then((r) => r.data),
   txf_kline: () =>
     api.get<KlineResponse>("/stocks/txf-kline").then((r) => r.data),
   kline: (code: string) =>

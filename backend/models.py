@@ -191,3 +191,14 @@ class DailyArticle(Base):
     threads_posted_at = Column(DateTime, nullable=True)
     fb_post_id = Column(String, nullable=True)             # Facebook page post id ("PAGE_POST")
     fb_posted_at = Column(DateTime, nullable=True)
+
+
+class MarketTechnicalSnapshot(Base):
+    """大盤技術指標每日快照，供復盤使用。"""
+    __tablename__ = "market_technical_snapshots"
+
+    id         = Column(Integer, primary_key=True)
+    date       = Column(String, nullable=False, index=True)   # YYYY-MM-DD
+    index_key  = Column(String, nullable=False, default="taiex")  # taiex / twoii
+    payload    = Column(Text, nullable=False)                  # JSON: KlineTechnical
+    saved_at   = Column(DateTime, default=datetime.utcnow)

@@ -18,6 +18,15 @@ function fmtDate(iso: string): string {
   return `${parseInt(m)}/${parseInt(d)}`;
 }
 
+/** 往前/後移一個交易日（跳過週六日） */
+function shiftTradingDay(iso: string, delta: 1 | -1): string {
+  const d = new Date(iso + "T00:00:00Z");
+  do {
+    d.setUTCDate(d.getUTCDate() + delta);
+  } while (d.getUTCDay() === 0 || d.getUTCDay() === 6);
+  return d.toISOString().slice(0, 10);
+}
+
 // ──────────────────────────────────────────────────────────────────────
 // 股票卡片
 // ──────────────────────────────────────────────────────────────────────
@@ -145,13 +154,13 @@ export default function EtfTrackerPage() {
     loadData(date);
   }, [date, loadData]);
 
-  // 日期導覽
-  const dateIdx = availableDates.indexOf(date);
-  const hasPrev = dateIdx < availableDates.length - 1;
-  const hasNext = dateIdx > 0;
+  // 日期導覽：以交易日曆為基準，不限於已同步日期，上限為今日
+  const today = tpeToday();
+  const hasPrev = true;  // 往過去永遠可以走
+  const hasNext = date < today;  // 往未來只到今日
 
-  const goPrev = () => { if (hasPrev) setDate(availableDates[dateIdx + 1]); };
-  const goNext = () => { if (hasNext) setDate(availableDates[dateIdx - 1]); };
+  const goPrev = () => setDate(shiftTradingDay(date, -1));
+  const goNext = () => { if (hasNext) setDate(shiftTradingDay(date, 1)); };
 
   // 同步單日
   const handleSync = async () => {

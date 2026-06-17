@@ -1341,7 +1341,7 @@ def get_recent_reports(days: int = Query(default=3, ge=1, le=30), db: Session = 
 async def kdj_screen(db: Session = Depends(get_db)):
     """掃描自選股 + 近期推薦台股，找出 KDJ(89,9,12) 低位金叉 / 金叉個股。"""
     from price_analysis import get_signals
-    from models import WatchlistItem
+    from models import WatchlistItem, EtfDailyChange
 
     # 自選股
     wl_codes = {r.stock_code for r in db.query(WatchlistItem.stock_code).all()}
@@ -1354,14 +1354,30 @@ async def kdj_screen(db: Session = Depends(get_db)):
         .distinct().all()
         if r.stock_code and r.stock_code.isdigit() and len(r.stock_code) == 4
     }
-    code_list = list(wl_codes | recent_codes)[:250]
+    # ETF 成份股（00981A + 00403A）
+    etf_codes = {
+        r.stock_code for r in
+        db.query(EtfDailyChange.stock_code)
+        .filter(EtfDailyChange.etf_code.in_(["00981A", "00403A"]))
+        .distinct().all()
+    }
+    code_list = list(wl_codes | recent_codes | etf_codes)[:350]
 
-    # 取每股名稱（從最新報告）
+    # 取每股名稱（優先 ETF 明細，其次報告）
     name_map: dict[str, str | None] = {}
+    etf_names = {
+        r.stock_code: r.stock_name for r in
+        db.query(EtfDailyChange.stock_code, EtfDailyChange.stock_name)
+        .filter(EtfDailyChange.etf_code.in_(["00981A", "00403A"]))
+        .distinct(EtfDailyChange.stock_code).all()
+    }
     for code in code_list:
-        row = (db.query(Report.stock_name).filter(Report.stock_code == code)
-               .order_by(Report.created_at.desc()).first())
-        name_map[code] = row[0] if row else None
+        if code in etf_names:
+            name_map[code] = etf_names[code]
+        else:
+            row = (db.query(Report.stock_name).filter(Report.stock_code == code)
+                   .order_by(Report.created_at.desc()).first())
+            name_map[code] = row[0] if row else None
 
     semaphore = asyncio.Semaphore(8)
 

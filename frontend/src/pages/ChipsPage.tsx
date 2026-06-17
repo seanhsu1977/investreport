@@ -11,7 +11,8 @@ import {
   YAxis,
   Cell,
 } from "recharts";
-import { chipsApi, stocksApi, type ChipSnapshot, type InstitutionPosition, type KlineResponse, type KlineTechnical, type TowerSignal } from "../api/client";
+import { Link } from "react-router-dom";
+import { chipsApi, stocksApi, type ChipSnapshot, type InstitutionPosition, type KdjScreenItem, type KlineResponse, type KlineTechnical, type TowerSignal } from "../api/client";
 import KlineChart from "../components/KlineChart";
 import KdjChart from "../components/KdjChart";
 import type { ITimeScaleApi, UTCTimestamp } from "lightweight-charts";
@@ -863,6 +864,116 @@ function MarketTechCard({ title, loader, indexKey = "taiex" }: { title: string; 
 
 /* ============================ Page ============================ */
 
+/* ============================ KDJ 選股 ============================ */
+
+const SIGNAL_COLOR: Record<string, string> = {
+  "低位金叉": "bg-red-100 text-red-700",
+  "金叉":    "bg-orange-100 text-orange-700",
+  "低位死叉": "bg-emerald-100 text-emerald-700",
+  "死叉":    "bg-teal-100 text-teal-700",
+  "高位死叉": "bg-green-100 text-green-700",
+};
+
+function KdjScreener() {
+  const [result, setResult] = useState<{ items: KdjScreenItem[]; total: number; scanned: number } | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [filter, setFilter] = useState<"all" | "golden" | "dead">("golden");
+
+  const scan = async () => {
+    setLoading(true);
+    try {
+      const r = await stocksApi.kdj_screen();
+      setResult(r);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const displayed = (result?.items ?? []).filter((it) => {
+    if (filter === "golden") return it.kdj_signal === "低位金叉" || it.kdj_signal === "金叉";
+    if (filter === "dead") return it.kdj_signal?.includes("死叉");
+    return true;
+  });
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+      <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <h3 className="text-sm font-bold text-gray-800">KDJ 選股</h3>
+          <p className="text-xs text-gray-400 mt-0.5">KDJ(89,9,12) 近5天交叉訊號</p>
+        </div>
+        <button
+          onClick={scan}
+          disabled={loading}
+          className="flex items-center gap-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg font-medium disabled:opacity-50 transition"
+        >
+          {loading ? (
+            <>
+              <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a10 10 0 100 10H4z"/>
+              </svg>
+              掃描中…
+            </>
+          ) : "開始掃描"}
+        </button>
+      </div>
+
+      {result && (
+        <>
+          {/* 篩選 + 統計 */}
+          <div className="px-4 py-2.5 border-b border-gray-100 flex items-center gap-3 flex-wrap">
+            <span className="text-xs text-gray-400">掃描 {result.scanned} 檔，命中 {result.total} 檔</span>
+            <div className="flex gap-1.5 ml-auto">
+              {(["golden", "dead", "all"] as const).map((f) => (
+                <button
+                  key={f}
+                  onClick={() => setFilter(f)}
+                  className={`text-xs px-2.5 py-1 rounded-full transition ${
+                    filter === f ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                  }`}
+                >
+                  {f === "golden" ? "金叉" : f === "dead" ? "死叉" : "全部"}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {displayed.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-8">目前無符合條件的個股</p>
+          ) : (
+            <div className="divide-y divide-gray-50">
+              {displayed.map((it) => (
+                <div key={it.code} className="flex items-center justify-between px-4 py-2.5 hover:bg-gray-50 transition">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Link to={`/stocks/${it.code}`} className="text-sm font-bold text-blue-700 hover:underline shrink-0">
+                      {it.code}
+                    </Link>
+                    <span className="text-sm text-gray-600 truncate">{it.name}</span>
+                    {it.kdj_cross_days != null && it.kdj_cross_days > 0 && (
+                      <span className="text-[10px] text-gray-400 shrink-0">{it.kdj_cross_days}天前</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0 ml-2">
+                    <span className="text-xs text-gray-400 tabular-nums">K{it.kdj_k} D{it.kdj_d}</span>
+                    <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${SIGNAL_COLOR[it.kdj_signal] ?? "bg-gray-100 text-gray-600"}`}>
+                      {it.kdj_signal}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {!result && !loading && (
+        <p className="text-xs text-gray-400 text-center py-8">點「開始掃描」從自選股與近期推薦股中篩選</p>
+      )}
+    </div>
+  );
+}
+
 export default function ChipsPage() {
   const [latest, setLatest] = useState<ChipSnapshot | null>(null);
   const [history, setHistory] = useState<ChipSnapshot[]>([]);
@@ -910,6 +1021,9 @@ export default function ChipsPage() {
           {refreshing ? "抓取中…" : "立即抓取"}
         </button>
       </div>
+
+      {/* KDJ 選股 */}
+      <KdjScreener />
 
       {/* 大盤技術分析 */}
       <MarketTechCard title="📊 加權指數技術分析" loader={() => stocksApi.market_kline("taiex")} indexKey="taiex" />

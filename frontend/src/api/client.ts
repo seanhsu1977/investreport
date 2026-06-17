@@ -450,52 +450,6 @@ export const etfTrackerApi = {
     api.get<EtfCrossData>(`/etf-tracker/cross?days=${days}`).then((r) => r.data),
 };
 
-// ── 期貨技術分析 ──────────────────────────────────────────────────────────────
-
-export interface FuturesLevel {
-  price: number;
-  label: string;
-  pct_from_entry: number;
-}
-
-export interface FuturesAnalysis {
-  direction: string;
-  entry_price: number;
-  current_price: number;
-  atr: number;
-  atr_pct: number;
-  atr_multiplier: number;
-  stop_loss: number;
-  stop_loss_pct: number;
-  stop_loss_twd: number;
-  targets: FuturesLevel[];
-  supports: number[];
-  resistances: number[];
-  rsi: number | null;
-  rsi_signal: string;
-  kdj_k: number | null;
-  kdj_d: number | null;
-  kdj_j: number | null;
-  kdj_signal: string;
-  bollinger_upper: number | null;
-  bollinger_lower: number | null;
-  bb_signal: string | null;
-  ma5: number | null;
-  ma20: number | null;
-  ma60: number | null;
-  ma_signal: string;
-  volume_ratio: number | null;
-  risk_reward: number | null;
-  verdict: string;
-  advice: string[];
-  price_source: string;
-  candle_date: string;
-}
-
-export const futuresTAApi = {
-  analyze: (direction: "long" | "short", entry_price: number, atr_multiplier: number) =>
-    api.post<FuturesAnalysis>("/futures/analyze", { direction, entry_price, atr_multiplier }).then((r) => r.data),
-};
 
 export const chipsApi = {
   latest: () => api.get<ChipSnapshot>("/chips/latest").then((r) => r.data),

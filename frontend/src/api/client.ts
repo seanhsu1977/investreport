@@ -395,6 +395,24 @@ export interface EtfDailyData {
   has_data: boolean;
 }
 
+export interface EtfCrossItem {
+  code: string;
+  name: string | null;
+  days_00981A: number;
+  days_00403A: number;
+  shares_00981A: number;
+  shares_00403A: number;
+}
+
+export interface EtfCrossData {
+  days: number;
+  start_date: string;
+  trading_days: string[];
+  both: EtfCrossItem[];
+  only_00981A: EtfCrossItem[];
+  only_00403A: EtfCrossItem[];
+}
+
 export const etfTrackerApi = {
   dates: (etf = "00981A") =>
     api.get<{ etf_code: string; dates: string[] }>(`/etf-tracker/dates?etf=${etf}`).then((r) => r.data),
@@ -408,6 +426,8 @@ export const etfTrackerApi = {
     api.post<{ etf_code: string; synced: number; no_article: number; errors: number; results: { date: string; status: string; count?: number }[] }>(
       `/etf-tracker/backfill`, null, { params: { etf, days } }
     ).then((r) => r.data),
+  cross: (days = 5) =>
+    api.get<EtfCrossData>(`/etf-tracker/cross?days=${days}`).then((r) => r.data),
 };
 
 export const chipsApi = {

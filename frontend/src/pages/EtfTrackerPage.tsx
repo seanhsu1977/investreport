@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
-import { etfTrackerApi, EtfStock } from "../api/client";
+import { etfTrackerApi, EtfStock, EtfCrossItem, EtfCrossData } from "../api/client";
 
 // ──────────────────────────────────────────────────────────────────────
 // 工具函式
@@ -111,7 +111,10 @@ const ETF_OPTIONS = [
   { code: "00403A", name: "00403A" },
 ] as const;
 
+type PageMode = "etf" | "cross";
+
 export default function EtfTrackerPage() {
+  const [mode, setMode] = useState<PageMode>("etf");
   const [etfCode, setEtfCode] = useState<string>("00981A");
   const etfName = ETF_OPTIONS.find((e) => e.code === etfCode)?.name ?? etfCode;
 
@@ -129,6 +132,11 @@ export default function EtfTrackerPage() {
   const [backfilling, setBackfilling] = useState(false);
   const [backfillMsg, setBackfillMsg] = useState<string | null>(null);
   const [showFlat, setShowFlat] = useState(false);
+
+  // 交叉分析
+  const [crossDays, setCrossDays] = useState<3 | 5>(3);
+  const [crossData, setCrossData] = useState<EtfCrossData | null>(null);
+  const [crossLoading, setCrossLoading] = useState(false);
 
   // 載入已有日期清單
   const refreshDates = useCallback(async () => {
@@ -158,6 +166,14 @@ export default function EtfTrackerPage() {
   useEffect(() => {
     loadData(date);
   }, [date, loadData]);
+
+  useEffect(() => {
+    if (mode !== "cross") return;
+    setCrossLoading(true);
+    etfTrackerApi.cross(crossDays)
+      .then(setCrossData)
+      .finally(() => setCrossLoading(false));
+  }, [mode, crossDays]);
 
   // 日期導覽：以交易日曆為基準，不限於已同步日期，上限為今日
   const today = tpeToday();
@@ -228,6 +244,7 @@ export default function EtfTrackerPage() {
               <button
                 key={opt.code}
                 onClick={() => {
+                  setMode("etf");
                   if (opt.code !== etfCode) {
                     setEtfCode(opt.code);
                     setData(null);
@@ -236,7 +253,7 @@ export default function EtfTrackerPage() {
                   }
                 }}
                 className={`text-xs px-3 py-1 rounded-full font-semibold transition
-                  ${etfCode === opt.code
+                  ${mode === "etf" && etfCode === opt.code
                     ? "bg-white text-[#0B1E3D]"
                     : "bg-white/15 text-white/70 hover:bg-white/25"
                   }`}
@@ -244,12 +261,22 @@ export default function EtfTrackerPage() {
                 {opt.code}
               </button>
             ))}
+            <button
+              onClick={() => setMode("cross")}
+              className={`text-xs px-3 py-1 rounded-full font-semibold transition
+                ${mode === "cross"
+                  ? "bg-amber-400 text-white"
+                  : "bg-white/15 text-white/70 hover:bg-white/25"
+                }`}
+            >
+              交叉分析
+            </button>
           </div>
         </div>
       </div>
 
-      {/* ── 日期導覽列 ── */}
-      <div className="bg-white border-b shadow-sm sticky top-0 z-10">
+      {/* ── 日期導覽列（ETF 模式才顯示）── */}
+      {mode === "etf" && <div className="bg-white border-b shadow-sm sticky top-0 z-10">
         <div className="max-w-xl mx-auto px-4 py-2.5 flex items-center justify-between">
           {/* 日期箭頭 */}
           <div className="flex items-center gap-1">
@@ -303,13 +330,24 @@ export default function EtfTrackerPage() {
             ✗ {syncError}
           </div>
         )}
-      </div>
+      </div>}
 
       {/* ── 內容區 ── */}
       <div className="max-w-xl mx-auto px-4 py-4 space-y-5">
 
+        {/* ── 交叉分析模式 ── */}
+        {mode === "cross" && (
+          <CrossAnalysisView
+            days={crossDays}
+            onChangeDays={setCrossDays}
+            data={crossData}
+            loading={crossLoading}
+          />
+        )}
+
+        {/* ── ETF 模式 ── */}
         {/* Loading */}
-        {loading && (
+        {mode === "etf" && loading && (
           <div className="flex items-center justify-center py-16 text-gray-400 text-sm gap-2">
             <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
@@ -320,7 +358,7 @@ export default function EtfTrackerPage() {
         )}
 
         {/* 無資料 */}
-        {!loading && data && !data.has_data && (
+        {mode === "etf" && !loading && data && !data.has_data && (
           <div className="text-center py-14 text-gray-500">
             <p className="text-sm mb-1">尚無 {date} 的持股資料</p>
             <p className="text-xs text-gray-400 mb-4">nstock 通常在每個交易日 19:30 後更新</p>
@@ -346,7 +384,7 @@ export default function EtfTrackerPage() {
         )}
 
         {/* ── 有資料 ── */}
-        {!loading && data?.has_data && (
+        {mode === "etf" && !loading && data?.has_data && (
           <>
             {/* 統計列 */}
             <div className="flex gap-3 text-center">
@@ -448,6 +486,139 @@ function Section({
       </h2>
       <div className="space-y-2">{children}</div>
     </section>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// 交叉分析元件
+// ──────────────────────────────────────────────────────────────────────
+
+function CrossAnalysisView({
+  days,
+  onChangeDays,
+  data,
+  loading,
+}: {
+  days: 3 | 5;
+  onChangeDays: (d: 3 | 5) => void;
+  data: EtfCrossData | null;
+  loading: boolean;
+}) {
+  return (
+    <div className="space-y-4">
+      {/* 近3天 / 近5天 切換 */}
+      <div className="flex gap-2">
+        {([3, 5] as const).map((d) => (
+          <button
+            key={d}
+            onClick={() => onChangeDays(d)}
+            className={`px-4 py-1.5 rounded-full text-sm font-semibold transition
+              ${days === d
+                ? "bg-amber-400 text-white"
+                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+              }`}
+          >
+            近{d}天
+          </button>
+        ))}
+        {data && (
+          <span className="text-xs text-gray-400 self-center ml-1">
+            {data.start_date} 起
+          </span>
+        )}
+      </div>
+
+      {loading && (
+        <div className="flex items-center justify-center py-16 text-gray-400 text-sm gap-2">
+          <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a10 10 0 100 10H4z"/>
+          </svg>
+          分析中…
+        </div>
+      )}
+
+      {!loading && data && (
+        <>
+          {/* 雙重買超 */}
+          {data.both.length > 0 && (
+            <section>
+              <h2 className="text-sm font-semibold mb-2 text-amber-700 flex items-center gap-1">
+                雙重買超
+                <span className="ml-1 text-xs font-normal opacity-70">({data.both.length})</span>
+                <span className="text-[10px] text-amber-500 font-normal ml-1">兩檔 ETF 同時買超</span>
+              </h2>
+              <div className="space-y-2">
+                {data.both.map((s) => <CrossCard key={s.code} item={s} mode="both" />)}
+              </div>
+            </section>
+          )}
+
+          {data.both.length === 0 && (
+            <p className="text-sm text-gray-400 text-center py-6">近{days}天無雙重買超個股</p>
+          )}
+
+          {/* 僅 00981A */}
+          {data.only_00981A.length > 0 && (
+            <section>
+              <h2 className="text-sm font-semibold mb-2 text-blue-700 flex items-center gap-1">
+                僅 00981A
+                <span className="ml-1 text-xs font-normal opacity-70">({data.only_00981A.length})</span>
+              </h2>
+              <div className="space-y-1.5">
+                {data.only_00981A.map((s) => <CrossCard key={s.code} item={s} mode="981a" />)}
+              </div>
+            </section>
+          )}
+
+          {/* 僅 00403A */}
+          {data.only_00403A.length > 0 && (
+            <section>
+              <h2 className="text-sm font-semibold mb-2 text-green-700 flex items-center gap-1">
+                僅 00403A
+                <span className="ml-1 text-xs font-normal opacity-70">({data.only_00403A.length})</span>
+              </h2>
+              <div className="space-y-1.5">
+                {data.only_00403A.map((s) => <CrossCard key={s.code} item={s} mode="403a" />)}
+              </div>
+            </section>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function CrossCard({ item, mode }: { item: EtfCrossItem; mode: "both" | "981a" | "403a" }) {
+  const borderCls =
+    mode === "both" ? "border-amber-200 bg-amber-50" :
+    mode === "981a" ? "border-blue-100 bg-white" :
+    "border-green-100 bg-white";
+
+  return (
+    <div className={`flex items-center justify-between rounded-xl border px-4 py-2.5 ${borderCls}`}>
+      <div className="flex items-center gap-2 min-w-0">
+        <Link
+          to={`/stocks/${item.code}`}
+          className="text-sm font-bold text-blue-700 hover:underline shrink-0"
+        >
+          {item.code}
+        </Link>
+        <span className="text-sm text-gray-700 truncate">{item.name}</span>
+      </div>
+      <div className="flex items-center gap-3 shrink-0 ml-2 text-xs tabular-nums">
+        {item.days_00981A > 0 && (
+          <span className="text-blue-600">
+            981A {item.days_00981A}天 +{item.shares_00981A}張
+          </span>
+        )}
+        {item.days_00403A > 0 && (
+          <span className="text-green-600">
+            403A {item.days_00403A}天 +{item.shares_00403A}張
+          </span>
+        )}
+      </div>
+    </div>
   );
 }
 

@@ -288,3 +288,83 @@ def etf_tracker_backfill(
         "errors": len(errors),
         "results": results,
     }
+
+
+# ──────────────────────────────────────────────────────────────────────
+# 交叉分析：近 N 個交易日兩檔 ETF 買超重疊
+# ──────────────────────────────────────────────────────────────────────
+
+@router.get("/etf-tracker/cross")
+def etf_tracker_cross(days: int = 5, db: Session = Depends(get_db)):
+    """近 N 個交易日 00981A 與 00403A 的買超交叉分析。
+
+    回傳三組：
+    - both：兩檔都有買超的個股
+    - only_00981A：只有 00981A 買超
+    - only_00403A：只有 00403A 買超
+    """
+    if not (1 <= days <= 30):
+        raise HTTPException(status_code=400, detail="days 需介於 1–30")
+
+    from datetime import date as _date, timedelta as _td
+    today = datetime.now(TPE).date()
+    trading_days: list[str] = []
+    d = today
+    while len(trading_days) < days:
+        if d.weekday() < 5:
+            trading_days.append(d.isoformat())
+        d -= _td(days=1)
+
+    start_date = trading_days[-1]
+
+    records = (
+        db.query(EtfDailyChange)
+        .filter(
+            EtfDailyChange.etf_code.in_(["00981A", "00403A"]),
+            EtfDailyChange.date >= start_date,
+            EtfDailyChange.action == "buy",
+        )
+        .all()
+    )
+
+    by_stock: dict[str, dict[str, list]] = defaultdict(lambda: defaultdict(list))
+    for rec in records:
+        by_stock[rec.stock_code][rec.etf_code].append(rec)
+
+    both, only_981a, only_403a = [], [], []
+
+    for code, etf_map in by_stock.items():
+        in_981a = "00981A" in etf_map
+        in_403a = "00403A" in etf_map
+        recs_981a = etf_map.get("00981A", [])
+        recs_403a = etf_map.get("00403A", [])
+        name = (recs_981a or recs_403a)[0].stock_name
+
+        item = {
+            "code": code,
+            "name": name,
+            "days_00981A": len(recs_981a),
+            "days_00403A": len(recs_403a),
+            "shares_00981A": sum(r.shares_delta for r in recs_981a),
+            "shares_00403A": sum(r.shares_delta for r in recs_403a),
+        }
+
+        if in_981a and in_403a:
+            both.append(item)
+        elif in_981a:
+            only_981a.append(item)
+        else:
+            only_403a.append(item)
+
+    both.sort(key=lambda x: -(x["shares_00981A"] + x["shares_00403A"]))
+    only_981a.sort(key=lambda x: (-x["days_00981A"], -x["shares_00981A"]))
+    only_403a.sort(key=lambda x: (-x["days_00403A"], -x["shares_00403A"]))
+
+    return {
+        "days": days,
+        "start_date": start_date,
+        "trading_days": trading_days,
+        "both": both,
+        "only_00981A": only_981a,
+        "only_00403A": only_403a,
+    }

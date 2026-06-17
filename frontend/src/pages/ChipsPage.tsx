@@ -254,7 +254,7 @@ function OverviewCard({
                 return (
                   <div key={key} className="flex items-center gap-2">
                     <span className="text-xs text-gray-600 w-12 shrink-0">{label}</span>
-                    <div className="flex gap-1">
+                    <div className="flex flex-wrap gap-1">
                       {dirHistory.map((h) => (
                         <MiniChip key={h.date} dir={dirOfNet(h.txf[key]?.net_oi)} />
                       ))}
@@ -301,7 +301,7 @@ function OverviewCard({
                   return (
                     <div key={key} className="flex items-center gap-2">
                       <span className="text-xs text-gray-600 w-12 shrink-0">{label}</span>
-                      <div className="flex gap-1">
+                      <div className="flex flex-wrap gap-1">
                         {dirHistory.map((h) => (
                           <MiniChip key={h.date} dir={dirOfSpot(h.spot?.[key])} />
                         ))}

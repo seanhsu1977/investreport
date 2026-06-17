@@ -940,7 +940,11 @@ function KdjScreener() {
           </div>
 
           {displayed.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-8">目前無符合條件的個股</p>
+            <p className="text-sm text-gray-500 text-center py-8">
+              {result.total === 0
+                ? "掃描完成，目前無 KDJ 金叉 / 死叉訊號個股"
+                : "目前所選類型無符合，可切換至「全部」查看"}
+            </p>
           ) : (
             <div className="divide-y divide-gray-50">
               {displayed.map((it) => (

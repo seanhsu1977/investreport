@@ -900,7 +900,7 @@ function KdjScreener() {
       <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between flex-wrap gap-2">
         <div>
           <h3 className="text-sm font-bold text-gray-800">KDJ 選股</h3>
-          <p className="text-xs text-gray-400 mt-0.5">KDJ(89,9,12) 近5天交叉訊號</p>
+          <p className="text-xs text-gray-400 mt-0.5">KDJ(89,9,12) 近5天交叉訊號・涵蓋自選股、近期推薦股、00981A/00403A 成份股</p>
         </div>
         <button
           onClick={scan}
@@ -972,7 +972,7 @@ function KdjScreener() {
       )}
 
       {!result && !loading && (
-        <p className="text-xs text-gray-400 text-center py-8">點「開始掃描」從自選股與近期推薦股中篩選</p>
+        <p className="text-xs text-gray-400 text-center py-8">點「開始掃描」從自選股、近期推薦股、ETF 成份股中篩選</p>
       )}
     </div>
   );
@@ -1016,7 +1016,7 @@ export default function ChipsPage() {
   return (
     <div className="max-w-4xl mx-auto py-8 px-4 space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <h1 className="text-2xl font-bold text-gray-800">籌碼面</h1>
+        <h1 className="text-2xl font-bold text-gray-800">大盤</h1>
         <button
           onClick={refresh}
           disabled={refreshing}

@@ -157,6 +157,102 @@ def _recommendations_warmup_job():
     logger.info("Recommendations warmup complete")
 
 
+def _kdj_screen_job():
+    """每週一至五 15:30（收盤後）掃描自選股 + ETF 成份股 KDJ 訊號並寫入快取。"""
+    import asyncio
+    import json as _json
+    from datetime import timezone, timedelta
+
+    logger.info("Starting KDJ screen job...")
+    db = SessionLocal()
+    try:
+        from models import WatchlistItem, EtfDailyChange, KdjScreenCache
+        from price_analysis import get_signals
+
+        wl_codes = {r.stock_code for r in db.query(WatchlistItem.stock_code).all()}
+        etf_rows = (
+            db.query(EtfDailyChange.stock_code, EtfDailyChange.stock_name)
+            .filter(EtfDailyChange.etf_code.in_(["00981A", "00403A"]))
+            .distinct(EtfDailyChange.stock_code).all()
+        )
+        etf_codes = {r.stock_code for r in etf_rows}
+        etf_names = {r.stock_code: r.stock_name for r in etf_rows}
+
+        priority = list(wl_codes) + [c for c in etf_codes if c not in wl_codes]
+        code_list = priority[:350]  # 排程可跑久一點，不受 30s 限制
+
+        name_map: dict = {}
+        for code in code_list:
+            name_map[code] = etf_names.get(code)
+            if not name_map[code]:
+                row = (db.query(Report.stock_name).filter(Report.stock_code == code)
+                       .order_by(Report.created_at.desc()).first())
+                name_map[code] = row[0] if row else None
+
+        semaphore = asyncio.Semaphore(8)
+
+        async def fetch_one(code):
+            async with semaphore:
+                try:
+                    sig = await asyncio.to_thread(get_signals, code)
+                except Exception:
+                    sig = None
+                return code, sig
+
+        async def run_all():
+            return await asyncio.gather(*[fetch_one(c) for c in code_list])
+
+        results = asyncio.run(run_all())
+
+        CROSS_SIGNALS = {"低位金叉", "金叉", "低位死叉", "高位死叉", "死叉"}
+        SIGNAL_ORDER = {"低位金叉": 0, "金叉": 1, "低位死叉": 2, "死叉": 3, "高位死叉": 4}
+
+        items = []
+        for code, sig in results:
+            if not sig or sig.get("kdj_signal") not in CROSS_SIGNALS:
+                continue
+            items.append({
+                "code": code,
+                "name": name_map.get(code),
+                "current_price": sig.get("current_price"),
+                "kdj_k": sig.get("kdj_k"),
+                "kdj_d": sig.get("kdj_d"),
+                "kdj_j": sig.get("kdj_j"),
+                "kdj_signal": sig.get("kdj_signal"),
+                "kdj_cross_days": sig.get("kdj_cross_days"),
+                "ma_signal": sig.get("ma_signal"),
+                "rsi": sig.get("rsi"),
+            })
+        items.sort(key=lambda x: (
+            SIGNAL_ORDER.get(x.get("kdj_signal"), 9),
+            x.get("kdj_cross_days") or 99,
+            x.get("kdj_k") or 99,
+        ))
+
+        # 台北時間
+        tpe = timezone(timedelta(hours=8))
+        now_tpe = datetime.now(tpe)
+        cache_row = KdjScreenCache(
+            computed_at=now_tpe.strftime("%Y-%m-%d %H:%M"),
+            data_date=now_tpe.strftime("%Y-%m-%d"),
+            scanned=len(code_list),
+            items_json=_json.dumps(items, ensure_ascii=False),
+        )
+        db.add(cache_row)
+        # 只保留最近 5 筆，避免表格無限增長
+        old_rows = (db.query(KdjScreenCache)
+                    .order_by(KdjScreenCache.id.desc())
+                    .offset(5).all())
+        for r in old_rows:
+            db.delete(r)
+        db.commit()
+        logger.info("KDJ screen job done: scanned=%d, hits=%d", len(code_list), len(items))
+    except Exception as e:
+        logger.exception("KDJ screen job failed: %s", e)
+    finally:
+        db.close()
+
+
 def start_scheduler():
     # Drive 同步：每天 4 次（台北時間 04:00 / 09:00 / 14:00 / 20:00）
     # 04:00 → 抓凌晨上傳；09:00 → 抓早盤前投顧報告；14:00 → 抓午間；20:00 → 抓盤後
@@ -178,6 +274,12 @@ def start_scheduler():
         _market_technical_job, "cron",
         day_of_week="mon-fri", hour=14, minute=45, timezone="Asia/Taipei",
         id="market_technical",
+    )
+    # KDJ 選股快取：每天 15:30（收盤後）Mon-Fri
+    scheduler.add_job(
+        _kdj_screen_job, "cron",
+        day_of_week="mon-fri", hour=15, minute=30, timezone="Asia/Taipei",
+        id="kdj_screen",
     )
     # 投顧精選預算快取：每天 07:00 Asia/Taipei（含六日，因用戶週末也會看）
     scheduler.add_job(

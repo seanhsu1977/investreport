@@ -249,7 +249,7 @@ export const stocksApi = {
   kline: (code: string) =>
     api.get<KlineResponse>(`/stocks/${code}/kline`).then((r) => r.data),
   kdj_screen: () =>
-    api.get<{ items: KdjScreenItem[]; total: number; scanned: number }>("/stocks/kdj-screen").then((r) => r.data),
+    api.get<{ items: KdjScreenItem[]; total: number; scanned: number; computed_at: string | null; data_date: string | null }>("/stocks/kdj-screen").then((r) => r.data),
 };
 
 export const searchApi = {

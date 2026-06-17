@@ -875,27 +875,29 @@ const SIGNAL_COLOR: Record<string, string> = {
 };
 
 function KdjScreener() {
-  const [result, setResult] = useState<{ items: KdjScreenItem[]; total: number; scanned: number } | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [scanError, setScanError] = useState<string | null>(null);
+  const [result, setResult] = useState<{
+    items: KdjScreenItem[];
+    total: number;
+    scanned: number;
+    computed_at: string | null;
+    data_date: string | null;
+  } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | "golden" | "dead">("golden");
 
-  const scan = async () => {
-    setLoading(true);
-    setScanError(null);
-    try {
-      const r = await stocksApi.kdj_screen();
-      setResult(r);
-    } catch (e: unknown) {
-      const msg =
-        (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-        ?? (e as Error)?.message
-        ?? "掃描失敗";
-      setScanError(msg);
-    } finally {
-      setLoading(false);
-    }
-  };
+  useEffect(() => {
+    stocksApi.kdj_screen()
+      .then((r) => setResult(r))
+      .catch((e: unknown) => {
+        const msg =
+          (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+          ?? (e as Error)?.message
+          ?? "載入失敗";
+        setError(msg);
+      })
+      .finally(() => setLoading(false));
+  }, []);
 
   const displayed = (result?.items ?? []).filter((it) => {
     if (filter === "golden") return it.kdj_signal === "低位金叉" || it.kdj_signal === "金叉";
@@ -905,31 +907,31 @@ function KdjScreener() {
 
   return (
     <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-      <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between flex-wrap gap-2">
-        <div>
-          <h3 className="text-sm font-bold text-gray-800">KDJ 選股</h3>
-          <p className="text-xs text-gray-400 mt-0.5">KDJ(89,9,12) 近5天交叉訊號・涵蓋自選股、近期推薦股、00981A/00403A 成份股</p>
-        </div>
-        <button
-          onClick={scan}
-          disabled={loading}
-          className="flex items-center gap-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg font-medium disabled:opacity-50 transition"
-        >
-          {loading ? (
-            <>
-              <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a10 10 0 100 10H4z"/>
-              </svg>
-              掃描中…
-            </>
-          ) : "開始掃描"}
-        </button>
+      <div className="px-4 py-3 border-b border-gray-100">
+        <h3 className="text-sm font-bold text-gray-800">KDJ 選股</h3>
+        <p className="text-xs text-gray-400 mt-0.5">
+          KDJ(89,9,12) 近5天交叉訊號・自選股 + 00981A/00403A 成份股・每日收盤後更新
+          {result?.data_date && (
+            <span className="ml-1.5 text-gray-300">資料日期 {result.data_date}</span>
+          )}
+        </p>
       </div>
 
-      {result && (
+      {loading && (
+        <div className="flex justify-center py-8">
+          <svg className="w-5 h-5 animate-spin text-blue-500" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a10 10 0 100 10H4z"/>
+          </svg>
+        </div>
+      )}
+
+      {error && (
+        <p className="text-xs text-red-500 text-center py-6 px-4">✗ {error}</p>
+      )}
+
+      {!loading && !error && result && (
         <>
-          {/* 篩選 + 統計 */}
           <div className="px-4 py-2.5 border-b border-gray-100 flex items-center gap-3 flex-wrap">
             <span className="text-xs text-gray-400">掃描 {result.scanned} 檔，命中 {result.total} 檔</span>
             <div className="flex gap-1.5 ml-auto">
@@ -950,7 +952,7 @@ function KdjScreener() {
           {displayed.length === 0 ? (
             <p className="text-sm text-gray-500 text-center py-8">
               {result.total === 0
-                ? "掃描完成，目前無 KDJ 金叉 / 死叉訊號個股"
+                ? "目前無 KDJ 金叉 / 死叉訊號個股"
                 : "目前所選類型無符合，可切換至「全部」查看"}
             </p>
           ) : (
@@ -979,11 +981,8 @@ function KdjScreener() {
         </>
       )}
 
-      {scanError && (
-        <p className="text-xs text-red-500 text-center py-6 px-4">✗ {scanError}</p>
-      )}
-      {!result && !loading && !scanError && (
-        <p className="text-xs text-gray-400 text-center py-8">點「開始掃描」從自選股、近期推薦股、ETF 成份股中篩選</p>
+      {!loading && !error && !result && (
+        <p className="text-xs text-gray-400 text-center py-8">尚無快取資料，今日收盤後（15:30）將自動更新</p>
       )}
     </div>
   );

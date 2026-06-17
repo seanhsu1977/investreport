@@ -202,3 +202,14 @@ class MarketTechnicalSnapshot(Base):
     index_key  = Column(String, nullable=False, default="taiex")  # taiex / twoii
     payload    = Column(Text, nullable=False)                  # JSON: KlineTechnical
     saved_at   = Column(DateTime, default=datetime.utcnow)
+
+
+class KdjScreenCache(Base):
+    """KDJ(89,9,12) 選股結果快取，由排程每日收盤後更新。"""
+    __tablename__ = "kdj_screen_cache"
+
+    id          = Column(Integer, primary_key=True)
+    computed_at = Column(String, nullable=False)   # ISO datetime (Asia/Taipei)
+    data_date   = Column(String, nullable=False)   # YYYY-MM-DD 資料日期
+    scanned     = Column(Integer, nullable=False, default=0)
+    items_json  = Column(Text, nullable=False)     # JSON array of KdjScreenItem

@@ -48,20 +48,55 @@ function LevelBar({
     ...resistances.map(r => ({ price: r, label: "壓力", color: "text-purple-500", dot: "bg-purple-400" })),
   ];
 
+  // 依價格排序後，交錯分配上下層，避免重疊
+  const sorted = [...items].sort((a, b) => a.price - b.price);
+  const ROW_THRESHOLD = 4; // 相鄰兩點差距 < 總範圍 4% 時交錯
+  const rows: number[] = new Array(sorted.length).fill(0); // 0=上, 1=下, 2=更上
+  for (let i = 1; i < sorted.length; i++) {
+    const gap = (sorted[i].price - sorted[i - 1].price) / range * 100;
+    if (gap < ROW_THRESHOLD) {
+      // 與前一個不同層
+      const prev = rows[i - 1];
+      rows[i] = prev === 0 ? 1 : prev === 1 ? 2 : 0;
+    }
+  }
+
+  const rowOffsetTop: Record<number, string> = { 0: "0px", 1: "22px", 2: "-22px" };
+  const labelAbove: Record<number, boolean> = { 0: true, 1: false, 2: true };
+
   return (
-    <div className="relative h-12 my-4">
-      <div className="absolute inset-x-0 top-1/2 h-0.5 bg-gray-200 dark:bg-gray-700 rounded-full" />
-      {items.map((item, i) => (
-        <div
-          key={i}
-          className="absolute flex flex-col items-center"
-          style={{ left: `${pct(item.price)}%`, transform: "translateX(-50%)" }}
-        >
-          <span className={`text-[10px] mb-0.5 whitespace-nowrap ${item.color}`}>{item.label}</span>
-          <div className={`w-2.5 h-2.5 rounded-full border-2 border-white dark:border-gray-900 ${item.dot}`} />
-          <span className={`text-[10px] mt-0.5 whitespace-nowrap ${item.color}`}>{item.price.toLocaleString()}</span>
-        </div>
-      ))}
+    <div className="relative my-6" style={{ height: "80px" }}>
+      <div className="absolute inset-x-0" style={{ top: "38px", height: "2px" }} >
+        <div className="w-full h-full bg-gray-200 dark:bg-gray-700 rounded-full" />
+      </div>
+      {sorted.map((item, i) => {
+        const row = rows[i];
+        const topBase = 38; // px — horizontal line position
+        const dotTop = topBase - 5 + parseInt(rowOffsetTop[row] ?? "0");
+        const above = labelAbove[row] ?? true;
+        return (
+          <div
+            key={i}
+            className="absolute flex flex-col items-center"
+            style={{ left: `${pct(item.price)}%`, transform: "translateX(-50%)", top: `${dotTop}px` }}
+          >
+            {above && (
+              <span className={`text-[10px] whitespace-nowrap leading-none mb-0.5 ${item.color}`}>
+                {item.label}
+              </span>
+            )}
+            <div className={`w-2.5 h-2.5 rounded-full border-2 border-white dark:border-gray-900 ${item.dot}`} />
+            {!above && (
+              <span className={`text-[10px] whitespace-nowrap leading-none mt-0.5 ${item.color}`}>
+                {item.label}
+              </span>
+            )}
+            <span className={`text-[10px] whitespace-nowrap leading-none ${above ? "mt-0.5" : "mt-0.5"} ${item.color} opacity-75`}>
+              {item.price.toLocaleString()}
+            </span>
+          </div>
+        );
+      })}
     </div>
   );
 }

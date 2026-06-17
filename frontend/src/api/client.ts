@@ -464,8 +464,10 @@ export interface FuturesAnalysis {
   current_price: number;
   atr: number;
   atr_pct: number;
+  atr_multiplier: number;
   stop_loss: number;
   stop_loss_pct: number;
+  stop_loss_twd: number;
   targets: FuturesLevel[];
   supports: number[];
   resistances: number[];
@@ -489,8 +491,8 @@ export interface FuturesAnalysis {
 }
 
 export const futuresTAApi = {
-  analyze: (direction: "long" | "short", entry_price: number) =>
-    api.post<FuturesAnalysis>("/futures/analyze", { direction, entry_price }).then((r) => r.data),
+  analyze: (direction: "long" | "short", entry_price: number, atr_multiplier: number) =>
+    api.post<FuturesAnalysis>("/futures/analyze", { direction, entry_price, atr_multiplier }).then((r) => r.data),
 };
 
 export const chipsApi = {

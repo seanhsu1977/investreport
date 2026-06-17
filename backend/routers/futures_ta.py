@@ -21,6 +21,7 @@ router = APIRouter(prefix="/futures", tags=["futures"])
 class AnalyzeRequest(BaseModel):
     direction: Literal["long", "short"]
     entry_price: float = Field(..., gt=0, description="進場價格（台指期點位）")
+    atr_multiplier: float = Field(0.5, ge=0.25, le=2.0, description="停損 ATR 倍數")
 
 
 class Level(BaseModel):
@@ -36,8 +37,10 @@ class AnalyzeResponse(BaseModel):
     atr: float
     atr_pct: float
 
+    atr_multiplier: float
     stop_loss: float
     stop_loss_pct: float
+    stop_loss_twd: float
 
     targets: List[Level]
     supports: List[float]
@@ -214,7 +217,8 @@ def _build_advice(
 
     # 停損提醒
     sl_pts = abs(entry - stop_loss)
-    advice.append(f"停損設於 {round(stop_loss)} 點（距進場 {round(sl_pts)} 點 / 2x ATR），觸及立即出場")
+    atr_mult_label = f"{round(abs(sl_pts) / atr if atr else 0, 1)}x ATR"
+    advice.append(f"停損設於 {round(stop_loss)} 點（距進場 {round(sl_pts)} 點 / {atr_mult_label}），觸及立即出場")
 
     # 目標提醒
     if targets:
@@ -303,12 +307,13 @@ def analyze_futures(req: AnalyzeRequest, db: Session = Depends(get_db)):
     atr_val  = _atr(highs, lows, closes)
     atr_pct  = round(atr_val / current_price * 100, 2)
 
-    # 停損：2x ATR
+    # 停損：依使用者選擇的 ATR 倍數
+    mult = req.atr_multiplier
     if direction == "long":
-        stop_loss = entry - 2 * atr_val
+        stop_loss = entry - mult * atr_val
         sl_pct    = round((stop_loss - entry) / entry * 100, 2)
     else:
-        stop_loss = entry + 2 * atr_val
+        stop_loss = entry + mult * atr_val
         sl_pct    = round((stop_loss - entry) / entry * 100, 2)
 
     # S/R
@@ -368,8 +373,10 @@ def analyze_futures(req: AnalyzeRequest, db: Session = Depends(get_db)):
         current_price=round(current_price),
         atr=round(atr_val),
         atr_pct=atr_pct,
+        atr_multiplier=mult,
         stop_loss=round(stop_loss),
         stop_loss_pct=sl_pct,
+        stop_loss_twd=round(abs(stop_loss - entry) * 50),  # 小台指每點50元
         targets=targets,
         supports=[round(s) for s in supports],
         resistances=[round(r) for r in resistances],

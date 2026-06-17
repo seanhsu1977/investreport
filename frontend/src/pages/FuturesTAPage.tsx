@@ -101,9 +101,15 @@ function LevelBar({
   );
 }
 
+const ATR_OPTIONS = [
+  { value: 0.5, label: "0.5× ATR", desc: "較緊，適合短線" },
+  { value: 1.0, label: "1× ATR",   desc: "標準，建議多數人" },
+];
+
 export default function FuturesTAPage() {
   const [direction, setDirection] = useState<Direction>("long");
   const [entryInput, setEntryInput] = useState("");
+  const [atrMult, setAtrMult] = useState(0.5);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<FuturesAnalysis | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -119,7 +125,7 @@ export default function FuturesTAPage() {
     setError(null);
     setResult(null);
     try {
-      const data = await futuresTAApi.analyze(direction, price);
+      const data = await futuresTAApi.analyze(direction, price, atrMult);
       setResult(data);
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
@@ -167,12 +173,31 @@ export default function FuturesTAPage() {
           </button>
         </div>
 
+        {/* ATR 倍數選擇 */}
+        <div className="flex gap-2 mb-4">
+          {ATR_OPTIONS.map(opt => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => setAtrMult(opt.value)}
+              className={`flex-1 py-2 rounded-xl text-sm transition border ${
+                atrMult === opt.value
+                  ? "bg-blue-600 text-white border-blue-600"
+                  : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-blue-400"
+              }`}
+            >
+              <span className="font-medium">{opt.label}</span>
+              <span className={`block text-xs mt-0.5 ${atrMult === opt.value ? "text-blue-100" : "text-gray-400"}`}>{opt.desc}</span>
+            </button>
+          ))}
+        </div>
+
         <div className="flex gap-3">
           <input
             type="number"
             value={entryInput}
             onChange={e => setEntryInput(e.target.value)}
-            placeholder="進場價格（例：22000）"
+            placeholder="進場價格（例：46000）"
             className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
           />
           <button
@@ -209,7 +234,7 @@ export default function FuturesTAPage() {
             <MetricCard
               label="建議停損"
               value={`${result.stop_loss.toLocaleString()}`}
-              sub={`${result.stop_loss_pct}%（2x ATR）`}
+              sub={`${result.atr_multiplier}x ATR｜約 $${result.stop_loss_twd.toLocaleString()}`}
               color="text-red-500 dark:text-red-400"
             />
             <MetricCard label="RSI(14)" value={result.rsi != null ? String(result.rsi) : "—"} sub={result.rsi != null ? (result.rsi > 70 ? "超買" : result.rsi < 30 ? "超賣" : "中性") : ""} />

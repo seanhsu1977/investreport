@@ -1337,6 +1337,68 @@ def get_recent_reports(days: int = Query(default=3, ge=1, le=30), db: Session = 
     return {"stock_reports": stock_reports, "market_news": market_news}
 
 
+@router.get("/kdj-screen")
+async def kdj_screen(db: Session = Depends(get_db)):
+    """掃描自選股 + 近期推薦台股，找出 KDJ(89,9,12) 低位金叉 / 金叉個股。"""
+    from price_analysis import get_signals
+    from models import WatchlistItem
+
+    # 自選股
+    wl_codes = {r.stock_code for r in db.query(WatchlistItem.stock_code).all()}
+    # 近 90 天有報告的台股（4碼純數字）
+    cutoff = (datetime.utcnow() - timedelta(days=90)).date().isoformat()
+    recent_codes = {
+        r.stock_code for r in
+        db.query(Report.stock_code)
+        .filter(Report.report_date >= cutoff)
+        .distinct().all()
+        if r.stock_code and r.stock_code.isdigit() and len(r.stock_code) == 4
+    }
+    code_list = list(wl_codes | recent_codes)[:250]
+
+    # 取每股名稱（從最新報告）
+    name_map: dict[str, str | None] = {}
+    for code in code_list:
+        row = (db.query(Report.stock_name).filter(Report.stock_code == code)
+               .order_by(Report.created_at.desc()).first())
+        name_map[code] = row[0] if row else None
+
+    semaphore = asyncio.Semaphore(8)
+
+    async def fetch_one(code: str):
+        async with semaphore:
+            sig = await asyncio.to_thread(get_signals, code)
+            return code, sig
+
+    results = await asyncio.gather(*[fetch_one(c) for c in code_list])
+
+    CROSS_SIGNALS = {"低位金叉", "金叉", "低位死叉", "高位死叉", "死叉"}
+    items = []
+    for code, sig in results:
+        if not sig or sig.get("kdj_signal") not in CROSS_SIGNALS:
+            continue
+        items.append({
+            "code": code,
+            "name": name_map.get(code),
+            "current_price": sig.get("current_price"),
+            "kdj_k": sig.get("kdj_k"),
+            "kdj_d": sig.get("kdj_d"),
+            "kdj_j": sig.get("kdj_j"),
+            "kdj_signal": sig.get("kdj_signal"),
+            "kdj_cross_days": sig.get("kdj_cross_days"),
+            "ma_signal": sig.get("ma_signal"),
+            "rsi": sig.get("rsi"),
+        })
+
+    SIGNAL_ORDER = {"低位金叉": 0, "金叉": 1, "低位死叉": 2, "死叉": 3, "高位死叉": 4}
+    items.sort(key=lambda x: (
+        SIGNAL_ORDER.get(x["kdj_signal"], 9),
+        x.get("kdj_cross_days") or 99,
+        x.get("kdj_k") or 99,
+    ))
+    return {"items": items, "total": len(items), "scanned": len(code_list)}
+
+
 @router.get("/{stock_code}/kline")
 def get_stock_kline(stock_code: str, period: str = Query(default="1y")):
     """Return daily OHLCV + MA5/10/20/60 + KDJ(RSV=9, K/D weight=1/12, range=89d)."""

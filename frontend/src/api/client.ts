@@ -158,7 +158,25 @@ export interface StockSignal {
   resistance: number[];
   support: number[];
   tower: TowerSignal | null;
+  kdj_k: number | null;
+  kdj_d: number | null;
+  kdj_j: number | null;
+  kdj_signal: string | null;
+  kdj_cross_days: number | null;
   updated_at: string;
+}
+
+export interface KdjScreenItem {
+  code: string;
+  name: string | null;
+  current_price: number | null;
+  kdj_k: number | null;
+  kdj_d: number | null;
+  kdj_j: number | null;
+  kdj_signal: string;
+  kdj_cross_days: number | null;
+  ma_signal: string | null;
+  rsi: number | null;
 }
 
 interface OhlcPoint  { time: number; open: number; high: number; low: number; close: number; volume?: number }
@@ -230,6 +248,8 @@ export const stocksApi = {
     api.get<KlineResponse>("/stocks/txf-kline").then((r) => r.data),
   kline: (code: string) =>
     api.get<KlineResponse>(`/stocks/${code}/kline`).then((r) => r.data),
+  kdj_screen: () =>
+    api.get<{ items: KdjScreenItem[]; total: number; scanned: number }>("/stocks/kdj-screen").then((r) => r.data),
 };
 
 export const searchApi = {

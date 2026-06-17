@@ -47,6 +47,72 @@ def _compute_rsi(closes: pd.Series, period: int = 14) -> float | None:
     return round(float(val), 1) if pd.notna(val) else None
 
 
+def _compute_kdj_series(
+    closes: pd.Series,
+    highs: pd.Series,
+    lows: pd.Series,
+    rsv_n: int = 89,
+    k_w: float = 1 / 9,
+    d_w: float = 1 / 12,
+) -> tuple[list, list, list]:
+    """KDJ(89,9,12) series. Returns (k_vals, d_vals, j_vals) lists."""
+    low_min  = lows.rolling(rsv_n).min()
+    high_max = highs.rolling(rsv_n).max()
+    denom    = high_max - low_min
+    rsv_raw  = ((closes - low_min) / denom * 100).where(denom > 0)
+
+    k_vals, d_vals, j_vals = [], [], []
+    k_prev, d_prev = 50.0, 50.0
+    for r in rsv_raw:
+        if pd.isna(r):
+            k_vals.append(None); d_vals.append(None); j_vals.append(None)
+        else:
+            k = k_prev * (1 - k_w) + r * k_w
+            d = d_prev * (1 - d_w) + k * d_w
+            j = 3 * k - 2 * d
+            k_vals.append(round(k, 2))
+            d_vals.append(round(d, 2))
+            j_vals.append(round(j, 2))
+            k_prev, d_prev = k, d
+    return k_vals, d_vals, j_vals
+
+
+def _kdj_signal_from_series(
+    k_vals: list, d_vals: list, j_vals: list, cross_lookback: int = 5
+) -> tuple:
+    """從 KDJ series 計算最新 K/D/J 值與金叉/死叉訊號。
+
+    Returns: (kdj_k, kdj_d, kdj_j, signal, cross_days)
+      signal: "低位金叉" | "金叉" | "高位死叉" | "低位死叉" | "死叉" | "多頭" | "空頭"
+      cross_days: 0=今日交叉, 1=昨日, …, None=無近期交叉
+    """
+    valid = [(k, d, j) for k, d, j in zip(k_vals, d_vals, j_vals) if k is not None]
+    if len(valid) < 2:
+        return None, None, None, None, None
+
+    cur_k, cur_d, cur_j = valid[-1]
+    cross_days = cross_type = cross_k = None
+
+    for i in range(min(cross_lookback, len(valid) - 1)):
+        this_k, this_d, _ = valid[-(i + 1)]
+        prev_k, prev_d, _ = valid[-(i + 2)]
+        if prev_k < prev_d and this_k >= this_d:
+            cross_days, cross_type, cross_k = i, "golden", this_k
+            break
+        if prev_k > prev_d and this_k <= this_d:
+            cross_days, cross_type, cross_k = i, "dead", this_k
+            break
+
+    if cross_type == "golden":
+        signal = "低位金叉" if cross_k < 30 else "金叉"
+    elif cross_type == "dead":
+        signal = "高位死叉" if cross_k > 70 else ("低位死叉" if cross_k < 30 else "死叉")
+    else:
+        signal = "多頭" if cur_k >= cur_d else "空頭"
+
+    return round(cur_k, 1), round(cur_d, 1), round(cur_j, 1), signal, cross_days
+
+
 def _compute_tower(
     closes: pd.Series,
     highs: pd.Series,
@@ -542,13 +608,17 @@ def get_signals(code: str) -> dict | None:
 
             suggestion = _make_suggestion(ma_signal, volume_signal, rsi, price_change_5d, bb_sig)
             levels = _find_levels(closes, highs, lows, current_price, volumes)
-            # 寶塔線用 yfinance 資料，與 K 線圖保持一致
+            # 寶塔線 + KDJ 用 yfinance 資料（需要 89+ 根），與 K 線圖保持一致
+            kdj_k = kdj_d = kdj_j = kdj_signal = kdj_cross_days = None
             try:
                 _yf_hist = _fetch_history(code)
                 if not _yf_hist.empty and len(_yf_hist) >= 10:
                     tower = _compute_tower(_yf_hist["Close"], _yf_hist["High"], _yf_hist["Low"])
                 else:
                     tower = _compute_tower(closes, highs, lows)
+                if len(_yf_hist) >= 90:
+                    kk, dd, jj = _compute_kdj_series(_yf_hist["Close"], _yf_hist["High"], _yf_hist["Low"])
+                    kdj_k, kdj_d, kdj_j, kdj_signal, kdj_cross_days = _kdj_signal_from_series(kk, dd, jj)
             except Exception:
                 tower = _compute_tower(closes, highs, lows)
 
@@ -572,6 +642,11 @@ def get_signals(code: str) -> dict | None:
                 "resistance": levels["resistance"],
                 "support": levels["support"],
                 "tower": tower,
+                "kdj_k": kdj_k,
+                "kdj_d": kdj_d,
+                "kdj_j": kdj_j,
+                "kdj_signal": kdj_signal,
+                "kdj_cross_days": kdj_cross_days,
                 "updated_at": datetime.utcnow().isoformat(),
             }
             _CACHE[code] = (result, now)
@@ -622,6 +697,11 @@ def get_signals(code: str) -> dict | None:
         levels = _find_levels(closes, highs, lows, current_price, volumes)
         tower  = _compute_tower(closes, highs, lows)
 
+        kdj_k = kdj_d = kdj_j = kdj_signal = kdj_cross_days = None
+        if len(hist) >= 90:
+            kk, dd, jj = _compute_kdj_series(closes, highs, lows)
+            kdj_k, kdj_d, kdj_j, kdj_signal, kdj_cross_days = _kdj_signal_from_series(kk, dd, jj)
+
         result = {
             "current_price": current_price,
             "price_change_5d": price_change_5d,
@@ -642,6 +722,11 @@ def get_signals(code: str) -> dict | None:
             "resistance": levels["resistance"],
             "support": levels["support"],
             "tower": tower,
+            "kdj_k": kdj_k,
+            "kdj_d": kdj_d,
+            "kdj_j": kdj_j,
+            "kdj_signal": kdj_signal,
+            "kdj_cross_days": kdj_cross_days,
             "updated_at": datetime.utcnow().isoformat(),
         }
         _CACHE[code] = (result, now)

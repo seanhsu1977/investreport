@@ -222,6 +222,7 @@ export default function FuturesTAPage() {
               <Badge text={result.direction === "long" ? "做多" : "做空"} color={result.direction === "long" ? "green" : "red"} />
               <Badge text={`進場 ${result.entry_price.toLocaleString()}`} color="blue" />
               <Badge text={`目前 ${result.current_price.toLocaleString()}`} color="gray" />
+              <span className="text-xs text-gray-400 self-center">{result.price_source}</span>
               {result.risk_reward && (
                 <Badge text={`風報比 1:${result.risk_reward}`} color={result.risk_reward >= 1.5 ? "green" : result.risk_reward >= 1 ? "yellow" : "red"} />
               )}

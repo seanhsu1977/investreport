@@ -67,6 +67,8 @@ class AnalyzeResponse(BaseModel):
     risk_reward: Optional[float]
     verdict: str
     advice: List[str]
+    price_source: str
+    candle_date: str
 
 
 # ── 計算工具 ───────────────────────────────────────────────────────────────────
@@ -299,9 +301,25 @@ def analyze_futures(req: AnalyzeRequest, db: Session = Depends(get_db)):
     lows    = pd.Series([r.low    for r in rows])
     volumes = pd.Series([r.volume or 0 for r in rows])
 
+    db_last_date = rows[-1].date  # YYYYMMDD
+
+    # 嘗試用 yfinance 抓最新加權指數價格（含當日盤中）
     current_price = float(closes.iloc[-1])
-    entry         = req.entry_price
-    direction     = req.direction
+    price_source  = f"DB收盤 {db_last_date}"
+    try:
+        import yfinance as yf
+        hist = yf.Ticker("^TWII").history(period="2d")
+        if not hist.empty:
+            latest = float(hist["Close"].iloc[-1])
+            latest_date = str(hist.index[-1].date())
+            if latest > 0:
+                current_price = latest
+                price_source  = f"即時加權 {latest_date}（不含夜盤）"
+    except Exception:
+        pass
+
+    entry     = req.entry_price
+    direction = req.direction
 
     # ATR
     atr_val  = _atr(highs, lows, closes)
@@ -397,4 +415,6 @@ def analyze_futures(req: AnalyzeRequest, db: Session = Depends(get_db)):
         risk_reward=rr,
         verdict=verdict,
         advice=advice,
+        price_source=price_source,
+        candle_date=db_last_date,
     )

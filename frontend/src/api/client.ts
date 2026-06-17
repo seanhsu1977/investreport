@@ -488,6 +488,8 @@ export interface FuturesAnalysis {
   risk_reward: number | null;
   verdict: string;
   advice: string[];
+  price_source: string;
+  candle_date: string;
 }
 
 export const futuresTAApi = {

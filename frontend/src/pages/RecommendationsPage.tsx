@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { stocksApi, RecommendationItem } from "../api/client";
+import KdjScreener from "../components/KdjScreener";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -253,6 +254,7 @@ function RestCard({ item, rank, onAskReason }: { item: RecommendationItem; rank:
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function RecommendationsPage() {
+  const [tab, setTab] = useState<"rec" | "kdj">("rec");
   const [days, setDays] = useState(30);
   const [minReports, setMinReports] = useState(1);
   const [recFilter, setRecFilter] = useState<"all" | "buy_only">("all");
@@ -397,14 +399,33 @@ export default function RecommendationsPage() {
   const chipActive = "bg-[#0B1E3D] text-white border-[#0B1E3D]";
   const chipInactive = "bg-white text-[#6B7A99] border-[#DDE2EC] hover:text-[#0D1B2A]";
 
+  const tabCls = (t: "rec" | "kdj") =>
+    `px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 transition ${
+      tab === t
+        ? "text-[#0B1E3D] border-[#0B1E3D]"
+        : "text-[#6B7A99] border-transparent hover:text-[#0D1B2A]"
+    }`;
+
   return (
     <div className="max-w-5xl mx-auto px-4 py-6 space-y-5">
 
-      {/* ── Page Header ── */}
+      {/* ── Page Header + Tabs ── */}
+      <div>
+        <h1 className="text-[22px] font-bold text-[#0D1B2A]">選股</h1>
+        <div className="flex gap-1 mt-3 border-b border-[#DDE2EC]">
+          <button className={tabCls("rec")} onClick={() => setTab("rec")}>投顧精選</button>
+          <button className={tabCls("kdj")} onClick={() => setTab("kdj")}>KDJ 選股</button>
+        </div>
+      </div>
+
+      {tab === "kdj" && <KdjScreener />}
+
+      {tab === "rec" && <>
+
+      {/* ── 投顧精選 Filter bar ── */}
       <div className="flex items-end justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-[22px] font-bold text-[#0D1B2A]">投顧精選</h1>
-          <p className="text-[12px] text-[#6B7A99] mt-0.5">
+          <p className="text-[12px] text-[#6B7A99]">
             綜合投顧共識 · 籌碼面 · 技術面評分
             {lastFetched && (
               <span className="ml-2">· 更新於 {lastFetched.toLocaleTimeString("zh-TW")}</span>
@@ -412,7 +433,6 @@ export default function RecommendationsPage() {
           </p>
         </div>
 
-        {/* Filter bar */}
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-[11px] text-[#6B7A99] font-medium">期間</span>
           <div className="flex gap-1">
@@ -667,6 +687,8 @@ export default function RecommendationsPage() {
         <span><span className="font-medium text-[#0D1B2A]">籌碼配合</span> 0–15 分，法人 5 日淨買超</span>
         <span><span className="font-medium text-[#0D1B2A]">技術面</span> 0–20 分，多頭排列 +10、量增 +10</span>
       </section>
+
+      </>}
     </div>
   );
 }

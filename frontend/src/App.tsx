@@ -47,7 +47,7 @@ function ScrollToTop() {
 }
 
 const NAV_ITEMS = [
-  { to: "/",          label: "投顧精選", end: true,  auth: true  },
+  { to: "/",          label: "選股",     end: true,  auth: true  },
   { to: "/watchlist", label: "自選股",   end: false, auth: false },
   { to: "/recent",    label: "近期消息", end: false, auth: true  },
   { to: "/ranking",   label: "排行",     end: false, auth: true  },

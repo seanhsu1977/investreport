@@ -14,6 +14,7 @@ from database import init_db
 from scheduler import start_scheduler, stop_scheduler
 from routers import stocks, watchlist, sync, chips
 from routers import auth, admin, publish, etf_tracker
+from routers import futures_ta
 
 logging.basicConfig(level=logging.INFO)
 
@@ -81,6 +82,7 @@ app.include_router(admin.router, prefix="/api")
 app.include_router(publish.router, prefix="/api")
 app.include_router(chips.router, prefix="/api")
 app.include_router(etf_tracker.router, prefix="/api")
+app.include_router(futures_ta.router, prefix="/api")
 
 
 @app.get("/healthz")

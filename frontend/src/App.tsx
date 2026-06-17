@@ -10,6 +10,7 @@ import RankingPage from "./pages/RankingPage";
 import RecommendationsPage from "./pages/RecommendationsPage";
 import ChipsPage from "./pages/ChipsPage";
 import EtfTrackerPage from "./pages/EtfTrackerPage";
+import FuturesTAPage from "./pages/FuturesTAPage";
 import LoginButton from "./components/LoginButton";
 import PostMaterialsBar from "./components/PostMaterialsBar";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
@@ -54,6 +55,7 @@ const NAV_ITEMS = [
   { to: "/chips",       label: "大盤",     end: false, auth: true  },
   { to: "/etf-tracker", label: "ETF追蹤",  end: false, auth: true  },
   { to: "/search",      label: "搜尋",     end: false, auth: true  },
+  { to: "/futures-ta",  label: "期貨分析",  end: false, auth: true  },
 ];
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -166,6 +168,7 @@ function AppInner() {
           <Route path="/chips"        element={<RequireAuth><ChipsPage /></RequireAuth>} />
           <Route path="/etf-tracker" element={<RequireAuth><EtfTrackerPage /></RequireAuth>} />
           <Route path="/admin"        element={<RequireAuth><AdminPage /></RequireAuth>} />
+          <Route path="/futures-ta"  element={<RequireAuth><FuturesTAPage /></RequireAuth>} />
         </Routes>
       </main>
       <PostMaterialsBar />

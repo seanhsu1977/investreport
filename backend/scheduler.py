@@ -5,7 +5,7 @@ from datetime import date, datetime, timezone
 from apscheduler.schedulers.background import BackgroundScheduler
 from database import SessionLocal
 from drive_sync import sync_drive
-from models import Report, FuturesChip, SyncLog
+from models import Report, FuturesChip, SyncLog, MarketTechnicalSnapshot
 import taifex
 
 logger = logging.getLogger(__name__)
@@ -116,6 +116,22 @@ def _daily_article_job():
         logger.exception("Daily article job failed: %s", e)
 
 
+def _market_technical_job():
+    """每日 14:45 收盤後存大盤技術指標快照（加權 + 上櫃）"""
+    logger.info("Saving market technical snapshots...")
+    db = SessionLocal()
+    try:
+        from routers.stocks import save_market_technical
+        for idx in ("taiex", "twoii"):
+            try:
+                save_market_technical(index=idx, db=db)
+                logger.info("Market technical snapshot saved: %s", idx)
+            except Exception as e:
+                logger.warning("Market technical snapshot failed for %s: %s", idx, e)
+    finally:
+        db.close()
+
+
 def _recommendations_warmup_job():
     """每天 07:00 Asia/Taipei 預算投顧精選快取，使用者開頁面不需等待"""
     import asyncio
@@ -157,6 +173,12 @@ def start_scheduler():
         day_of_week="mon-fri", hour=19, minute=45, timezone="Asia/Taipei",
         id="daily_article",
     )
+    # 大盤技術指標快照：每天 14:45（收盤後）Mon-Fri
+    scheduler.add_job(
+        _market_technical_job, "cron",
+        day_of_week="mon-fri", hour=14, minute=45, timezone="Asia/Taipei",
+        id="market_technical",
+    )
     # 投顧精選預算快取：每天 07:00 Asia/Taipei（含六日，因用戶週末也會看）
     scheduler.add_job(
         _recommendations_warmup_job, "cron",
@@ -164,7 +186,7 @@ def start_scheduler():
         id="rec_warmup",
     )
     scheduler.start()
-    logger.info("Scheduler started (drive sync 04:00/09:00/14:00/20:00 Taipei, chips 15:45, daily_article 19:45 Mon-Fri, rec_warmup 07:00 daily)")
+    logger.info("Scheduler started (drive sync 04:00/09:00/14:00/20:00 Taipei, chips 15:45, market_technical 14:45, daily_article 19:45 Mon-Fri, rec_warmup 07:00 daily)")
 
 
 def stop_scheduler():

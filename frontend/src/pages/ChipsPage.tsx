@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Bar,
   BarChart,
@@ -11,7 +11,10 @@ import {
   YAxis,
   Cell,
 } from "recharts";
-import { chipsApi, type ChipSnapshot, type InstitutionPosition } from "../api/client";
+import { chipsApi, stocksApi, type ChipSnapshot, type InstitutionPosition, type KlineResponse, type KlineTechnical, type TowerSignal } from "../api/client";
+import KlineChart from "../components/KlineChart";
+import KdjChart from "../components/KdjChart";
+import type { ITimeScaleApi, UTCTimestamp } from "lightweight-charts";
 
 type Direction = "long" | "short" | "neutral";
 
@@ -499,6 +502,365 @@ function RetailChart({
   );
 }
 
+/* ============================ 技術分析面板 ============================ */
+
+function TowerBadge({ tower }: { tower: TowerSignal | null }) {
+  if (!tower) return <span className="text-gray-400 text-sm">—</span>;
+  const isPos = tower.color === "陽";
+  const isTurn = tower.signal.startsWith("轉");
+  return (
+    <div className="flex items-center gap-2 flex-wrap">
+      <span className={`text-sm font-bold px-2 py-0.5 rounded ${isPos ? "bg-rose-100 text-rose-600" : "bg-emerald-100 text-emerald-700"}`}>
+        {tower.color}棒 × {tower.count} 根
+      </span>
+      {isTurn && (
+        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${isPos ? "border-rose-400 text-rose-500 bg-rose-50" : "border-emerald-500 text-emerald-600 bg-emerald-50"}`}>
+          ⚡ {tower.signal}
+        </span>
+      )}
+      {!isTurn && (
+        <span className="text-xs text-gray-500">{tower.signal}</span>
+      )}
+    </div>
+  );
+}
+
+function SrList({ values, color }: { values: number[]; color: "red" | "green" }) {
+  if (!values.length) return <span className="text-gray-400 text-sm">—</span>;
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {values.map((v) => (
+        <span key={v} className={`text-xs font-mono px-2 py-0.5 rounded ${color === "red" ? "bg-rose-50 text-rose-600" : "bg-emerald-50 text-emerald-700"}`}>
+          {v.toLocaleString("zh-TW", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function TechRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-start gap-3 py-2.5 border-b border-gray-100 last:border-0">
+      <span className="text-xs text-gray-400 w-20 shrink-0 pt-0.5">{label}</span>
+      <div className="flex-1">{children}</div>
+    </div>
+  );
+}
+
+function SignalBadge({ text }: { text: string | null | undefined }) {
+  if (!text) return <span className="text-gray-400 text-sm">—</span>;
+  const isPositive = ["多頭排列", "量增", "超買"].includes(text);
+  const isNegative = ["空頭排列", "超賣"].includes(text);
+  const isNeutral  = ["均線糾結", "量持平", "量縮", "正常", "無"].includes(text);
+  const cls = isPositive ? "bg-rose-50 text-rose-600" : isNegative ? "bg-emerald-50 text-emerald-700" : "bg-gray-100 text-gray-600";
+  return <span className={`text-xs font-medium px-2 py-0.5 rounded ${cls}`}>{text}</span>;
+}
+
+function TechAnalysisPanel({ data }: { data: KlineTechnical }) {
+  const bbPos = data.bb_pct_b != null ? `%B = ${(data.bb_pct_b * 100).toFixed(1)}%` : null;
+  const suggestionColor = data.suggestion.includes("多") || data.suggestion.includes("買")
+    ? "text-rose-600" : data.suggestion.includes("空") || data.suggestion.includes("賣")
+    ? "text-emerald-700" : "text-gray-700";
+
+  return (
+    <div className="rounded-xl overflow-hidden border border-[#1e3a5f]">
+      <div className="px-4 py-2.5 bg-[#0B1E3D]">
+        <span className="text-[13px] font-bold text-white">技術分析</span>
+      </div>
+      <div className="bg-white px-4 py-1">
+        <TechRow label="均線">
+          <div className="flex items-center gap-2 flex-wrap">
+            <SignalBadge text={data.ma_signal} />
+            <span className="text-xs text-gray-500">
+              MA5 <span className="font-mono font-semibold text-amber-500">{data.ma5.toLocaleString("zh-TW", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              &nbsp;·&nbsp;
+              MA20 <span className="font-mono font-semibold text-purple-500">{data.ma20.toLocaleString("zh-TW", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            </span>
+          </div>
+        </TechRow>
+        <TechRow label="成交量">
+          <SignalBadge text={data.volume_signal} />
+        </TechRow>
+        <TechRow label="RSI">
+          <div className="flex items-center gap-2">
+            {data.rsi != null && (
+              <span className={`text-sm font-bold font-mono ${data.rsi >= 70 ? "text-rose-500" : data.rsi <= 30 ? "text-emerald-600" : "text-gray-700"}`}>
+                {data.rsi.toFixed(1)}
+              </span>
+            )}
+            <SignalBadge text={data.rsi_signal} />
+          </div>
+        </TechRow>
+        <TechRow label="布林通道">
+          <div className="flex items-center gap-2 flex-wrap">
+            {data.bb_signal && <SignalBadge text={data.bb_signal} />}
+            {data.bb_upper != null && data.bb_lower != null && (
+              <span className="text-xs text-gray-500 font-mono">
+                {data.bb_lower.toLocaleString("zh-TW", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                &nbsp;–&nbsp;
+                {data.bb_upper.toLocaleString("zh-TW", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+              </span>
+            )}
+            {bbPos && <span className="text-xs text-gray-400">{bbPos}</span>}
+          </div>
+        </TechRow>
+        <TechRow label="寶塔線">
+          <TowerBadge tower={data.tower} />
+        </TechRow>
+        <TechRow label="阻力">
+          <SrList values={data.resistance} color="red" />
+        </TechRow>
+        <TechRow label="支撐">
+          <SrList values={data.support} color="green" />
+        </TechRow>
+        <TechRow label="綜合建議">
+          <span className={`text-sm font-semibold ${suggestionColor}`}>{data.suggestion}</span>
+        </TechRow>
+      </div>
+    </div>
+  );
+}
+
+/* ============================ 大盤技術指標歷史 ============================ */
+
+type TechHistoryRow = KlineTechnical & { date: string };
+
+function TechHistoryTable({ index }: { index: "taiex" | "twoii" }) {
+  const [rows, setRows]       = useState<TechHistoryRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving]   = useState(false);
+
+  const load = () => {
+    setLoading(true);
+    stocksApi.market_technical_history(index, 30)
+      .then(setRows).catch(() => {}).finally(() => setLoading(false));
+  };
+
+  useEffect(() => { load(); }, [index]);
+
+  const handleSave = () => {
+    setSaving(true);
+    stocksApi.save_market_technical(index)
+      .then(() => load())
+      .catch(() => {})
+      .finally(() => setSaving(false));
+  };
+
+  const towerColor = (t: TechHistoryRow["tower"]) => {
+    if (!t) return "text-gray-400";
+    return t.color === "陽" ? "text-rose-500" : "text-emerald-600";
+  };
+  const maColor = (s: string) =>
+    s === "多頭排列" ? "text-rose-500" : s === "空頭排列" ? "text-emerald-600" : "text-gray-500";
+
+  return (
+    <div className="rounded-xl overflow-hidden border border-[#1e3a5f]">
+      <div className="px-4 py-2.5 bg-[#0B1E3D] flex items-center justify-between">
+        <span className="text-[13px] font-bold text-white">歷史復盤</span>
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="text-[11px] text-white/60 hover:text-white/90 border border-white/20 rounded px-2 py-0.5 disabled:opacity-40"
+        >
+          {saving ? "儲存中…" : "存今日"}
+        </button>
+      </div>
+      {loading ? (
+        <div className="bg-[#0B1E3D] text-white/40 text-xs text-center py-6">載入中…</div>
+      ) : rows.length === 0 ? (
+        <div className="bg-[#0B1E3D] text-white/40 text-xs text-center py-6">
+          尚無歷史紀錄，點「存今日」開始累積
+        </div>
+      ) : (
+        <div className="bg-[#0B1E3D] overflow-x-auto">
+          <table className="w-full text-[12px] text-white/80">
+            <thead>
+              <tr className="border-b border-[#1e3a5f] text-white/40 text-[11px]">
+                <th className="text-left px-3 py-2">日期</th>
+                <th className="text-right px-3 py-2">收盤</th>
+                <th className="text-center px-3 py-2">均線</th>
+                <th className="text-center px-3 py-2">RSI</th>
+                <th className="text-center px-3 py-2">布林</th>
+                <th className="text-center px-3 py-2">寶塔線</th>
+                <th className="text-left px-3 py-2">建議</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.date} className="border-b border-[#1e3a5f]/50 hover:bg-white/5">
+                  <td className="px-3 py-1.5 font-mono text-white/60">{r.date.slice(5)}</td>
+                  <td className="px-3 py-1.5 text-right tabular-nums">
+                    {r.current.toLocaleString("zh-TW")}
+                  </td>
+                  <td className={`px-3 py-1.5 text-center font-medium ${maColor(r.ma_signal)}`}>
+                    {r.ma_signal}
+                  </td>
+                  <td className="px-3 py-1.5 text-center tabular-nums">
+                    <span className={r.rsi && r.rsi >= 70 ? "text-rose-400" : r.rsi && r.rsi <= 30 ? "text-emerald-400" : ""}>
+                      {r.rsi ?? "—"}
+                    </span>
+                  </td>
+                  <td className="px-3 py-1.5 text-center text-white/60">
+                    {r.bb_signal ?? "—"}
+                  </td>
+                  <td className={`px-3 py-1.5 text-center font-medium ${towerColor(r.tower)}`}>
+                    {r.tower ? `${r.tower.signal}${r.tower.count}根` : "—"}
+                  </td>
+                  <td className="px-3 py-1.5 text-white/70">{r.suggestion}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ============================ 技術分析 Card（可共用）============================ */
+
+function MarketTechCard({ title, loader, indexKey = "taiex" }: { title: string; loader: () => Promise<KlineResponse>; indexKey?: string }) {
+  const [kline, setKline] = useState<KlineResponse | null>(null);
+  const [klineLoading, setKlineLoading] = useState(true);
+  const klineTs = useRef<ITimeScaleApi<UTCTimestamp> | null>(null);
+  const kdjTs   = useRef<ITimeScaleApi<UTCTimestamp> | null>(null);
+  const syncing  = useRef(false);
+
+  useEffect(() => {
+    loader()
+      .then((kl) => { if (kl) setKline(kl); })
+      .catch(() => {})
+      .finally(() => setKlineLoading(false));
+  }, []);
+
+  const syncCharts = (
+    src: ITimeScaleApi<UTCTimestamp>,
+    dst: ITimeScaleApi<UTCTimestamp>,
+  ) => {
+    src.subscribeVisibleLogicalRangeChange((range) => {
+      if (syncing.current || !range) return;
+      syncing.current = true;
+      dst.setVisibleLogicalRange(range);
+      syncing.current = false;
+    });
+  };
+
+  const formatPrice = (n: number) =>
+    n.toLocaleString("zh-TW", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  return (
+    <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 space-y-4">
+      <h2 className="text-xl font-bold text-gray-900">{title}</h2>
+
+      {/* K 線 */}
+      <div className="rounded-xl overflow-hidden border border-[#1e3a5f]">
+        <div className="px-4 py-2.5 bg-[#0B1E3D] flex items-center justify-between">
+          <span className="text-[13px] font-bold text-white">日 K 線</span>
+          <div className="flex items-center gap-3 text-[11px] text-white/70">
+            <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-[#F59E0B] inline-block"/>MA5</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-[#3B82F6] inline-block"/>MA10</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-[#A855F7] inline-block"/>MA20</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-[#10B981] inline-block"/>MA60</span>
+          </div>
+        </div>
+        {klineLoading ? (
+          <div className="h-[300px] flex items-center justify-center bg-[#122548]">
+            <svg className="animate-spin h-6 w-6 text-white/40" viewBox="0 0 24 24" fill="none">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+            </svg>
+          </div>
+        ) : kline && kline.candles.length > 0 ? (
+          <KlineChart {...kline} onTimeScaleReady={(ts) => {
+            klineTs.current = ts;
+            if (kdjTs.current) { syncCharts(ts, kdjTs.current); syncCharts(kdjTs.current, ts); }
+          }} />
+        ) : (
+          <div className="h-[300px] flex items-center justify-center bg-[#122548] text-white/40 text-sm">
+            無法載入 K 線資料
+          </div>
+        )}
+      </div>
+
+      {/* KDJ */}
+      {!klineLoading && kline && kline.kdj_k.length > 0 && (
+        <div className="rounded-xl overflow-hidden border border-[#1e3a5f]">
+          <div className="px-4 py-2.5 bg-[#0B1E3D] flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-[13px] font-bold text-white">KDJ</span>
+              <span className="text-[11px] text-white/50">RSV=89 · K權重 1/9 · D權重 1/12</span>
+            </div>
+            <div className="flex items-center gap-3 text-[11px]">
+              {([["K", kline.kdj_cur_k, "#3B82F6"], ["D", kline.kdj_cur_d, "#F59E0B"], ["J", kline.kdj_cur_j, "#A78BFA"]] as [string, number | null, string][]).map(([lbl, val, color]) => (
+                <span key={lbl} style={{ color }}>
+                  {lbl} <span className={`font-mono font-bold ${val == null ? "text-white/40" : val >= 90 ? "text-[#FCA5A5]" : val >= 80 ? "text-[#EF4444]" : val <= 10 ? "text-[#86EFAC]" : val <= 20 ? "text-[#22C55E]" : "text-white"}`}>
+                    {val != null ? val.toFixed(1) : "—"}
+                  </span>
+                </span>
+              ))}
+            </div>
+          </div>
+          <KdjChart
+            kdj_k={kline.kdj_k} kdj_d={kline.kdj_d} kdj_j={kline.kdj_j}
+            onTimeScaleReady={(ts) => {
+              kdjTs.current = ts;
+              if (klineTs.current) { syncCharts(ts, klineTs.current); syncCharts(klineTs.current, ts); }
+            }}
+          />
+          {kline.kdj_k10_price != null && kline.kdj_k90_price != null && (
+            <div className="bg-[#0B1E3D] border-t border-[#1e3a5f]">
+              <div className="grid grid-cols-2 divide-x divide-[#1e3a5f]">
+                <div className="grid grid-cols-2 divide-x divide-[#1e3a5f]">
+                  {([
+                    ["K=10", kline.kdj_k10_price, "text-[#22C55E]"],
+                    ["K=20", kline.kdj_k20_price, "text-[#22C55E]"],
+                  ] as [string, number | null, string][]).map(([label, val, cls]) => (
+                    <div key={label} className="text-center py-2">
+                      <div className="text-[10px] text-white/50 mb-0.5">{label}</div>
+                      <div className={`font-bold tabular-nums text-[12px] ${cls}`}>
+                        {val != null ? formatPrice(val) : "—"}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="grid grid-cols-2 divide-x divide-[#1e3a5f]">
+                  {([
+                    ["K=80", kline.kdj_k80_price, "text-[#EF4444]"],
+                    ["K=90", kline.kdj_k90_price, "text-[#EF4444]"],
+                  ] as [string, number | null, string][]).map(([label, val, cls]) => (
+                    <div key={label} className="text-center py-2">
+                      <div className="text-[10px] text-white/50 mb-0.5">{label}</div>
+                      <div className={`font-bold tabular-nums text-[12px] ${cls}`}>
+                        {val != null ? formatPrice(val) : "—"}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="border-t border-[#1e3a5f] text-center py-2">
+                <div className="text-[10px] text-white/50 mb-0.5">90-10 差距</div>
+                <div className="font-bold tabular-nums text-[12px] text-white">
+                  {formatPrice(kline.kdj_k90_price - kline.kdj_k10_price)}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 技術指標文字摘要 */}
+      {klineLoading ? null : kline?.technical ? (
+        <TechAnalysisPanel data={kline.technical} />
+      ) : (
+        <div className="rounded-xl border border-gray-200 px-4 py-3 text-sm text-gray-400">技術分析資料暫無法取得</div>
+      )}
+
+      {/* 歷史復盤 */}
+      <TechHistoryTable index={indexKey as "taiex" | "twoii"} />
+    </div>
+  );
+}
+
 /* ============================ Page ============================ */
 
 export default function ChipsPage() {
@@ -548,6 +910,9 @@ export default function ChipsPage() {
           {refreshing ? "抓取中…" : "立即抓取"}
         </button>
       </div>
+
+      {/* 大盤技術分析 */}
+      <MarketTechCard title="📊 加權指數技術分析" loader={() => stocksApi.market_kline("taiex")} indexKey="taiex" />
 
       {loading ? (
         <p className="text-gray-400">載入中…</p>

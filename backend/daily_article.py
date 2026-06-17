@@ -18,15 +18,7 @@ from typing import Optional
 from dotenv import load_dotenv
 load_dotenv(override=True)
 
-from google import genai
-from google.genai import types as genai_types
-
-_SAFETY_OFF = [
-    genai_types.SafetySetting(category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="BLOCK_NONE"),
-    genai_types.SafetySetting(category="HARM_CATEGORY_HARASSMENT",         threshold="BLOCK_NONE"),
-    genai_types.SafetySetting(category="HARM_CATEGORY_HATE_SPEECH",        threshold="BLOCK_NONE"),
-    genai_types.SafetySetting(category="HARM_CATEGORY_SEXUALLY_EXPLICIT",  threshold="BLOCK_NONE"),
-]
+import anthropic
 
 import nstock_etf
 import fundamental_analysis as fa
@@ -38,18 +30,19 @@ from stocks_master import resolve_name
 logger = logging.getLogger(__name__)
 
 TPE = timezone(timedelta(hours=8))
-LLM_MODEL = os.environ.get("DAILY_ARTICLE_MODEL", "gemini-2.5-flash")
+LLM_MODEL = os.environ.get("DAILY_ARTICLE_MODEL", "claude-sonnet-4-6")
 
 # ──────────────────────────────────────────────────────────────────────
 # Prompt
 # ──────────────────────────────────────────────────────────────────────
 
-SYSTEM_PROMPT = """你是一位財經議題分析寫手，文風參考 Newtalk 記者「蘇元和」報導主動式 ETF 籌碼動向的寫法。
+_SYSTEM_PROMPT_TEMPLATE = """你是一位財經議題分析寫手，文風參考 Newtalk 記者「蘇元和」報導主動式 ETF 籌碼動向的寫法。
+今日日期：{date_display}（請全文使用此具體日期，禁止使用「今日」「當天」「今天」等相對詞）
 
 # 文風要求
-- 「籌碼偵探」敘事：以主動 ETF 經理人的當日操作為切入點，搭配投顧報告觀點 + 量價數據 + 籌碼面，組合出「為什麼今天這檔被盯上」的解讀
+- 「籌碼偵探」敘事：以主動 ETF 經理人的當日操作為切入點，搭配投顧報告觀點 + 量價數據 + 籌碼面，組合出「為什麼{date_display}這檔被盯上」的解讀
 - 開場：用對比切入或情境鋪陳（例如先講大盤背景、產業氛圍、近期主流題材），再帶出主角股票
-- 中段句型多用「主語 + 時間 + 動作 + 數據」，例如「00981A 今日加碼貿聯-KY 206 張，當日股價收 2,780 元、漲幅 5.7%」
+- 中段句型多用「主語 + 時間 + 動作 + 數據」，例如「00981A {date_display}加碼貿聯-KY 206 張，{date_display}股價收 2,780 元、漲幅 5.7%」
 - 把幾個資訊軸線「拉在一起看」：ETF 動作 / 投顧觀點 / 法人籌碼 / 量價 / 基本面，至少串接 2~3 條
 - 數據呈現：關鍵數字直接寫出，不使用任何 Markdown 標記（不要 **粗體**、不要 `反引號`）
 - 多用轉場詞：「但從執行面來看」「反過來說」「把幾個時間點拉在一起看」「背後的邏輯完全不同」
@@ -61,7 +54,7 @@ SYSTEM_PROMPT = """你是一位財經議題分析寫手，文風參考 Newtalk �
 
 # 結構與長度
 - 800–1500 字
-- 標題：吸睛但不浮誇，可用「？」製造懸念，例如「00981A 今日重押 XXX，投顧 N 家目標價 Y 元，背後在押什麼？」
+- 標題：吸睛但不浮誇，可用「？」製造懸念，例如「00981A {date_display}重押 XXX，投顧 N 家目標價 Y 元，背後在押什麼？」
 - 文中一律使用「00981A」稱呼此 ETF，禁止出現「ETF小百科」
 - 第一段：勾子 + 點題（誰買了什麼）
 - 中段 2~4 段：分別串接「投顧觀點」「籌碼面」「量價/技術面」「同 ETF 其他動作對照」中的至少 2~3 個面向
@@ -72,13 +65,14 @@ SYSTEM_PROMPT = """你是一位財經議題分析寫手，文風參考 Newtalk �
 - 不要直接給「買進 / 賣出」建議
 - 不要編造數據（只能用 context 提供的數據）
 - 不要寫「身為投資人」「我認為」這類第一人稱主觀語
+- 禁止使用「今日」「今天」「當天」「當日」等相對時間詞，一律改為具體日期（{date_display}）
 
 # 輸出格式
 請輸出 JSON，且只輸出 JSON，不要任何前後敘述：
-{
+{{
   "title": "文章標題",
   "content": "文章正文（純文字，無任何 Markdown 標記，結尾含免責聲明）"
-}
+}}
 """
 
 
@@ -142,6 +136,9 @@ def _gather_context(db, topic: dict, etf_data: dict, target_date: date) -> dict:
             "target_price": r.target_price,
             "summary": (r.summary or "")[:300],
             "key_points": json.loads(r.key_points)[:5] if r.key_points else [],
+            # 供 source_links 使用（不影響 LLM prompt，LLM 不需理會這兩欄）
+            "_drive_file_id": r.drive_file_id,
+            "_source_filename": r.source_filename or "",
         })
 
     # 2. 量價技術訊號（yfinance）
@@ -218,29 +215,34 @@ def _gather_context(db, topic: dict, etf_data: dict, target_date: date) -> dict:
 # ──────────────────────────────────────────────────────────────────────
 
 def _call_llm(context: dict) -> dict:
-    """呼叫 Gemini，回傳 {'title': ..., 'content': ...}。"""
-    api_key = os.environ.get("GEMINI_API_KEY")
+    """呼叫 Claude，回傳 {'title': ..., 'content': ...}。"""
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
-        raise RuntimeError("GEMINI_API_KEY not set")
+        raise RuntimeError("ANTHROPIC_API_KEY not set")
+
+    # 將日期格式化為「6月10日」形式注入 system prompt
+    from datetime import date as _date
+    try:
+        d = _date.fromisoformat(context["target_date"])
+        date_display = f"{d.month}月{d.day}日"
+    except Exception:
+        date_display = context.get("target_date", "")
+
+    system_prompt = _SYSTEM_PROMPT_TEMPLATE.format(date_display=date_display)
 
     user_msg = (
-        "以下是今日（"
-        + context["target_date"]
-        + "）的素材，請依文風要求產出 JSON：\n\n"
+        f"以下是 {date_display} 的素材，請依文風要求產出 JSON：\n\n"
         + json.dumps(context, ensure_ascii=False, indent=2)
     )
 
-    client = genai.Client(api_key=api_key)
-    resp = client.models.generate_content(
+    client = anthropic.Anthropic(api_key=api_key)
+    resp = client.messages.create(
         model=LLM_MODEL,
-        contents=user_msg,
-        config=genai_types.GenerateContentConfig(
-            system_instruction=SYSTEM_PROMPT,
-            max_output_tokens=4000,
-            safety_settings=_SAFETY_OFF,
-        ),
+        system=system_prompt,
+        messages=[{"role": "user", "content": user_msg}],
+        max_tokens=4000,
     )
-    text = resp.text.strip()
+    text = resp.content[0].text.strip()
     # 容錯：可能被包在 ```json ... ``` 裡
     if text.startswith("```"):
         text = text.strip("`")

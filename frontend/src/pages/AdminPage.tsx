@@ -55,6 +55,7 @@ interface DailyDraftSummary {
 
 interface DailyDraftDetail extends DailyDraftSummary {
   content: string;
+  source_links?: { label: string; url: string }[];
 }
 
 function DailySection({ token }: { token: string }) {
@@ -385,6 +386,25 @@ function DailySection({ token }: { token: string }) {
             onChange={(e) => setActive({ ...active, title: e.target.value })}
             className="w-full text-lg font-semibold border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-400"
           />
+
+          {/* 資料來源連結 */}
+          {active.source_links && active.source_links.length > 0 && (
+            <div className="flex flex-wrap gap-2 py-1">
+              <span className="text-xs text-gray-400 self-center">資料來源：</span>
+              {active.source_links.map((l) => (
+                <a
+                  key={l.url}
+                  href={l.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs px-2.5 py-1 rounded-full bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200 transition"
+                >
+                  {l.label} ↗
+                </a>
+              ))}
+            </div>
+          )}
+
           <textarea
             value={active.content}
             onChange={(e) => setActive({ ...active, content: e.target.value })}
@@ -1460,7 +1480,7 @@ export default function AdminPage() {
   const { user, token } = useAuth();
   const location = useLocation();
   const locState = location.state as { tab?: "publish" | "daily" | "users"; selectedIds?: number[] } | null;
-  const [tab, setTab] = useState<"publish" | "daily" | "users" | "sync" | "invites">(locState?.tab ?? "publish");
+  const [tab, setTab] = useState<"publish" | "daily" | "users" | "sync" | "invites">(locState?.tab ?? "sync");
   const [users, setUsers] = useState<UserRecord[]>([]);
   const [selectedUser, setSelectedUser] = useState<UserRecord | null>(null);
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -1493,9 +1513,9 @@ export default function AdminPage() {
   );
 
   const tabs = [
-    { id: "publish", label: "社群發布" },
-    { id: "daily",   label: "每日草稿" },
     { id: "sync",    label: "同步記錄" },
+    { id: "daily",   label: "每日草稿" },
+    { id: "publish", label: "社群發布" },
     { id: "users",   label: "帳號管理" },
     { id: "invites", label: "邀請碼" },
   ] as const;

@@ -1,11 +1,14 @@
-"""爬 nStock 名師專欄「ETF小百科」(author id=60) 的 00981A 每日操作明細。
+"""爬 nStock 名師專欄每日 ETF 操作明細。
 
-每天 19:30 後該作者會發新文章，標題 pattern：
-    `YYYY/MM/DD 00981A 今日操作明細 成份股持股明細`
+目前支援：
+  - 00981A：作者 id=60（ETF小百科）
+  - 00403A：作者 id=1991
+
+標題 pattern：`YYYY/MM/DD {ETF_CODE} 今日操作明細 成份股持股明細`
 
 Pipeline:
-  1. find_article_id_for_date(today)  → 從作者頁找今日 article id
-  2. parse_etf_article(id)             → 解析持股明細表（51 檔成份股 + 加減碼動作）
+  1. find_article_id_for_date(today, etf_code, author_id)  → 從作者頁找今日 article id
+  2. parse_etf_article(id)                                  → 解析持股明細表
 """
 from __future__ import annotations
 import logging
@@ -17,7 +20,7 @@ from bs4 import BeautifulSoup
 logger = logging.getLogger(__name__)
 
 NSTOCK_BASE = "https://www.nstock.tw"
-DEFAULT_AUTHOR_ID = 60   # ETF小百科
+DEFAULT_AUTHOR_ID = 60   # ETF小百科 (00981A)
 TARGET_ETF = "00981A"
 USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
 
@@ -33,15 +36,16 @@ def _get(url: str, timeout: float = 10.0) -> str:
 def find_article_id_for_date(
     date_str: str,
     author_id: int = DEFAULT_AUTHOR_ID,
+    etf_code: str = TARGET_ETF,
 ) -> Optional[int]:
-    """從作者頁找標題符合 `{date_str} 00981A` 的文章 id。
+    """從作者頁找標題符合 `{date_str} {etf_code}` 的文章 id。
 
     Args:
         date_str: 「YYYY/MM/DD」格式（注意是斜線，跟標題一致）
     """
     html = _get(f"{NSTOCK_BASE}/author/info?id={author_id}")
     soup = BeautifulSoup(html, "html.parser")
-    title_prefix = f"{date_str} {TARGET_ETF}"
+    title_prefix = f"{date_str} {etf_code}"
     for a in soup.select('a[href^="/author/article?id="]'):
         title = a.get_text(strip=True)
         if not title.startswith(title_prefix):
@@ -91,12 +95,12 @@ def parse_etf_article(article_id: int) -> dict:
         if len(cells) != 4:
             continue
 
-        # cell 2: 收盤價 + 漲跌幅 (兩個 div)，紅綠決定漲跌符號
+        # cell 2: 收盤價 + 漲跌幅 (兩個 div)
+        # nstock 的百分比文字本身已含正負號（如 "-0.39"、"+5.37"），直接 parse 即可。
+        # 早期用 color_sign 推斷方向，但 (-0.39%) strip 後是 "-0.39"，再乘 color_sign(-1) 會反號。
         price_divs = cells[1].find_all("div")
         price_text = price_divs[0].get_text(strip=True) if price_divs else ""
         pct_text = price_divs[1].get_text(strip=True).strip("()%") if len(price_divs) > 1 else ""
-        cls = " ".join(cells[1].get("class") or [])
-        color_sign = -1 if "green" in cls else (1 if "red" in cls else 0)
 
         # cell 3: 成交量
         volume_text = cells[2].get_text(strip=True).replace(",", "")
@@ -118,7 +122,7 @@ def parse_etf_article(article_id: int) -> dict:
         except ValueError:
             price = None
         try:
-            change_pct = float(pct_text) * color_sign if pct_text else None
+            change_pct = float(pct_text) if pct_text else None
         except ValueError:
             change_pct = None
         volume = int(volume_text) if volume_text.isdigit() else None
@@ -139,11 +143,15 @@ def parse_etf_article(article_id: int) -> dict:
     }
 
 
-def fetch_today(date_str: str) -> Optional[dict]:
+def fetch_today(
+    date_str: str,
+    etf_code: str = TARGET_ETF,
+    author_id: int = DEFAULT_AUTHOR_ID,
+) -> Optional[dict]:
     """便利函數：找今日 article + 解析。date_str 用「YYYY/MM/DD」。"""
-    article_id = find_article_id_for_date(date_str)
+    article_id = find_article_id_for_date(date_str, author_id=author_id, etf_code=etf_code)
     if not article_id:
-        logger.info("ETF小百科 %s 尚未發文", date_str)
+        logger.info("nstock author=%d %s %s 尚未發文", author_id, etf_code, date_str)
         return None
     return parse_etf_article(article_id)
 

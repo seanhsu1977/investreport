@@ -87,6 +87,10 @@ def notify_daily_draft(article) -> None:
     preview = (article.content or "")[:200].replace("\n", " ")
     if len(article.content or "") > 200:
         preview += "…"
+
+    base_url = os.getenv("APP_URL", "https://investreport.onrender.com").rstrip("/")
+    edit_url = f"{base_url}/admin?tab=daily&id={article.id}"
+
     lines = [
         "🤖 <b>每日草稿生成完成</b>",
         f"📅 {article.date}",
@@ -95,7 +99,7 @@ def notify_daily_draft(article) -> None:
         "",
         f"<i>{preview}</i>",
         "",
-        "進後台 → 社群發布 → 每日草稿 編輯 / 發布",
+        f"<a href=\"{edit_url}\">✏️ 前往編輯 / 發布</a>",
     ]
     send_message("\n".join(lines))
 

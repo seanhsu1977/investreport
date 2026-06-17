@@ -134,6 +134,45 @@ class RecommendationCache(Base):
     computed_at = Column(DateTime, nullable=False)
 
 
+class TxfCandle(Base):
+    """台指期（TX 近月）日K 快取"""
+    __tablename__ = "txf_candles"
+
+    date    = Column(String, primary_key=True)  # YYYYMMDD
+    open    = Column(Float, nullable=False)
+    high    = Column(Float, nullable=False)
+    low     = Column(Float, nullable=False)
+    close   = Column(Float, nullable=False)
+    volume  = Column(Integer, nullable=True)
+
+
+class StockRecommendationReason(Base):
+    """個股推薦理由快取（由 LLM 生成後暫存，附生成時間）"""
+    __tablename__ = "stock_recommendation_reasons"
+
+    stock_code = Column(String, primary_key=True)
+    content    = Column(Text, nullable=False)
+    generated_at = Column(DateTime, nullable=False)
+
+
+class EtfDailyChange(Base):
+    """ETF 每日成份股持股變化紀錄（來源：nstock ETF小百科）。"""
+    __tablename__ = "etf_daily_changes"
+
+    id         = Column(Integer, primary_key=True)
+    etf_code   = Column(String, nullable=False, index=True)   # "00981A"
+    date       = Column(String, nullable=False, index=True)   # "YYYY-MM-DD"
+    stock_code = Column(String, nullable=False)
+    stock_name = Column(String)
+    shares_delta     = Column(Integer, default=0)   # >0 buy, <0 sell, 0 flat
+    action           = Column(String, default="flat")  # "buy"|"sell"|"flat"
+    price            = Column(Float, nullable=True)
+    change_pct       = Column(Float, nullable=True)
+    nstock_article_id = Column(Integer, nullable=True)
+
+    __table_args__ = (UniqueConstraint("etf_code", "date", "stock_code"),)
+
+
 class DailyArticle(Base):
     """每日 00981A × 投顧報告 自動生成的草稿文章。"""
     __tablename__ = "daily_articles"
@@ -152,3 +191,14 @@ class DailyArticle(Base):
     threads_posted_at = Column(DateTime, nullable=True)
     fb_post_id = Column(String, nullable=True)             # Facebook page post id ("PAGE_POST")
     fb_posted_at = Column(DateTime, nullable=True)
+
+
+class MarketTechnicalSnapshot(Base):
+    """大盤技術指標每日快照，供復盤使用。"""
+    __tablename__ = "market_technical_snapshots"
+
+    id         = Column(Integer, primary_key=True)
+    date       = Column(String, nullable=False, index=True)   # YYYY-MM-DD
+    index_key  = Column(String, nullable=False, default="taiex")  # taiex / twoii
+    payload    = Column(Text, nullable=False)                  # JSON: KlineTechnical
+    saved_at   = Column(DateTime, default=datetime.utcnow)

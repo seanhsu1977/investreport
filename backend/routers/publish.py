@@ -7,15 +7,7 @@ from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 from urllib.parse import unquote
 import httpx
-from google import genai
-from google.genai import types as genai_types
-
-_SAFETY_OFF = [
-    genai_types.SafetySetting(category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="BLOCK_NONE"),
-    genai_types.SafetySetting(category="HARM_CATEGORY_HARASSMENT",         threshold="BLOCK_NONE"),
-    genai_types.SafetySetting(category="HARM_CATEGORY_HATE_SPEECH",        threshold="BLOCK_NONE"),
-    genai_types.SafetySetting(category="HARM_CATEGORY_SEXUALLY_EXPLICIT",  threshold="BLOCK_NONE"),
-]
+import anthropic
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -157,18 +149,15 @@ def generate_draft(
 
     def generate():
         try:
-            client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
-            for chunk in client.models.generate_content_stream(
-                model="gemini-2.5-flash",
-                contents=user_msg,
-                config=genai_types.GenerateContentConfig(
-                    system_instruction=DRAFT_SYSTEM,
-                    max_output_tokens=3000,
-                    safety_settings=_SAFETY_OFF,
-                ),
-            ):
-                if chunk.text:
-                    yield f"data: {json.dumps({'text': chunk.text}, ensure_ascii=False)}\n\n"
+            client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+            with client.messages.stream(
+                model="claude-sonnet-4-6",
+                system=DRAFT_SYSTEM,
+                messages=[{"role": "user", "content": user_msg}],
+                max_tokens=3000,
+            ) as stream:
+                for text in stream.text_stream:
+                    yield f"data: {json.dumps({'text': text}, ensure_ascii=False)}\n\n"
             yield "data: [DONE]\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'error': str(e)}, ensure_ascii=False)}\n\n"
@@ -685,6 +674,41 @@ def _serialize_daily(a: DailyArticle, *, include_content: bool = False) -> dict:
     }
     if include_content:
         out["content"] = a.content
+        # 從 raw_context 提取可比對的資料來源連結
+        if a.raw_context:
+            try:
+                ctx = json.loads(a.raw_context)
+                code    = ctx.get("topic", {}).get("code", "")
+                etf_url = ctx.get("etf", {}).get("source_url", "")
+                links = []
+                # nstock 個股資料頁
+                if code:
+                    links.append({"label": f"{code} 個股行情",  "url": f"https://www.nstock.tw/stock_info?stock_id={code}"})
+                    links.append({"label": f"{code} 法人籌碼",  "url": f"https://www.nstock.tw/institutional_investors?stock_id={code}"})
+                    links.append({"label": f"{code} 月營收",    "url": f"https://www.nstock.tw/monthly_revenue?stock_id={code}"})
+                # ETF 操作明細
+                if etf_url:
+                    links.append({"label": "00981A ETF 操作明細", "url": etf_url})
+                # 引用的投顧報告（Google Drive）
+                seen_ids: set = set()
+                for r in ctx.get("reports", []):
+                    fid  = r.get("_drive_file_id", "")
+                    name = r.get("_source_filename", "") or r.get("analyst", "") or fid
+                    date = r.get("date", "")
+                    if fid and fid not in seen_ids:
+                        seen_ids.add(fid)
+                        label = f"報告｜{name}"
+                        if date:
+                            label = f"報告｜{date} {name}"
+                        links.append({
+                            "label": label,
+                            "url": f"https://drive.google.com/file/d/{fid}/view",
+                        })
+                out["source_links"] = links
+            except Exception:
+                out["source_links"] = []
+        else:
+            out["source_links"] = []
     else:
         out["preview"] = (a.content or "")[:200]
     return out
@@ -759,7 +783,10 @@ async def refresh_daily(
     target = (
         datetime.strptime(date, "%Y-%m-%d").date() if date else _today_tpe()
     )
-    aid = await asyncio.to_thread(generate_for_date, target, force=force)
+    try:
+        aid = await asyncio.to_thread(generate_for_date, target, force=force)
+    except Exception as e:
+        raise HTTPException(500, f"生成失敗：{type(e).__name__}: {e}") from e
     if not aid:
         raise HTTPException(
             404,

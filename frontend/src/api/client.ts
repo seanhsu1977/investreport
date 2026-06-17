@@ -161,6 +161,43 @@ export interface StockSignal {
   updated_at: string;
 }
 
+interface OhlcPoint  { time: number; open: number; high: number; low: number; close: number; volume?: number }
+interface LinePoint  { time: number; value?: number }
+
+export interface KlineTechnical {
+  current: number;
+  ma5: number;
+  ma20: number;
+  ma_signal: string;
+  volume_signal: string | null;
+  rsi: number | null;
+  rsi_signal: string;
+  bb_upper: number | null;
+  bb_lower: number | null;
+  bb_pct_b: number | null;
+  bb_signal: string | null;
+  tower: TowerSignal | null;
+  resistance: number[];
+  support: number[];
+  suggestion: string;
+}
+
+export interface KlineResponse {
+  candles: OhlcPoint[];
+  ma5: LinePoint[]; ma10: LinePoint[]; ma20: LinePoint[]; ma60: LinePoint[];
+  kdj_k: LinePoint[]; kdj_d: LinePoint[]; kdj_j: LinePoint[];
+  kdj_k10_price: number | null;
+  kdj_k20_price: number | null;
+  kdj_k80_price: number | null;
+  kdj_k90_price: number | null;
+  kdj_range_low:  number | null;
+  kdj_range_high: number | null;
+  kdj_cur_k: number | null;
+  kdj_cur_d: number | null;
+  kdj_cur_j: number | null;
+  technical?: KlineTechnical | null;
+}
+
 export const stocksApi = {
   list: () => api.get<StockSummary[]>("/stocks").then((r) => r.data),
   reports: (code: string) =>
@@ -181,6 +218,18 @@ export const stocksApi = {
     api.get<Record<string, StockPriceData>>(`/stocks/batch-prices?codes=${codes.join(",")}`).then((r) => r.data),
   market_overview: () =>
     api.get<Record<string, MarketIndex>>("/stocks/market-overview").then((r) => r.data),
+  market_kline: (index: "taiex" | "twoii" = "taiex") =>
+    api.get<KlineResponse>(`/stocks/market-kline?index=${index}`).then((r) => r.data),
+  market_technical_history: (index: "taiex" | "twoii" = "taiex", days = 30) =>
+    api.get<(KlineTechnical & { date: string })[]>(
+      `/stocks/market-technical/history?index=${index}&days=${days}`
+    ).then((r) => r.data),
+  save_market_technical: (index: "taiex" | "twoii" = "taiex") =>
+    api.post(`/stocks/market-technical/save?index=${index}`).then((r) => r.data),
+  txf_kline: () =>
+    api.get<KlineResponse>("/stocks/txf-kline").then((r) => r.data),
+  kline: (code: string) =>
+    api.get<KlineResponse>(`/stocks/${code}/kline`).then((r) => r.data),
 };
 
 export const searchApi = {
@@ -327,6 +376,39 @@ export interface ChipSnapshot {
   };
   fetched_at?: string;
 }
+
+export interface EtfStock {
+  code: string;
+  name: string;
+  shares_delta: number;       // >0 buy, <0 sell, 0 flat
+  action: "buy" | "sell" | "flat";
+  price: number | null;
+  change_pct: number | null;
+  consecutive_buy_days: number;
+  is_new: boolean;
+}
+
+export interface EtfDailyData {
+  etf_code: string;
+  date: string;
+  stocks: EtfStock[];
+  has_data: boolean;
+}
+
+export const etfTrackerApi = {
+  dates: (etf = "00981A") =>
+    api.get<{ etf_code: string; dates: string[] }>(`/etf-tracker/dates?etf=${etf}`).then((r) => r.data),
+  daily: (etf = "00981A", date?: string) =>
+    api.get<EtfDailyData>(`/etf-tracker/daily`, { params: { etf, date } }).then((r) => r.data),
+  sync: (etf = "00981A", date?: string) =>
+    api.post<{ etf_code: string; date: string; article_id: number; count: number }>(
+      `/etf-tracker/sync`, null, { params: { etf, date } }
+    ).then((r) => r.data),
+  backfill: (etf = "00981A", days = 10) =>
+    api.post<{ etf_code: string; synced: number; no_article: number; errors: number; results: { date: string; status: string; count?: number }[] }>(
+      `/etf-tracker/backfill`, null, { params: { etf, days } }
+    ).then((r) => r.data),
+};
 
 export const chipsApi = {
   latest: () => api.get<ChipSnapshot>("/chips/latest").then((r) => r.data),

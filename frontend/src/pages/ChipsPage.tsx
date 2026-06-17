@@ -877,13 +877,21 @@ const SIGNAL_COLOR: Record<string, string> = {
 function KdjScreener() {
   const [result, setResult] = useState<{ items: KdjScreenItem[]; total: number; scanned: number } | null>(null);
   const [loading, setLoading] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | "golden" | "dead">("golden");
 
   const scan = async () => {
     setLoading(true);
+    setScanError(null);
     try {
       const r = await stocksApi.kdj_screen();
       setResult(r);
+    } catch (e: unknown) {
+      const msg =
+        (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+        ?? (e as Error)?.message
+        ?? "掃描失敗";
+      setScanError(msg);
     } finally {
       setLoading(false);
     }
@@ -971,7 +979,10 @@ function KdjScreener() {
         </>
       )}
 
-      {!result && !loading && (
+      {scanError && (
+        <p className="text-xs text-red-500 text-center py-6 px-4">✗ {scanError}</p>
+      )}
+      {!result && !loading && !scanError && (
         <p className="text-xs text-gray-400 text-center py-8">點「開始掃描」從自選股、近期推薦股、ETF 成份股中篩選</p>
       )}
     </div>

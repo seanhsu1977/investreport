@@ -106,10 +106,15 @@ function StockCard({
 // 主頁面
 // ──────────────────────────────────────────────────────────────────────
 
-const ETF_CODE = "00981A";
-const ETF_NAME = "中信優選成長高股息";
+const ETF_OPTIONS = [
+  { code: "00981A", name: "中信優選成長高股息" },
+  { code: "00403A", name: "00403A" },
+] as const;
 
 export default function EtfTrackerPage() {
+  const [etfCode, setEtfCode] = useState<string>("00981A");
+  const etfName = ETF_OPTIONS.find((e) => e.code === etfCode)?.name ?? etfCode;
+
   const [date, setDate] = useState(tpeToday);
   const [availableDates, setAvailableDates] = useState<string[]>([]);
   const [data, setData] = useState<{
@@ -128,12 +133,12 @@ export default function EtfTrackerPage() {
   // 載入已有日期清單
   const refreshDates = useCallback(async () => {
     try {
-      const r = await etfTrackerApi.dates(ETF_CODE);
+      const r = await etfTrackerApi.dates(etfCode);
       setAvailableDates(r.dates);
     } catch {
       // ignore
     }
-  }, []);
+  }, [etfCode]);
 
   useEffect(() => {
     refreshDates();
@@ -143,12 +148,12 @@ export default function EtfTrackerPage() {
   const loadData = useCallback(async (targetDate: string) => {
     setLoading(true);
     try {
-      const r = await etfTrackerApi.daily(ETF_CODE, targetDate);
+      const r = await etfTrackerApi.daily(etfCode, targetDate);
       setData(r);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [etfCode]);
 
   useEffect(() => {
     loadData(date);
@@ -167,7 +172,7 @@ export default function EtfTrackerPage() {
     setSyncing(true);
     setSyncError(null);
     try {
-      await etfTrackerApi.sync(ETF_CODE, date);
+      await etfTrackerApi.sync(etfCode, date);
       await loadData(date);
       await refreshDates();
     } catch (e: unknown) {
@@ -186,7 +191,7 @@ export default function EtfTrackerPage() {
     setBackfilling(true);
     setBackfillMsg(null);
     try {
-      const r = await etfTrackerApi.backfill(ETF_CODE, 10);
+      const r = await etfTrackerApi.backfill(etfCode, 10);
       setBackfillMsg(`回補完成：成功 ${r.synced} 天，無文章 ${r.no_article} 天${r.errors > 0 ? `，錯誤 ${r.errors} 天` : ""}`);
       await refreshDates();
       await loadData(date);
@@ -214,9 +219,32 @@ export default function EtfTrackerPage() {
         <div className="max-w-xl mx-auto">
           <p className="text-xs text-white/60 mb-0.5">ETF 買超追蹤</p>
           <h1 className="text-lg font-bold leading-tight">
-            {ETF_CODE}
-            <span className="ml-2 text-sm font-normal text-white/70">{ETF_NAME}</span>
+            {etfCode}
+            <span className="ml-2 text-sm font-normal text-white/70">{etfName}</span>
           </h1>
+          {/* ETF 切換 */}
+          <div className="flex gap-2 mt-2.5">
+            {ETF_OPTIONS.map((opt) => (
+              <button
+                key={opt.code}
+                onClick={() => {
+                  if (opt.code !== etfCode) {
+                    setEtfCode(opt.code);
+                    setData(null);
+                    setSyncError(null);
+                    setBackfillMsg(null);
+                  }
+                }}
+                className={`text-xs px-3 py-1 rounded-full font-semibold transition
+                  ${etfCode === opt.code
+                    ? "bg-white text-[#0B1E3D]"
+                    : "bg-white/15 text-white/70 hover:bg-white/25"
+                  }`}
+              >
+                {opt.code}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 

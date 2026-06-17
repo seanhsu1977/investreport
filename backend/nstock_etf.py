@@ -1,11 +1,14 @@
-"""爬 nStock 名師專欄「ETF小百科」(author id=60) 的 00981A 每日操作明細。
+"""爬 nStock 名師專欄每日 ETF 操作明細。
 
-每天 19:30 後該作者會發新文章，標題 pattern：
-    `YYYY/MM/DD 00981A 今日操作明細 成份股持股明細`
+目前支援：
+  - 00981A：作者 id=60（ETF小百科）
+  - 00403A：作者 id=1991
+
+標題 pattern：`YYYY/MM/DD {ETF_CODE} 今日操作明細 成份股持股明細`
 
 Pipeline:
-  1. find_article_id_for_date(today)  → 從作者頁找今日 article id
-  2. parse_etf_article(id)             → 解析持股明細表（51 檔成份股 + 加減碼動作）
+  1. find_article_id_for_date(today, etf_code, author_id)  → 從作者頁找今日 article id
+  2. parse_etf_article(id)                                  → 解析持股明細表
 """
 from __future__ import annotations
 import logging
@@ -17,7 +20,7 @@ from bs4 import BeautifulSoup
 logger = logging.getLogger(__name__)
 
 NSTOCK_BASE = "https://www.nstock.tw"
-DEFAULT_AUTHOR_ID = 60   # ETF小百科
+DEFAULT_AUTHOR_ID = 60   # ETF小百科 (00981A)
 TARGET_ETF = "00981A"
 USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
 
@@ -33,15 +36,16 @@ def _get(url: str, timeout: float = 10.0) -> str:
 def find_article_id_for_date(
     date_str: str,
     author_id: int = DEFAULT_AUTHOR_ID,
+    etf_code: str = TARGET_ETF,
 ) -> Optional[int]:
-    """從作者頁找標題符合 `{date_str} 00981A` 的文章 id。
+    """從作者頁找標題符合 `{date_str} {etf_code}` 的文章 id。
 
     Args:
         date_str: 「YYYY/MM/DD」格式（注意是斜線，跟標題一致）
     """
     html = _get(f"{NSTOCK_BASE}/author/info?id={author_id}")
     soup = BeautifulSoup(html, "html.parser")
-    title_prefix = f"{date_str} {TARGET_ETF}"
+    title_prefix = f"{date_str} {etf_code}"
     for a in soup.select('a[href^="/author/article?id="]'):
         title = a.get_text(strip=True)
         if not title.startswith(title_prefix):
@@ -139,11 +143,15 @@ def parse_etf_article(article_id: int) -> dict:
     }
 
 
-def fetch_today(date_str: str) -> Optional[dict]:
+def fetch_today(
+    date_str: str,
+    etf_code: str = TARGET_ETF,
+    author_id: int = DEFAULT_AUTHOR_ID,
+) -> Optional[dict]:
     """便利函數：找今日 article + 解析。date_str 用「YYYY/MM/DD」。"""
-    article_id = find_article_id_for_date(date_str)
+    article_id = find_article_id_for_date(date_str, author_id=author_id, etf_code=etf_code)
     if not article_id:
-        logger.info("ETF小百科 %s 尚未發文", date_str)
+        logger.info("nstock author=%d %s %s 尚未發文", author_id, etf_code, date_str)
         return None
     return parse_etf_article(article_id)
 

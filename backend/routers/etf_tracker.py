@@ -1,6 +1,8 @@
 """ETF 每日持股變化追蹤 API。
 
-目前支援：00981A（nstock ETF小百科 author_id=60）
+目前支援：
+  - 00981A（nstock ETF小百科 author_id=60）
+  - 00403A（nstock author_id=1991）
 """
 from __future__ import annotations
 import logging
@@ -19,7 +21,11 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 TPE = timezone(timedelta(hours=8))
 
-SUPPORTED_ETFS = {"00981A"}
+ETF_CONFIG: dict[str, dict] = {
+    "00981A": {"author_id": 60},
+    "00403A": {"author_id": 60},  # 同一作者 ETF小百科，靠標題區別
+}
+SUPPORTED_ETFS = set(ETF_CONFIG.keys())
 
 
 def _tpe_today() -> str:
@@ -139,8 +145,9 @@ def etf_tracker_sync(
         date = _tpe_today()
 
     date_nstock = date.replace("-", "/")  # "YYYY-MM-DD" → "YYYY/MM/DD"
+    author_id = ETF_CONFIG[etf]["author_id"]
     try:
-        data = nstock_etf.fetch_today(date_nstock)
+        data = nstock_etf.fetch_today(date_nstock, etf_code=etf, author_id=author_id)
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"nstock 抓取失敗：{e}")
 
@@ -200,8 +207,9 @@ def etf_tracker_sync(
 def _sync_one(etf: str, date: str, db: Session) -> dict:
     """同步單一日期，回傳結果 dict（不拋例外）。"""
     date_nstock = date.replace("-", "/")
+    author_id = ETF_CONFIG.get(etf, {}).get("author_id", 60)
     try:
-        data = nstock_etf.fetch_today(date_nstock)
+        data = nstock_etf.fetch_today(date_nstock, etf_code=etf, author_id=author_id)
     except Exception as e:
         return {"date": date, "status": "error", "detail": str(e)}
 

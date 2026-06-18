@@ -268,7 +268,7 @@ export const stocksApi = {
     api.post<{ status: string; message: string }>("/stocks/admin/fill-all-prices").then((r) => r.data),
   sectorRotation: () =>
     api.get<{
-      bubbles: { name: string; x: number; y: number; size: number; amt_5d: number; amt_20d: number }[];
+      bubbles: { name: string; x: number; y: number; size: number; amt_5d: number; amt_20d: number; rt_amt: number }[];
       trading_days: number;
       latest_date: string;
       computed_at: string;

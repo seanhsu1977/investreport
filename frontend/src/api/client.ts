@@ -30,6 +30,7 @@ export interface Report {
   key_points: string[];
   created_at: string;
   source_filename: string | null;
+  price_at_report: number | null;
   mentioned_stocks?: string[];
 }
 
@@ -95,6 +96,8 @@ export interface RecommendationItem {
     institutional: number;
     technical: number;
   };
+  latest_report_price: number | null;
+  gain_since_report: number | null;
 }
 
 export interface UpsideRankingItem {

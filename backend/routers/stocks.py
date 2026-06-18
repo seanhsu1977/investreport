@@ -62,10 +62,41 @@ def _serialize_report(r: Report, include_mentioned: bool = False) -> dict:
         "key_points": json.loads(r.key_points) if r.key_points else [],
         "created_at": r.created_at,
         "source_filename": r.source_filename,
+        "price_at_report": r.price_at_report,
     }
     if include_mentioned:
         d["mentioned_stocks"] = json.loads(r.mentioned_stocks) if r.mentioned_stocks else []
     return d
+
+
+def _fill_prices_at_report(stock_code: str, reports: list, db) -> None:
+    """懶惰填充 price_at_report：對缺漏的報告用 yfinance 查歷史收盤價並存 DB。"""
+    missing = [r for r in reports if r.price_at_report is None and r.report_date is not None and r.stock_code != "MARKET"]
+    if not missing:
+        return
+    try:
+        import yfinance as yf
+        from datetime import timedelta
+        min_date = min(r.report_date for r in missing)
+        # 取足夠長的歷史（從最早報告日往前 7 天抓到今天）
+        for suffix in [".TW", ".TWO"]:
+            ticker = yf.Ticker(f"{stock_code}{suffix}")
+            hist = ticker.history(start=min_date - timedelta(days=7))
+            if not hist.empty:
+                break
+        else:
+            return
+        # 將 DatetimeIndex 轉為 date
+        hist_dates = [d.date() for d in hist.index]
+        hist_closes = list(hist["Close"])
+        for r in missing:
+            # 找 <= report_date 的最近交易日
+            candidates = [(d, c) for d, c in zip(hist_dates, hist_closes) if d <= r.report_date]
+            if candidates:
+                r.price_at_report = round(candidates[-1][1], 2)
+        db.commit()
+    except Exception:
+        pass
 
 
 @router.get("")
@@ -296,6 +327,7 @@ async def _compute_candidates(days: int, min_reports: int, rec_filter: str, db) 
             "latest_recommendation": latest.recommendation,
             "latest_analyst": latest.analyst,
             "latest_report_date": latest.report_date,
+            "latest_report_price": latest.price_at_report,
             "report_count": len(reports),
             "rec_avg": round(rec_avg, 2),
             "rec_max_score": max(rec_scores) if rec_scores else 0,
@@ -376,6 +408,12 @@ def _build_result(candidates: list[dict], price_map: dict, signal_map: dict, ins
             c["upside_pct"] = round((c["target_price"] / c["current_price"] - 1) * 100, 1)
         else:
             c["upside_pct"] = None
+
+        rp = c.get("latest_report_price")
+        if rp and c["current_price"]:
+            c["gain_since_report"] = round((c["current_price"] / rp - 1) * 100, 1)
+        else:
+            c["gain_since_report"] = None
 
         sig = signal_map.get(code)
         c["ma_signal"] = sig.get("ma_signal") if sig else None
@@ -1590,6 +1628,7 @@ def get_stock_reports(stock_code: str, db: Session = Depends(get_db)):
         .all()
     )
 
+    _fill_prices_at_report(stock_code, reports, db)
     return {
         "reports": [_serialize_report(r) for r in reports],
         "related_news": [_serialize_report(r, include_mentioned=True) for r in news],

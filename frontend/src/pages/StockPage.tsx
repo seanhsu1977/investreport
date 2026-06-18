@@ -403,6 +403,9 @@ export default function StockPage() {
                   const upside = r.target_price && stockPrice?.price
                     ? ((r.target_price / stockPrice.price - 1) * 100)
                     : null;
+                  const gainSince = r.price_at_report && stockPrice?.price
+                    ? ((stockPrice.price / r.price_at_report - 1) * 100)
+                    : null;
                   return (
                     <div key={r.id} className="px-4 py-3.5 border-b border-[#F5F7FC] last:border-b-0">
                       {/* top row */}
@@ -432,6 +435,11 @@ export default function StockPage() {
                         {upside != null && (
                           <span className={`text-[11px] font-semibold ${upside >= 0 ? "text-[#E53935]" : "text-[#1E8B4A]"}`}>
                             {upside >= 0 ? "↑ +" : "↓ "}{upside.toFixed(1)}%
+                          </span>
+                        )}
+                        {gainSince != null && (
+                          <span className={`text-[11px] px-1.5 py-0.5 rounded font-semibold ${gainSince >= 0 ? "bg-red-50 text-[#E53935]" : "bg-emerald-50 text-[#1E8B4A]"}`}>
+                            報告後 {gainSince >= 0 ? "+" : ""}{gainSince.toFixed(1)}%
                           </span>
                         )}
                         <span className="ml-auto">

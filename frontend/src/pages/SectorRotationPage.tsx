@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { stocksApi } from "../api/client";
 
 // ── types ──────────────────────────────────────────────────────────────────
@@ -57,7 +57,65 @@ export default function SectorRotationPage() {
   const [error, setError] = useState<string | null>(null);
   const [hovered, setHovered] = useState<Bubble | null>(null);
   const [mousePos, setMousePos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
-  const [filter, setFilter] = useState<number | null>(null); // quadrant index filter
+  const [filter, setFilter] = useState<number | null>(null);
+
+  // zoom / pan
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [zoom, setZoom] = useState({ scale: 1, tx: 0, ty: 0 });
+  const [dragging, setDragging] = useState(false);
+  const dragOrigin = useRef({ clientX: 0, clientY: 0, tx0: 0, ty0: 0 });
+
+  const resetZoom = () => setZoom({ scale: 1, tx: 0, ty: 0 });
+  const isZoomed = zoom.scale !== 1 || zoom.tx !== 0 || zoom.ty !== 0;
+
+  // non-passive wheel to allow preventDefault
+  const handleWheel = useCallback((e: WheelEvent) => {
+    e.preventDefault();
+    const svg = svgRef.current;
+    if (!svg) return;
+    const rect = svg.getBoundingClientRect();
+    const mx = (e.clientX - rect.left) * (W / rect.width);
+    const my = (e.clientY - rect.top) * (H / rect.height);
+    const factor = e.deltaY < 0 ? 1.2 : 1 / 1.2;
+    setZoom(prev => {
+      const newScale = Math.min(12, Math.max(0.4, prev.scale * factor));
+      return {
+        scale: newScale,
+        tx: mx - (mx - prev.tx) * (newScale / prev.scale),
+        ty: my - (my - prev.ty) * (newScale / prev.scale),
+      };
+    });
+  }, []);
+
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    svg.addEventListener("wheel", handleWheel, { passive: false });
+    return () => svg.removeEventListener("wheel", handleWheel);
+  }, [handleWheel]);
+
+  // stop drag on mouseup outside SVG
+  useEffect(() => {
+    const stop = () => setDragging(false);
+    window.addEventListener("mouseup", stop);
+    return () => window.removeEventListener("mouseup", stop);
+  }, []);
+
+  const onSvgMouseDown = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (e.button !== 0) return;
+    setDragging(true);
+    dragOrigin.current = { clientX: e.clientX, clientY: e.clientY, tx0: zoom.tx, ty0: zoom.ty };
+  };
+
+  const onSvgMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
+    const rect = (e.currentTarget as SVGSVGElement).getBoundingClientRect();
+    setMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+    if (!dragging) return;
+    const ratio = W / rect.width;
+    const dx = (e.clientX - dragOrigin.current.clientX) * ratio;
+    const dy = (e.clientY - dragOrigin.current.clientY) * ratio;
+    setZoom(z => ({ ...z, tx: dragOrigin.current.tx0 + dx, ty: dragOrigin.current.ty0 + dy }));
+  };
 
   useEffect(() => {
     setLoading(true);
@@ -140,119 +198,135 @@ export default function SectorRotationPage() {
 
       {/* chart */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-        <div
-          className="relative overflow-x-auto"
-          onMouseMove={e => {
-            const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
-            setMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
-          }}
-        >
+        <div className="relative overflow-x-auto">
+          {isZoomed && (
+            <button
+              onClick={resetZoom}
+              className="absolute top-2 right-2 z-10 px-2.5 py-1 text-xs font-medium bg-white border border-gray-300 rounded-lg shadow-sm hover:bg-gray-50 transition"
+            >
+              重設縮放
+            </button>
+          )}
           <svg
+            ref={svgRef}
             viewBox={`0 0 ${W} ${H}`}
             className="w-full"
-            style={{ minWidth: 320 }}
+            style={{ minWidth: 320, cursor: dragging ? "grabbing" : "grab" }}
+            onMouseDown={onSvgMouseDown}
+            onMouseMove={onSvgMouseMove}
+            onMouseLeave={() => { setDragging(false); setHovered(null); }}
           >
-            {/* quadrant backgrounds */}
-            {/* top-right = 主力, top-left = 觀望, bottom-right = 輪動, bottom-left = 退潮 */}
+            <defs>
+              <clipPath id="chart-clip">
+                <rect x={PAD.left} y={PAD.top} width={CW} height={CH} />
+              </clipPath>
+            </defs>
+
+            {/* fixed quadrant backgrounds (always fill correct quadrants) */}
             <rect x={ox} y={PAD.top} width={W - PAD.right - ox} height={oy - PAD.top} fill="rgba(21,128,61,0.04)" />
             <rect x={PAD.left} y={PAD.top} width={ox - PAD.left} height={oy - PAD.top} fill="rgba(29,78,216,0.04)" />
             <rect x={ox} y={oy} width={W - PAD.right - ox} height={H - PAD.bottom - oy} fill="rgba(180,83,9,0.04)" />
             <rect x={PAD.left} y={oy} width={ox - PAD.left} height={H - PAD.bottom - oy} fill="rgba(185,28,28,0.04)" />
 
-            {/* quadrant labels */}
-            <text x={ox + 8} y={PAD.top + 16} fontSize={11} fontWeight={700} fill="#15803D">主力</text>
+            {/* fixed quadrant labels */}
+            <text x={W - PAD.right - 6} y={PAD.top + 16} fontSize={11} fontWeight={700} fill="#15803D" textAnchor="end">主力</text>
             <text x={PAD.left + 6} y={PAD.top + 16} fontSize={11} fontWeight={700} fill="#1D4ED8">觀望</text>
-            <text x={ox + 8} y={H - PAD.bottom - 6} fontSize={11} fontWeight={700} fill="#B45309">輪動</text>
+            <text x={W - PAD.right - 6} y={H - PAD.bottom - 6} fontSize={11} fontWeight={700} fill="#B45309" textAnchor="end">輪動</text>
             <text x={PAD.left + 6} y={H - PAD.bottom - 6} fontSize={11} fontWeight={700} fill="#B91C1C">退潮</text>
 
-            {/* grid lines */}
-            {[-0.5, 0.5].map(f => (
-              <g key={f}>
-                <line x1={toSvgX(xMin + (xMax - xMin) * (0.5 + f * 0.5))} y1={PAD.top} x2={toSvgX(xMin + (xMax - xMin) * (0.5 + f * 0.5))} y2={H - PAD.bottom} stroke="#e5e7eb" strokeWidth={0.5} />
-                <line x1={PAD.left} y1={toSvgY(yMin + (yMax - yMin) * (0.5 + f * 0.5))} x2={W - PAD.right} y2={toSvgY(yMin + (yMax - yMin) * (0.5 + f * 0.5))} stroke="#e5e7eb" strokeWidth={0.5} />
-              </g>
-            ))}
+            {/* fixed axis direction labels */}
+            <text x={W - PAD.right - 2} y={PAD.top + 10} fontSize={9} fill="#6b7280" textAnchor="end">累積流入 →</text>
+            <text x={PAD.left + 4} y={PAD.top + 10} fontSize={9} fill="#6b7280">加速 ↑</text>
 
-            {/* axes */}
-            <line x1={PAD.left} y1={oy} x2={W - PAD.right} y2={oy} stroke="#9ca3af" strokeWidth={1} />
-            <line x1={ox} y1={PAD.top} x2={ox} y2={H - PAD.bottom} stroke="#9ca3af" strokeWidth={1} />
+            {/* zoomable + clipped chart content */}
+            <g clipPath="url(#chart-clip)">
+              <g transform={`translate(${zoom.tx},${zoom.ty}) scale(${zoom.scale})`}>
+                {/* grid lines */}
+                {[-0.5, 0.5].map(f => (
+                  <g key={f}>
+                    <line x1={toSvgX(xMin + (xMax - xMin) * (0.5 + f * 0.5))} y1={PAD.top} x2={toSvgX(xMin + (xMax - xMin) * (0.5 + f * 0.5))} y2={H - PAD.bottom} stroke="#e5e7eb" strokeWidth={0.5 / zoom.scale} />
+                    <line x1={PAD.left} y1={toSvgY(yMin + (yMax - yMin) * (0.5 + f * 0.5))} x2={W - PAD.right} y2={toSvgY(yMin + (yMax - yMin) * (0.5 + f * 0.5))} stroke="#e5e7eb" strokeWidth={0.5 / zoom.scale} />
+                  </g>
+                ))}
 
-            {/* axis labels */}
-            <text x={W - PAD.right - 2} y={oy - 5} fontSize={9} fill="#6b7280" textAnchor="end">累積流入 →</text>
-            <text x={ox + 4} y={PAD.top + 10} fontSize={9} fill="#6b7280">加速 ↑</text>
+                {/* axes */}
+                <line x1={PAD.left} y1={oy} x2={W - PAD.right} y2={oy} stroke="#9ca3af" strokeWidth={1 / zoom.scale} />
+                <line x1={ox} y1={PAD.top} x2={ox} y2={H - PAD.bottom} stroke="#9ca3af" strokeWidth={1 / zoom.scale} />
 
-            {/* x axis ticks */}
-            {[-1, -0.5, 0.5, 1].map(f => {
-              const val = f * maxAbs;
-              const sx = toSvgX(val);
-              return (
-                <g key={f}>
-                  <line x1={sx} y1={oy - 3} x2={sx} y2={oy + 3} stroke="#9ca3af" strokeWidth={1} />
-                  <text x={sx} y={oy + 13} fontSize={8} fill="#9ca3af" textAnchor="middle">
-                    {fmtK(val)}
-                  </text>
-                </g>
-              );
-            })}
+                {/* x axis ticks */}
+                {[-1, -0.5, 0.5, 1].map(f => {
+                  const val = f * maxAbs;
+                  const sx = toSvgX(val);
+                  return (
+                    <g key={f}>
+                      <line x1={sx} y1={oy - 3 / zoom.scale} x2={sx} y2={oy + 3 / zoom.scale} stroke="#9ca3af" strokeWidth={1 / zoom.scale} />
+                      <text x={sx} y={oy + 13 / zoom.scale} fontSize={8 / zoom.scale} fill="#9ca3af" textAnchor="middle">
+                        {fmtK(val)}
+                      </text>
+                    </g>
+                  );
+                })}
 
-            {/* y axis ticks */}
-            {[-0.75, -0.25, 0.25, 0.75].map(f => {
-              const val = f * maxAbsY;
-              const sy = toSvgY(val);
-              return (
-                <g key={f}>
-                  <line x1={ox - 3} y1={sy} x2={ox + 3} y2={sy} stroke="#9ca3af" strokeWidth={1} />
-                  <text x={ox - 5} y={sy + 3} fontSize={8} fill="#9ca3af" textAnchor="end">
-                    {fmtK(val)}
-                  </text>
-                </g>
-              );
-            })}
+                {/* y axis ticks */}
+                {[-0.75, -0.25, 0.25, 0.75].map(f => {
+                  const val = f * maxAbsY;
+                  const sy = toSvgY(val);
+                  return (
+                    <g key={f}>
+                      <line x1={ox - 3 / zoom.scale} y1={sy} x2={ox + 3 / zoom.scale} y2={sy} stroke="#9ca3af" strokeWidth={1 / zoom.scale} />
+                      <text x={ox - 5 / zoom.scale} y={sy + 3 / zoom.scale} fontSize={8 / zoom.scale} fill="#9ca3af" textAnchor="end">
+                        {fmtK(val)}
+                      </text>
+                    </g>
+                  );
+                })}
 
-            {/* bubbles */}
-            {bubbles.map(b => {
-              const q = quadrant(b);
-              const color = Q_META[q].color;
-              const bx = toSvgX(b.x);
-              const by = toSvgY(b.y);
-              const rad = r(b);
-              const isHov = hovered?.name === b.name;
-              return (
-                <g
-                  key={b.name}
-                  onMouseEnter={() => setHovered(b)}
-                  onMouseLeave={() => setHovered(null)}
-                  style={{ cursor: "pointer" }}
-                >
-                  <circle
-                    cx={bx}
-                    cy={by}
-                    r={rad}
-                    fill={color}
-                    fillOpacity={isHov ? 0.55 : 0.28}
-                    stroke={color}
-                    strokeWidth={isHov ? 1.5 : 0.8}
-                  />
-                  {rad > 10 && (
-                    <text
-                      x={bx}
-                      y={by + 3}
-                      fontSize={rad > 16 ? 9 : 8}
-                      fill={color}
-                      textAnchor="middle"
-                      fontWeight={600}
-                      pointerEvents="none"
+                {/* bubbles */}
+                {bubbles.map(b => {
+                  const q = quadrant(b);
+                  const color = Q_META[q].color;
+                  const bx = toSvgX(b.x);
+                  const by = toSvgY(b.y);
+                  const rad = r(b);
+                  const isHov = hovered?.name === b.name;
+                  return (
+                    <g
+                      key={b.name}
+                      onMouseEnter={() => !dragging && setHovered(b)}
+                      onMouseLeave={() => setHovered(null)}
+                      style={{ cursor: dragging ? "grabbing" : "pointer" }}
                     >
-                      {b.name.length > 5 ? b.name.slice(0, 5) + "…" : b.name}
-                    </text>
-                  )}
-                </g>
-              );
-            })}
+                      <circle
+                        cx={bx}
+                        cy={by}
+                        r={rad / zoom.scale}
+                        fill={color}
+                        fillOpacity={isHov ? 0.55 : 0.28}
+                        stroke={color}
+                        strokeWidth={(isHov ? 1.5 : 0.8) / zoom.scale}
+                      />
+                      {rad > 10 && (
+                        <text
+                          x={bx}
+                          y={by + 3 / zoom.scale}
+                          fontSize={(rad > 16 ? 9 : 8) / zoom.scale}
+                          fill={color}
+                          textAnchor="middle"
+                          fontWeight={600}
+                          pointerEvents="none"
+                        >
+                          {b.name.length > 5 ? b.name.slice(0, 5) + "…" : b.name}
+                        </text>
+                      )}
+                    </g>
+                  );
+                })}
+              </g>
+            </g>
           </svg>
 
           {/* tooltip */}
-          {hovered && (
+          {hovered && !dragging && (
             <div
               className="absolute pointer-events-none z-10 bg-white border border-gray-200 shadow-lg rounded-xl px-3 py-2 text-xs"
               style={{

@@ -28,6 +28,10 @@ class Report(Base):
     mentioned_stocks = Column(Text)   # JSON array of mentioned stock codes (for MARKET reports)
     source_filename = Column(String)  # 來源檔案名稱
     created_at = Column(DateTime, default=datetime.utcnow)
+    price_at_report = Column(Float)   # 報告日收盤價（懶惰填充）
+    price_5d_before = Column(Float)   # 報告前 5 日收盤價
+    price_10d_before = Column(Float)  # 報告前 10 日收盤價
+    price_20d_before = Column(Float)  # 報告前 20 日收盤價
 
 
 class User(Base):

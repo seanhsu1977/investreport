@@ -208,6 +208,7 @@ export default function RecentPage() {
   const [newsPage, setNewsPage] = useState(1);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [keyword, setKeyword] = useState("");
 
   const toggleSelect = (id: number) =>
     setSelectedIds((prev) => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
@@ -231,15 +232,26 @@ export default function RecentPage() {
   }, [days]);
 
   // 切換篩選條件時重置頁碼
-  useEffect(() => { setStockPage(1); }, [filterRec, sortKey]);
+  useEffect(() => { setStockPage(1); }, [filterRec, sortKey, keyword]);
+  useEffect(() => { setNewsPage(1); }, [keyword]);
+
+  const kw = keyword.trim().toLowerCase();
+  const matchReport = (r: Report) => {
+    if (!kw) return true;
+    return [r.stock_code, r.stock_name, r.analyst, r.summary, ...(r.key_points ?? [])]
+      .some((v) => v?.toLowerCase().includes(kw));
+  };
 
   const filteredReports = sortReports(
     (data?.stock_reports ?? []).filter(
-      (r) => filterRec === "all" || r.recommendation === filterRec
+      (r) => (filterRec === "all" || r.recommendation === filterRec) && matchReport(r)
     ),
     sortKey
   );
-  const sortedNews = sortReports(data?.market_news ?? [], sortKey);
+  const sortedNews = sortReports(
+    (data?.market_news ?? []).filter(matchReport),
+    sortKey
+  );
 
   const pagedReports = filteredReports.slice((stockPage - 1) * PAGE_SIZE, stockPage * PAGE_SIZE);
   const pagedNews = sortedNews.slice((newsPage - 1) * PAGE_SIZE, newsPage * PAGE_SIZE);
@@ -292,6 +304,27 @@ export default function RecentPage() {
         ))}
       </div>
 
+      {/* 關鍵字搜尋 */}
+      <div className="relative">
+        <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+          <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+        </svg>
+        <input
+          type="text"
+          value={keyword}
+          onChange={(e) => setKeyword(e.target.value)}
+          placeholder="搜尋股票代號、公司名稱、投顧、摘要…"
+          className="w-full pl-9 pr-9 py-2 text-sm bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition placeholder-gray-400"
+        />
+        {keyword && (
+          <button onClick={() => setKeyword("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500 transition">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+              <path d="M18 6L6 18M6 6l12 12"/>
+            </svg>
+          </button>
+        )}
+      </div>
+
       {/* 篩選 & 排序列（僅個股報告頁籤顯示評等篩選） */}
       <div className="flex flex-wrap items-center gap-4 bg-white rounded-xl border border-gray-200 px-4 py-3">
         <BtnGroup label="排序" options={[{key:"report_date",text:"報告日期"},{key:"created_at",text:"加入時間"}]}
@@ -328,7 +361,7 @@ export default function RecentPage() {
         <section className="space-y-4">
           {pagedReports.length === 0 ? (
             <p className="text-gray-400 text-sm">
-              {filterRec !== "all" ? `沒有「${filterRec}」評等的報告` : `近 ${days} 天內沒有個股報告`}
+              {kw ? `找不到包含「${keyword}」的報告` : filterRec !== "all" ? `沒有「${filterRec}」評等的報告` : `近 ${days} 天內沒有個股報告`}
             </p>
           ) : (
             <>
@@ -343,7 +376,7 @@ export default function RecentPage() {
       ) : (
         <section className="space-y-4">
           {pagedNews.length === 0 ? (
-            <p className="text-gray-400 text-sm">近 {days} 天內沒有市場新聞</p>
+            <p className="text-gray-400 text-sm">{kw ? `找不到包含「${keyword}」的新聞` : `近 ${days} 天內沒有市場新聞`}</p>
           ) : (
             <>
               {pagedNews.map((r) => (

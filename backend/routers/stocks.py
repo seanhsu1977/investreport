@@ -5,7 +5,7 @@ import os
 import time
 import httpx
 from datetime import date, datetime, timedelta
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -23,6 +23,7 @@ _SAFETY_OFF = [
 from database import get_db
 from models import Report, StockRecommendationReason, TxfCandle
 from stocks_master import resolve_name
+from routers.auth import require_admin
 
 router = APIRouter(prefix="/stocks", tags=["stocks"])
 
@@ -62,10 +63,86 @@ def _serialize_report(r: Report, include_mentioned: bool = False) -> dict:
         "key_points": json.loads(r.key_points) if r.key_points else [],
         "created_at": r.created_at,
         "source_filename": r.source_filename,
+        "price_at_report": r.price_at_report,
+        "price_5d_before": r.price_5d_before,
+        "price_10d_before": r.price_10d_before,
+        "price_20d_before": r.price_20d_before,
     }
     if include_mentioned:
         d["mentioned_stocks"] = json.loads(r.mentioned_stocks) if r.mentioned_stocks else []
     return d
+
+
+def _fill_prices_at_report(stock_code: str, reports: list, db) -> None:
+    """懶惰填充報告日及報告前 5/10/20 日的歷史收盤價。"""
+    missing = [
+        r for r in reports
+        if r.report_date is not None and r.stock_code != "MARKET"
+        and (r.price_at_report is None or r.price_5d_before is None
+             or r.price_10d_before is None or r.price_20d_before is None)
+    ]
+    if not missing:
+        return
+    try:
+        import yfinance as yf
+        from datetime import timedelta
+        min_date = min(r.report_date for r in missing)
+        # 往前多拉 35 天以覆蓋 20 個交易日前的價格
+        for suffix in [".TW", ".TWO"]:
+            ticker = yf.Ticker(f"{stock_code}{suffix}")
+            hist = ticker.history(start=min_date - timedelta(days=35))
+            if not hist.empty:
+                break
+        else:
+            return
+        hist_dates = [d.date() for d in hist.index]
+        hist_closes = list(hist["Close"])
+
+        def _price_on_or_before(target_date):
+            cs = [(d, c) for d, c in zip(hist_dates, hist_closes) if d <= target_date]
+            return round(cs[-1][1], 2) if cs else None
+
+        for r in missing:
+            if r.price_at_report is None:
+                r.price_at_report = _price_on_or_before(r.report_date)
+            if r.price_5d_before is None:
+                r.price_5d_before = _price_on_or_before(r.report_date - timedelta(days=5))
+            if r.price_10d_before is None:
+                r.price_10d_before = _price_on_or_before(r.report_date - timedelta(days=10))
+            if r.price_20d_before is None:
+                r.price_20d_before = _price_on_or_before(r.report_date - timedelta(days=20))
+        db.commit()
+    except Exception:
+        pass
+
+
+def _fill_all_prices_bg() -> None:
+    """背景批次填充所有報告的歷史價格（一次性工具，不重複填已有資料）。"""
+    from database import SessionLocal
+    db = SessionLocal()
+    try:
+        from sqlalchemy import or_
+        codes = [
+            row[0] for row in
+            db.query(Report.stock_code).filter(
+                Report.stock_code != "MARKET",
+                Report.report_date.isnot(None),
+                or_(
+                    Report.price_at_report.is_(None),
+                    Report.price_5d_before.is_(None),
+                    Report.price_10d_before.is_(None),
+                    Report.price_20d_before.is_(None),
+                )
+            ).distinct().all()
+        ]
+        for code in codes:
+            reports = db.query(Report).filter(
+                Report.stock_code == code,
+                Report.report_date.isnot(None),
+            ).all()
+            _fill_prices_at_report(code, reports, db)
+    finally:
+        db.close()
 
 
 @router.get("")
@@ -296,6 +373,7 @@ async def _compute_candidates(days: int, min_reports: int, rec_filter: str, db) 
             "latest_recommendation": latest.recommendation,
             "latest_analyst": latest.analyst,
             "latest_report_date": latest.report_date,
+            "latest_report_price": latest.price_at_report,
             "report_count": len(reports),
             "rec_avg": round(rec_avg, 2),
             "rec_max_score": max(rec_scores) if rec_scores else 0,
@@ -316,9 +394,11 @@ async def _fetch_all_market_data(candidates: list[dict]) -> tuple[dict, dict, di
             if not data:
                 return code, None
             row = data[0]
+            _chg = float(row.get("漲跌幅") or 0)
             return code, {
                 "price": float(row.get("當盤成交價") or 0) or None,
-                "change_pct": float(row.get("漲跌幅") or 0) or None,
+                # 台股漲跌停 ±10%；nstock 在開盤前會回傳 -100 作為佔位，需過濾
+                "change_pct": _chg if _chg and abs(_chg) <= 20 else None,
                 "volume": int(float(row.get("累積成交量") or 0)) or None,
             }
         except Exception:
@@ -374,6 +454,12 @@ def _build_result(candidates: list[dict], price_map: dict, signal_map: dict, ins
             c["upside_pct"] = round((c["target_price"] / c["current_price"] - 1) * 100, 1)
         else:
             c["upside_pct"] = None
+
+        rp = c.get("latest_report_price")
+        if rp and c["current_price"]:
+            c["gain_since_report"] = round((c["current_price"] / rp - 1) * 100, 1)
+        else:
+            c["gain_since_report"] = None
 
         sig = signal_map.get(code)
         c["ma_signal"] = sig.get("ma_signal") if sig else None
@@ -444,28 +530,30 @@ async def get_recommendations(
     min_reports: int = Query(default=1, ge=1, le=10),
     rec_filter: str = Query(default="all"),   # "all" | "buy_only"
     limit: int = Query(default=20, ge=1, le=50),
+    force: bool = Query(default=False),
     db: Session = Depends(get_db),
 ):
-    """投顧精選排行：永遠從快取立即回傳，背景非同步更新。"""
+    """投顧精選排行：永遠從快取立即回傳，背景非同步更新。force=true 強制背景重算。"""
     import logging as _log
     import time as _time
     from models import RecommendationCache
     _logger = _log.getLogger(__name__)
     cache_key = f"{days}_{min_reports}_{rec_filter}_{limit}"
 
-    # 1. in-memory cache（最快，10 分鐘 TTL）
-    cached = _rec_cache.get(cache_key)
-    if cached and (_time.time() - cached[1]) < _REC_CACHE_TTL:
-        return cached[0]
+    # 1. in-memory cache（最快，10 分鐘 TTL）；force=True 時跳過
+    if not force:
+        cached = _rec_cache.get(cache_key)
+        if cached and (_time.time() - cached[1]) < _REC_CACHE_TTL:
+            return cached[0]
 
-    # 2. DB cache（跨重啟持久）— 不論過不過期都先回傳，過期則背景更新
+    # 2. DB cache（跨重啟持久）— 不論過不過期都先回傳，過期或 force 則背景更新
     db_row = db.get(RecommendationCache, cache_key)
     if db_row:
         result = json.loads(db_row.payload)
         _rec_cache[cache_key] = (result, _time.time())
         age = (datetime.utcnow() - db_row.computed_at).total_seconds()
-        if age >= _REC_DB_CACHE_TTL and cache_key not in _computing_keys:
-            _logger.info("DB cache stale (%.0fs), triggering background recompute for %s", age, cache_key)
+        if (force or age >= _REC_DB_CACHE_TTL) and cache_key not in _computing_keys:
+            _logger.info("Triggering background recompute for %s (force=%s, age=%.0fs)", cache_key, force, age)
             asyncio.create_task(_compute_recommendations_bg(cache_key, days, min_reports, rec_filter, limit))
         return result
 
@@ -1294,11 +1382,12 @@ def get_stock_price(stock_code: str):
 
 @router.get("/search")
 def search_reports(q: str = Query(default=""), db: Session = Depends(get_db)):
-    """關鍵字搜尋報告與新聞"""
+    """關鍵字搜尋報告與新聞，同時回傳沒有報告的個股結果"""
     keyword = q.strip()
     if not keyword:
-        return {"stock_reports": [], "market_news": []}
+        return {"stock_reports": [], "market_news": [], "direct_stocks": []}
     from sqlalchemy import or_, nullslast
+    from models import Stock, Watchlist, EtfDailyChange
     pattern = f"%{keyword}%"
     reports = (
         db.query(Report)
@@ -1318,7 +1407,49 @@ def search_reports(q: str = Query(default=""), db: Session = Depends(get_db)):
     )
     stock_reports = [_serialize_report(r) for r in reports if r.stock_code != "MARKET"]
     market_news = [_serialize_report(r, include_mentioned=True) for r in reports if r.stock_code == "MARKET"]
-    return {"stock_reports": stock_reports, "market_news": market_news}
+
+    # 找出有報告的股票代號，避免重複
+    reported_codes = {r["stock_code"] for r in stock_reports}
+
+    # 從 stocks / watchlist / etf_daily_changes 找符合但無報告的個股
+    seen: dict[str, str] = {}  # code -> name
+    for row in db.query(Stock.code, Stock.name).filter(
+        or_(Stock.code.like(pattern), Stock.name.like(pattern))
+    ).limit(20).all():
+        if row.code not in reported_codes:
+            seen[row.code] = row.name
+
+    for row in db.query(Watchlist.stock_code, Watchlist.stock_name).filter(
+        or_(Watchlist.stock_code.like(pattern), Watchlist.stock_name.like(pattern))
+    ).limit(20).all():
+        if row.stock_code not in reported_codes and row.stock_code not in seen:
+            seen[row.stock_code] = row.stock_name or row.stock_code
+
+    for row in db.query(EtfDailyChange.stock_code, EtfDailyChange.stock_name).filter(
+        or_(EtfDailyChange.stock_code.like(pattern), EtfDailyChange.stock_name.like(pattern))
+    ).distinct(EtfDailyChange.stock_code).limit(20).all():
+        if row.stock_code not in reported_codes and row.stock_code not in seen:
+            seen[row.stock_code] = row.stock_name or row.stock_code
+
+    # 若關鍵字像股票代號（4-6 位英數）且什麼都沒找到，嘗試 nstock 即時查詢
+    import re as _re
+    if _re.fullmatch(r"[0-9A-Za-z]{4,6}", keyword) and keyword not in reported_codes and keyword not in seen:
+        try:
+            url = f"https://www.nstock.tw/api/v2/real-time-quotes/data?stock_id={keyword}"
+            with httpx.Client(timeout=4) as client:
+                data = client.get(url).json().get("data", [])
+            if data:
+                ns_name = data[0].get("股票名稱") or data[0].get("名稱") or None
+                if ns_name:
+                    seen[keyword] = ns_name
+        except Exception:
+            pass
+
+    direct_stocks = sorted(
+        [{"code": code, "name": name} for code, name in seen.items()],
+        key=lambda x: x["code"],
+    )
+    return {"stock_reports": stock_reports, "market_news": market_news, "direct_stocks": direct_stocks}
 
 
 @router.get("/recent")
@@ -1354,6 +1485,14 @@ def kdj_screen(db: Session = Depends(get_db)):
         "computed_at": row.computed_at,
         "data_date": row.data_date,
     }
+
+
+@router.post("/kdj-screen/refresh")
+def kdj_screen_refresh(background_tasks: BackgroundTasks):
+    """手動觸發 KDJ 選股重新掃描（背景執行，完成後快取更新）。"""
+    from scheduler import _kdj_screen_job
+    background_tasks.add_task(_kdj_screen_job)
+    return {"status": "started"}
 
 
 @router.get("/{stock_code}/kline")
@@ -1535,7 +1674,18 @@ def get_stock_reports(stock_code: str, db: Session = Depends(get_db)):
         .all()
     )
 
+    _fill_prices_at_report(stock_code, reports, db)
     return {
         "reports": [_serialize_report(r) for r in reports],
         "related_news": [_serialize_report(r, include_mentioned=True) for r in news],
     }
+
+
+@router.post("/admin/fill-all-prices")
+async def fill_all_prices(
+    background_tasks: BackgroundTasks,
+    _=Depends(require_admin),
+):
+    """一次性批次填充所有報告的歷史價格（需 admin）"""
+    background_tasks.add_task(_fill_all_prices_bg)
+    return {"status": "started", "message": "背景批次填充已啟動，約需數分鐘"}

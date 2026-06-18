@@ -211,6 +211,20 @@ def assign_group(stock_code: str, body: GroupAssign, db: Session = Depends(get_d
     return {"stock_code": stock_code, "group_id": item.group_id}
 
 
+class StockRename(BaseModel):
+    stock_name: str
+
+
+@router.patch("/{stock_code}/name")
+def rename_stock(stock_code: str, body: StockRename, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    item = db.query(Watchlist).filter(Watchlist.user_id == user.id, Watchlist.stock_code == stock_code).first()
+    if not item:
+        raise HTTPException(404, "Stock not found in watchlist")
+    item.stock_name = body.stock_name.strip()
+    db.commit()
+    return {"stock_code": stock_code, "stock_name": item.stock_name}
+
+
 @router.delete("/{stock_code}", status_code=204)
 def remove_from_watchlist(stock_code: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     item = (

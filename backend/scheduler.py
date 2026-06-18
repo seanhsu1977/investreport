@@ -1,7 +1,7 @@
 from __future__ import annotations
 import json
 import logging
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from apscheduler.schedulers.background import BackgroundScheduler
 from database import SessionLocal
 from drive_sync import sync_drive
@@ -253,6 +253,25 @@ def _kdj_screen_job():
         db.close()
 
 
+def _etf_tracker_job():
+    """每週一至五 20:00 同步 00981A + 00403A 當日成份股變化。
+    nstock ETF小百科約 19:30 發布，20:00 抓取保險。"""
+    logger.info("Starting ETF tracker sync job...")
+    db = SessionLocal()
+    try:
+        from routers.etf_tracker import _sync_one, ETF_CONFIG
+        tpe_now = datetime.now(timezone(timedelta(hours=8)))
+        date_str = tpe_now.strftime("%Y-%m-%d")
+        for etf in ETF_CONFIG:
+            try:
+                result = _sync_one(etf, date_str, db)
+                logger.info("ETF tracker synced %s %s: %s", etf, date_str, result)
+            except Exception as e:
+                logger.warning("ETF tracker sync failed for %s: %s", etf, e)
+    finally:
+        db.close()
+
+
 def start_scheduler():
     # Drive 同步：每天 4 次（台北時間 04:00 / 09:00 / 14:00 / 20:00）
     # 04:00 → 抓凌晨上傳；09:00 → 抓早盤前投顧報告；14:00 → 抓午間；20:00 → 抓盤後
@@ -268,6 +287,12 @@ def start_scheduler():
         _daily_article_job, "cron",
         day_of_week="mon-fri", hour=19, minute=45, timezone="Asia/Taipei",
         id="daily_article",
+    )
+    # ETF 追蹤同步：nstock 約 19:30 發布，20:00 抓取保險 Mon-Fri
+    scheduler.add_job(
+        _etf_tracker_job, "cron",
+        day_of_week="mon-fri", hour=20, minute=0, timezone="Asia/Taipei",
+        id="etf_tracker_sync",
     )
     # 大盤技術指標快照：每天 14:45（收盤後）Mon-Fri
     scheduler.add_job(

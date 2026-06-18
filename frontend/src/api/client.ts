@@ -30,6 +30,10 @@ export interface Report {
   key_points: string[];
   created_at: string;
   source_filename: string | null;
+  price_at_report: number | null;
+  price_5d_before: number | null;
+  price_10d_before: number | null;
+  price_20d_before: number | null;
   mentioned_stocks?: string[];
 }
 
@@ -52,9 +56,15 @@ export interface StockReportsResponse {
   related_news: Report[];
 }
 
+export interface DirectStock {
+  code: string;
+  name: string;
+}
+
 export interface RecentResponse {
   stock_reports: Report[];
   market_news: Report[];
+  direct_stocks?: DirectStock[];
 }
 
 export interface StockPrice {
@@ -89,6 +99,8 @@ export interface RecommendationItem {
     institutional: number;
     technical: number;
   };
+  latest_report_price: number | null;
+  gain_since_report: number | null;
 }
 
 export interface UpsideRankingItem {
@@ -226,7 +238,7 @@ export const stocksApi = {
     api.get<StockPrice>(`/stocks/${code}/price`).then((r) => r.data),
   upside_ranking: (days: number) =>
     api.get<UpsideRankingItem[]>(`/stocks/upside-ranking?days=${days}`).then((r) => r.data),
-  recommendations: (params: { days: number; min_reports: number; rec_filter: string; limit?: number }) =>
+  recommendations: (params: { days: number; min_reports: number; rec_filter: string; limit?: number; force?: boolean }) =>
     api.get<{ items: RecommendationItem[]; warnings: string[]; computed_at: string }>(
       "/stocks/recommendations", { params }
     ).then((r) => r.data),
@@ -250,6 +262,10 @@ export const stocksApi = {
     api.get<KlineResponse>(`/stocks/${code}/kline`).then((r) => r.data),
   kdj_screen: () =>
     api.get<{ items: KdjScreenItem[]; total: number; scanned: number; computed_at: string | null; data_date: string | null }>("/stocks/kdj-screen").then((r) => r.data),
+  kdj_screen_refresh: () =>
+    api.post<{ status: string }>("/stocks/kdj-screen/refresh").then((r) => r.data),
+  fill_all_prices: () =>
+    api.post<{ status: string; message: string }>("/stocks/admin/fill-all-prices").then((r) => r.data),
 };
 
 export const searchApi = {
@@ -264,6 +280,8 @@ export const watchlistApi = {
   remove: (stock_code: string) => api.delete(`/watchlist/${stock_code}`),
   assignGroup: (stock_code: string, group_id: number | null) =>
     api.patch(`/watchlist/${stock_code}/group`, { group_id }).then((r) => r.data),
+  rename: (stock_code: string, stock_name: string) =>
+    api.patch(`/watchlist/${stock_code}/name`, { stock_name }).then((r) => r.data),
   parseImage: (file: File) => {
     const form = new FormData();
     form.append("file", file);

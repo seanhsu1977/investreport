@@ -403,6 +403,16 @@ export default function StockPage() {
                   const upside = r.target_price && stockPrice?.price
                     ? ((r.target_price / stockPrice.price - 1) * 100)
                     : null;
+                  const gainSince = r.price_at_report && stockPrice?.price
+                    ? ((stockPrice.price / r.price_at_report - 1) * 100)
+                    : null;
+                  const gain5d = r.price_5d_before && r.price_at_report
+                    ? ((r.price_at_report / r.price_5d_before - 1) * 100) : null;
+                  const gain10d = r.price_10d_before && r.price_at_report
+                    ? ((r.price_at_report / r.price_10d_before - 1) * 100) : null;
+                  const gain20d = r.price_20d_before && r.price_at_report
+                    ? ((r.price_at_report / r.price_20d_before - 1) * 100) : null;
+                  const hasPreStats = gain5d != null || gain10d != null || gain20d != null;
                   return (
                     <div key={r.id} className="px-4 py-3.5 border-b border-[#F5F7FC] last:border-b-0">
                       {/* top row */}
@@ -434,10 +444,45 @@ export default function StockPage() {
                             {upside >= 0 ? "↑ +" : "↓ "}{upside.toFixed(1)}%
                           </span>
                         )}
+                        {gainSince != null && (
+                          <span className={`text-[11px] px-1.5 py-0.5 rounded font-semibold ${gainSince >= 0 ? "bg-red-50 text-[#E53935]" : "bg-emerald-50 text-[#1E8B4A]"}`}>
+                            報告後 {gainSince >= 0 ? "+" : ""}{gainSince.toFixed(1)}%
+                          </span>
+                        )}
                         <span className="ml-auto">
                           <ShareButton text={buildShareText(r)} url={buildShareUrl(r)} />
                         </span>
                       </div>
+                      {/* 報告前漲幅統計 */}
+                      {hasPreStats && (
+                        <div className="flex items-center gap-3 mt-1.5">
+                          <span className="text-[10px] text-[#6B7A99]">報告前</span>
+                          {gain5d != null && (
+                            <span className="text-[11px] tabular-nums">
+                              <span className="text-[#6B7A99]">5日 </span>
+                              <span className={`font-semibold ${gain5d >= 0 ? "text-[#E53935]" : "text-[#1E8B4A]"}`}>
+                                {gain5d >= 0 ? "+" : ""}{gain5d.toFixed(1)}%
+                              </span>
+                            </span>
+                          )}
+                          {gain10d != null && (
+                            <span className="text-[11px] tabular-nums">
+                              <span className="text-[#6B7A99]">10日 </span>
+                              <span className={`font-semibold ${gain10d >= 0 ? "text-[#E53935]" : "text-[#1E8B4A]"}`}>
+                                {gain10d >= 0 ? "+" : ""}{gain10d.toFixed(1)}%
+                              </span>
+                            </span>
+                          )}
+                          {gain20d != null && (
+                            <span className="text-[11px] tabular-nums">
+                              <span className="text-[#6B7A99]">20日 </span>
+                              <span className={`font-semibold ${gain20d >= 0 ? "text-[#E53935]" : "text-[#1E8B4A]"}`}>
+                                {gain20d >= 0 ? "+" : ""}{gain20d.toFixed(1)}%
+                              </span>
+                            </span>
+                          )}
+                        </div>
+                      )}
                       {/* AI summary block */}
                       {r.key_points.length > 0 && (
                         <div className="mt-2 bg-[#F8F9FE] rounded-lg p-2.5 border-l-2 border-[#1B6FD8]">

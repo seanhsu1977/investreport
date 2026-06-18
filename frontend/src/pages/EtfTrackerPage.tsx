@@ -138,11 +138,14 @@ export default function EtfTrackerPage() {
   const [crossData, setCrossData] = useState<EtfCrossData | null>(null);
   const [crossLoading, setCrossLoading] = useState(false);
 
-  // 載入已有日期清單
+  // 載入已有日期清單；若今日尚無資料，自動切到最新可用日期
   const refreshDates = useCallback(async () => {
     try {
       const r = await etfTrackerApi.dates(etfCode);
       setAvailableDates(r.dates);
+      if (r.dates.length > 0 && !r.dates.includes(tpeToday())) {
+        setDate(r.dates[0]); // dates 降冪，[0] = 最新
+      }
     } catch {
       // ignore
     }

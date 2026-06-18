@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { stocksApi, type KdjScreenItem } from "../api/client";
 
@@ -10,17 +10,25 @@ const SIGNAL_COLOR: Record<string, string> = {
   "高位死叉": "bg-green-100 text-green-700",
 };
 
+type CacheResult = {
+  items: KdjScreenItem[];
+  total: number;
+  scanned: number;
+  computed_at: string | null;
+  data_date: string | null;
+};
+
 export default function KdjScreener() {
-  const [result, setResult] = useState<{
-    items: KdjScreenItem[];
-    total: number;
-    scanned: number;
-    computed_at: string | null;
-    data_date: string | null;
-  } | null>(null);
+  const [result, setResult] = useState<CacheResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | "golden" | "dead">("golden");
+  const [refreshing, setRefreshing] = useState(false);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const stopPoll = () => {
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+  };
 
   useEffect(() => {
     stocksApi.kdj_screen()
@@ -28,12 +36,36 @@ export default function KdjScreener() {
       .catch((e: unknown) => {
         const msg =
           (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-          ?? (e as Error)?.message
-          ?? "載入失敗";
+          ?? (e as Error)?.message ?? "載入失敗";
         setError(msg);
       })
       .finally(() => setLoading(false));
+    return stopPoll;
   }, []);
+
+  const triggerRefresh = async () => {
+    setRefreshing(true);
+    stopPoll();
+    try {
+      await stocksApi.kdj_screen_refresh();
+    } catch {
+      setRefreshing(false);
+      return;
+    }
+    const originalAt = result?.computed_at ?? null;
+    let attempts = 0;
+    pollRef.current = setInterval(async () => {
+      attempts++;
+      try {
+        const r = await stocksApi.kdj_screen();
+        if (r.computed_at !== originalAt || attempts >= 24) {
+          stopPoll();
+          setResult(r);
+          setRefreshing(false);
+        }
+      } catch { /* ignore poll errors */ }
+    }, 15_000);
+  };
 
   const displayed = (result?.items ?? []).filter((it) => {
     if (filter === "golden") return it.kdj_signal === "低位金叉" || it.kdj_signal === "金叉";
@@ -43,12 +75,28 @@ export default function KdjScreener() {
 
   return (
     <div className="space-y-3">
-      <p className="text-xs text-gray-400 px-1">
-        KDJ(89,9,12) 近5天交叉訊號・自選股 + 00981A/00403A 成份股・每日收盤後更新
-        {result?.data_date && (
-          <span className="ml-1.5 text-gray-300">資料日期 {result.data_date}</span>
-        )}
-      </p>
+      <div className="flex items-center justify-between px-1">
+        <p className="text-xs text-gray-400">
+          KDJ(89,9,12) 近5天交叉訊號・自選股 + 00981A/00403A 成份股・每日收盤後更新
+          {result?.data_date && (
+            <span className="ml-1.5 text-gray-300">資料日期 {result.data_date}</span>
+          )}
+        </p>
+        <button
+          onClick={triggerRefresh}
+          disabled={refreshing || loading}
+          className="flex items-center gap-1 text-xs text-gray-500 hover:text-blue-600 disabled:opacity-40 transition shrink-0 ml-3"
+        >
+          <svg className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+          </svg>
+          {refreshing ? "掃描中…" : "手動更新"}
+        </button>
+      </div>
+
+      {refreshing && (
+        <p className="text-xs text-blue-500 text-center py-2">掃描進行中，通常需要 2–3 分鐘，完成後自動更新</p>
+      )}
 
       {loading && (
         <div className="flex justify-center py-12">

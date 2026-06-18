@@ -445,9 +445,10 @@ function TabPill({ code, tabs, assigns, onOpen, showAdd = false }: {
   );
 }
 
-function ListView({ items, onRemove, signals, signalsLoading, prices, fundamentals, expandedSignals, onToggleSignal, pinnedCodes, onTogglePin, onDragStart, onDragOver, onDragEnterEl, onDragLeaveEl, onDrop, onDragEnd, tabs, assigns, onOpenAssignMenu }: {
+function ListView({ items, onRemove, onRename, signals, signalsLoading, prices, fundamentals, expandedSignals, onToggleSignal, pinnedCodes, onTogglePin, onDragStart, onDragOver, onDragEnterEl, onDragLeaveEl, onDrop, onDragEnd, tabs, assigns, onOpenAssignMenu }: {
   items: WatchlistItem[];
   onRemove: (code: string) => void;
+  onRename: (code: string, name: string) => void;
   signals: Record<string, StockSignal>;
   signalsLoading: boolean;
   prices: Record<string, StockPriceData>;
@@ -466,6 +467,18 @@ function ListView({ items, onRemove, signals, signalsLoading, prices, fundamenta
   assigns: Record<string, string>;
   onOpenAssignMenu: (code: string, rect: DOMRect) => void;
 }) {
+  const [editingCode, setEditingCode] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState("");
+
+  const startEdit = (code: string, name: string | null) => {
+    setEditingCode(code);
+    setEditValue(name ?? "");
+  };
+  const commitEdit = (code: string) => {
+    if (editValue.trim()) onRename(code, editValue);
+    setEditingCode(null);
+  };
+
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
       <div className="grid grid-cols-12 gap-x-1 px-3 py-2 bg-gray-50 border-b border-gray-100 text-xs text-gray-400 font-medium uppercase tracking-wide">
@@ -509,8 +522,23 @@ function ListView({ items, onRemove, signals, signalsLoading, prices, fundamenta
               >
                 {item.stock_code}
               </Link>
-              {item.stock_name && (
-                <span className="text-xs text-gray-500 truncate leading-tight">{item.stock_name}</span>
+              {editingCode === item.stock_code ? (
+                <input
+                  autoFocus
+                  value={editValue}
+                  onChange={(e) => setEditValue(e.target.value)}
+                  onBlur={() => commitEdit(item.stock_code)}
+                  onKeyDown={(e) => { if (e.key === "Enter") commitEdit(item.stock_code); if (e.key === "Escape") setEditingCode(null); }}
+                  className="text-xs border border-blue-300 rounded px-1 py-0 leading-tight w-full focus:outline-none"
+                />
+              ) : (
+                <span
+                  className="text-xs text-gray-500 truncate leading-tight cursor-pointer hover:text-blue-500 group/name"
+                  onClick={() => startEdit(item.stock_code, item.stock_name)}
+                  title="點擊改名"
+                >
+                  {item.stock_name ?? <span className="text-gray-300 italic">點擊命名</span>}
+                </span>
               )}
             </div>
             <div className="hidden sm:flex sm:col-span-2 justify-center">
@@ -540,9 +568,10 @@ function ListView({ items, onRemove, signals, signalsLoading, prices, fundamenta
   );
 }
 
-function CardView({ items, onRemove, signals, signalsLoading, prices, fundamentals, expandedSignals, onToggleSignal, pinnedCodes, onTogglePin, onDragStart, onDragOver, onDragEnterEl, onDragLeaveEl, onDrop, onDragEnd, tabs, assigns, onOpenAssignMenu }: {
+function CardView({ items, onRemove, onRename, signals, signalsLoading, prices, fundamentals, expandedSignals, onToggleSignal, pinnedCodes, onTogglePin, onDragStart, onDragOver, onDragEnterEl, onDragLeaveEl, onDrop, onDragEnd, tabs, assigns, onOpenAssignMenu }: {
   items: WatchlistItem[];
   onRemove: (code: string) => void;
+  onRename: (code: string, name: string) => void;
   signals: Record<string, StockSignal>;
   signalsLoading: boolean;
   prices: Record<string, StockPriceData>;
@@ -561,6 +590,12 @@ function CardView({ items, onRemove, signals, signalsLoading, prices, fundamenta
   assigns: Record<string, string>;
   onOpenAssignMenu: (code: string, rect: DOMRect) => void;
 }) {
+  const [editingCode, setEditingCode] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState("");
+
+  const startEdit = (code: string, name: string | null) => { setEditingCode(code); setEditValue(name ?? ""); };
+  const commitEdit = (code: string) => { if (editValue.trim()) onRename(code, editValue); setEditingCode(null); };
+
   return (
     <div className="space-y-3">
       {items.map((item, idx) => {
@@ -590,7 +625,24 @@ function CardView({ items, onRemove, signals, signalsLoading, prices, fundamenta
                 >
                   {item.stock_code}
                 </Link>
-                {item.stock_name && <span className="text-gray-600">{item.stock_name}</span>}
+                {editingCode === item.stock_code ? (
+                  <input
+                    autoFocus
+                    value={editValue}
+                    onChange={(e) => setEditValue(e.target.value)}
+                    onBlur={() => commitEdit(item.stock_code)}
+                    onKeyDown={(e) => { if (e.key === "Enter") commitEdit(item.stock_code); if (e.key === "Escape") setEditingCode(null); }}
+                    className="text-sm border border-blue-300 rounded px-1.5 py-0.5 focus:outline-none"
+                  />
+                ) : (
+                  <span
+                    className="text-gray-600 cursor-pointer hover:text-blue-500"
+                    onClick={() => startEdit(item.stock_code, item.stock_name)}
+                    title="點擊改名"
+                  >
+                    {item.stock_name ?? <span className="text-gray-300 italic text-sm">點擊命名</span>}
+                  </span>
+                )}
                 {tab && (
                   <button
                     onClick={(e) => onOpenAssignMenu(item.stock_code, e.currentTarget.getBoundingClientRect())}
@@ -887,6 +939,13 @@ export default function WatchlistPage() {
     load();
   };
 
+  const handleRename = async (code: string, name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    await watchlistApi.rename(code, trimmed);
+    setItems((prev) => prev.map((i) => i.stock_code === code ? { ...i, stock_name: trimmed } : i));
+  };
+
   const watchedCodes = new Set(items.map((i) => i.stock_code));
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -922,6 +981,7 @@ export default function WatchlistPage() {
 
   const sharedViewProps = {
     onRemove: handleRemove,
+    onRename: handleRename,
     signals, signalsLoading, prices, fundamentals,
     expandedSignals, onToggleSignal: toggleSignal,
     pinnedCodes, onTogglePin: togglePin,

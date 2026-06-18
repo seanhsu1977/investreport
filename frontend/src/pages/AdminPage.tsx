@@ -1080,6 +1080,7 @@ function SyncHistorySection() {
   const importRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
   const [sinceDate, setSinceDate] = useState("");
+  const [fillingPrices, setFillingPrices] = useState(false);
 
   const handleExport = async () => {
     try {
@@ -1193,6 +1194,20 @@ function SyncHistorySection() {
     }
   };
 
+  const handleFillPrices = async () => {
+    setFillingPrices(true);
+    setMsg(null);
+    try {
+      const { stocksApi } = await import("../api/client");
+      const res = await stocksApi.fill_all_prices();
+      setMsg({ ok: true, text: res.message });
+    } catch {
+      setMsg({ ok: false, text: "批次填充啟動失敗" });
+    } finally {
+      setFillingPrices(false);
+    }
+  };
+
   const fmtDt = (s: string | null) =>
     s ? new Date(s + (s.includes("+") ? "" : "Z")).toLocaleString("zh-TW", { timeZone: "Asia/Taipei", hour12: false }) : "—";
 
@@ -1229,6 +1244,14 @@ function SyncHistorySection() {
               {reanalyzing ? "分析中…" : `重新分析 (${noReportCount} 筆無結果)`}
             </button>
           )}
+          <button
+            onClick={handleFillPrices}
+            disabled={fillingPrices}
+            className="px-3 py-1.5 text-sm rounded-lg bg-indigo-500 text-white hover:bg-indigo-600 disabled:opacity-50"
+            title="補齊所有報告的前後歷史股價"
+          >
+            {fillingPrices ? "填充中…" : "補歷史股價"}
+          </button>
           <div className="flex items-center gap-1.5">
             <input
               type="date"

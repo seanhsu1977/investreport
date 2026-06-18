@@ -38,10 +38,14 @@ def get_db():
 def _migrate():
     """補上新欄位（SQLite 不支援 CREATE TABLE 時自動加欄位）"""
     migrations = [
-        ("sync_logs",      "no_report",    "INTEGER DEFAULT 0"),
-        ("daily_articles", "fb_post_id",   "VARCHAR"),
-        ("daily_articles", "fb_posted_at", "DATETIME"),
-        ("watchlist",      "group_id",     "INTEGER"),
+        ("sync_logs",      "no_report",       "INTEGER DEFAULT 0"),
+        ("daily_articles", "fb_post_id",      "VARCHAR"),
+        ("daily_articles", "fb_posted_at",    "DATETIME"),
+        ("watchlist",      "group_id",        "INTEGER"),
+        ("reports",        "price_at_report",  "FLOAT"),
+        ("reports",        "price_5d_before",  "FLOAT"),
+        ("reports",        "price_10d_before", "FLOAT"),
+        ("reports",        "price_20d_before", "FLOAT"),
     ]
     for table, col, col_def in migrations:
         with engine.begin() as conn:
@@ -74,7 +78,7 @@ def _fix_known_name_errors():
 
 
 def init_db():
-    from models import DriveFile, Report, Watchlist, WatchlistGroup, FuturesChip, Stock, DailyArticle, SyncLog, InviteCode, RecommendationCache, StockRecommendationReason, TxfCandle, EtfDailyChange  # noqa: F401
+    from models import DriveFile, Report, Watchlist, WatchlistGroup, FuturesChip, Stock, DailyArticle, SyncLog, InviteCode, RecommendationCache, StockRecommendationReason, TxfCandle, EtfDailyChange, MarketTechnicalSnapshot, KdjScreenCache  # noqa: F401
     Base.metadata.create_all(bind=engine)
     _migrate()
     _cleanup_stale_syncs()

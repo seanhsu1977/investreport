@@ -150,6 +150,14 @@ function ScoreCard({ item, rank, onAskReason }: { item: RecommendationItem; rank
           <div className="text-xs text-[#6B7A99] uppercase tracking-[0.6px]">均線</div>
           <div className="text-[15px] font-semibold mt-0.5 text-[#0D1B2A]">{item.ma_signal ?? "—"}</div>
         </div>
+        {item.gain_since_report != null && (
+          <div className="col-span-2">
+            <div className="text-xs text-[#6B7A99] uppercase tracking-[0.6px]">報告後漲幅</div>
+            <div className={`text-[15px] font-semibold mt-0.5 tabular-nums ${item.gain_since_report >= 0 ? "text-[#E53935]" : "text-[#1E8B4A]"}`}>
+              {item.gain_since_report >= 0 ? "+" : ""}{item.gain_since_report.toFixed(1)}%
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ask reason */}
@@ -211,6 +219,14 @@ function RestCard({ item, rank, onAskReason }: { item: RecommendationItem; rank:
             {item.upside_pct != null ? `${item.upside_pct >= 0 ? "+" : ""}${item.upside_pct.toFixed(1)}%` : "—"}
           </div>
         </div>
+        {item.gain_since_report != null && (
+          <div className="sm:w-20">
+            <div className="text-[11px] text-[#6B7A99] sm:hidden">報告後</div>
+            <div className={`text-[13px] font-semibold mt-0.5 tabular-nums ${item.gain_since_report >= 0 ? "text-[#E53935]" : "text-[#1E8B4A]"}`}>
+              {item.gain_since_report >= 0 ? "+" : ""}{item.gain_since_report.toFixed(1)}%
+            </div>
+          </div>
+        )}
         <div className="sm:w-16">
           <div className="text-[11px] text-[#6B7A99] sm:hidden">報告數</div>
           <div className="text-[13px] font-semibold mt-0.5 tabular-nums">{item.report_count} 篇</div>
@@ -376,12 +392,35 @@ export default function RecommendationsPage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await stocksApi.recommendations({ days, min_reports: minReports, rec_filter: recFilter, limit: 30 });
+      const data = await stocksApi.recommendations({ days, min_reports: minReports, rec_filter: recFilter, limit: 30, force });
+      const oldComputedAt = data.computed_at;
       const fetchedAt = new Date();
       _recCache.set(recCacheKey(days, minReports, recFilter), { items: data.items, warnings: data.warnings ?? [], fetchedAt });
       setItems(data.items);
       setWarnings(data.warnings ?? []);
       setLastFetched(fetchedAt);
+
+      // force=true 時：背景正在重算，輪詢直到 computed_at 更新
+      if (force) {
+        let attempts = 0;
+        const poll = setInterval(async () => {
+          attempts++;
+          if (attempts > 20) { clearInterval(poll); setLoading(false); return; }
+          try {
+            const fresh = await stocksApi.recommendations({ days, min_reports: minReports, rec_filter: recFilter, limit: 30 });
+            if (fresh.computed_at !== oldComputedAt) {
+              clearInterval(poll);
+              const ft = new Date();
+              _recCache.set(recCacheKey(days, minReports, recFilter), { items: fresh.items, warnings: fresh.warnings ?? [], fetchedAt: ft });
+              setItems(fresh.items);
+              setWarnings(fresh.warnings ?? []);
+              setLastFetched(ft);
+              setLoading(false);
+            }
+          } catch { /* ignore */ }
+        }, 5000);
+        return; // 不在 finally 清 loading，等輪詢結束
+      }
     } catch (e: any) {
       const detail = e?.response?.data?.detail ?? e?.message ?? "未知錯誤";
       setError(`載入失敗：${detail}`);

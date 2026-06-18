@@ -376,12 +376,35 @@ export default function RecommendationsPage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await stocksApi.recommendations({ days, min_reports: minReports, rec_filter: recFilter, limit: 30 });
+      const data = await stocksApi.recommendations({ days, min_reports: minReports, rec_filter: recFilter, limit: 30, force });
+      const oldComputedAt = data.computed_at;
       const fetchedAt = new Date();
       _recCache.set(recCacheKey(days, minReports, recFilter), { items: data.items, warnings: data.warnings ?? [], fetchedAt });
       setItems(data.items);
       setWarnings(data.warnings ?? []);
       setLastFetched(fetchedAt);
+
+      // force=true 時：背景正在重算，輪詢直到 computed_at 更新
+      if (force) {
+        let attempts = 0;
+        const poll = setInterval(async () => {
+          attempts++;
+          if (attempts > 20) { clearInterval(poll); setLoading(false); return; }
+          try {
+            const fresh = await stocksApi.recommendations({ days, min_reports: minReports, rec_filter: recFilter, limit: 30 });
+            if (fresh.computed_at !== oldComputedAt) {
+              clearInterval(poll);
+              const ft = new Date();
+              _recCache.set(recCacheKey(days, minReports, recFilter), { items: fresh.items, warnings: fresh.warnings ?? [], fetchedAt: ft });
+              setItems(fresh.items);
+              setWarnings(fresh.warnings ?? []);
+              setLastFetched(ft);
+              setLoading(false);
+            }
+          } catch { /* ignore */ }
+        }, 5000);
+        return; // 不在 finally 清 loading，等輪詢結束
+      }
     } catch (e: any) {
       const detail = e?.response?.data?.detail ?? e?.message ?? "未知錯誤";
       setError(`載入失敗：${detail}`);

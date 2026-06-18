@@ -446,28 +446,30 @@ async def get_recommendations(
     min_reports: int = Query(default=1, ge=1, le=10),
     rec_filter: str = Query(default="all"),   # "all" | "buy_only"
     limit: int = Query(default=20, ge=1, le=50),
+    force: bool = Query(default=False),
     db: Session = Depends(get_db),
 ):
-    """投顧精選排行：永遠從快取立即回傳，背景非同步更新。"""
+    """投顧精選排行：永遠從快取立即回傳，背景非同步更新。force=true 強制背景重算。"""
     import logging as _log
     import time as _time
     from models import RecommendationCache
     _logger = _log.getLogger(__name__)
     cache_key = f"{days}_{min_reports}_{rec_filter}_{limit}"
 
-    # 1. in-memory cache（最快，10 分鐘 TTL）
-    cached = _rec_cache.get(cache_key)
-    if cached and (_time.time() - cached[1]) < _REC_CACHE_TTL:
-        return cached[0]
+    # 1. in-memory cache（最快，10 分鐘 TTL）；force=True 時跳過
+    if not force:
+        cached = _rec_cache.get(cache_key)
+        if cached and (_time.time() - cached[1]) < _REC_CACHE_TTL:
+            return cached[0]
 
-    # 2. DB cache（跨重啟持久）— 不論過不過期都先回傳，過期則背景更新
+    # 2. DB cache（跨重啟持久）— 不論過不過期都先回傳，過期或 force 則背景更新
     db_row = db.get(RecommendationCache, cache_key)
     if db_row:
         result = json.loads(db_row.payload)
         _rec_cache[cache_key] = (result, _time.time())
         age = (datetime.utcnow() - db_row.computed_at).total_seconds()
-        if age >= _REC_DB_CACHE_TTL and cache_key not in _computing_keys:
-            _logger.info("DB cache stale (%.0fs), triggering background recompute for %s", age, cache_key)
+        if (force or age >= _REC_DB_CACHE_TTL) and cache_key not in _computing_keys:
+            _logger.info("Triggering background recompute for %s (force=%s, age=%.0fs)", cache_key, force, age)
             asyncio.create_task(_compute_recommendations_bg(cache_key, days, min_reports, rec_filter, limit))
         return result
 

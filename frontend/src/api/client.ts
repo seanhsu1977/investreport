@@ -226,7 +226,7 @@ export const stocksApi = {
     api.get<StockPrice>(`/stocks/${code}/price`).then((r) => r.data),
   upside_ranking: (days: number) =>
     api.get<UpsideRankingItem[]>(`/stocks/upside-ranking?days=${days}`).then((r) => r.data),
-  recommendations: (params: { days: number; min_reports: number; rec_filter: string; limit?: number }) =>
+  recommendations: (params: { days: number; min_reports: number; rec_filter: string; limit?: number; force?: boolean }) =>
     api.get<{ items: RecommendationItem[]; warnings: string[]; computed_at: string }>(
       "/stocks/recommendations", { params }
     ).then((r) => r.data),

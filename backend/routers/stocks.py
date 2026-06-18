@@ -23,6 +23,7 @@ _SAFETY_OFF = [
 from database import get_db
 from models import Report, StockRecommendationReason, TxfCandle
 from stocks_master import resolve_name
+from routers.auth import require_admin
 
 router = APIRouter(prefix="/stocks", tags=["stocks"])
 
@@ -63,6 +64,9 @@ def _serialize_report(r: Report, include_mentioned: bool = False) -> dict:
         "created_at": r.created_at,
         "source_filename": r.source_filename,
         "price_at_report": r.price_at_report,
+        "price_5d_before": r.price_5d_before,
+        "price_10d_before": r.price_10d_before,
+        "price_20d_before": r.price_20d_before,
     }
     if include_mentioned:
         d["mentioned_stocks"] = json.loads(r.mentioned_stocks) if r.mentioned_stocks else []
@@ -70,33 +74,75 @@ def _serialize_report(r: Report, include_mentioned: bool = False) -> dict:
 
 
 def _fill_prices_at_report(stock_code: str, reports: list, db) -> None:
-    """懶惰填充 price_at_report：對缺漏的報告用 yfinance 查歷史收盤價並存 DB。"""
-    missing = [r for r in reports if r.price_at_report is None and r.report_date is not None and r.stock_code != "MARKET"]
+    """懶惰填充報告日及報告前 5/10/20 日的歷史收盤價。"""
+    missing = [
+        r for r in reports
+        if r.report_date is not None and r.stock_code != "MARKET"
+        and (r.price_at_report is None or r.price_5d_before is None
+             or r.price_10d_before is None or r.price_20d_before is None)
+    ]
     if not missing:
         return
     try:
         import yfinance as yf
         from datetime import timedelta
         min_date = min(r.report_date for r in missing)
-        # 取足夠長的歷史（從最早報告日往前 7 天抓到今天）
+        # 往前多拉 35 天以覆蓋 20 個交易日前的價格
         for suffix in [".TW", ".TWO"]:
             ticker = yf.Ticker(f"{stock_code}{suffix}")
-            hist = ticker.history(start=min_date - timedelta(days=7))
+            hist = ticker.history(start=min_date - timedelta(days=35))
             if not hist.empty:
                 break
         else:
             return
-        # 將 DatetimeIndex 轉為 date
         hist_dates = [d.date() for d in hist.index]
         hist_closes = list(hist["Close"])
+
+        def _price_on_or_before(target_date):
+            cs = [(d, c) for d, c in zip(hist_dates, hist_closes) if d <= target_date]
+            return round(cs[-1][1], 2) if cs else None
+
         for r in missing:
-            # 找 <= report_date 的最近交易日
-            candidates = [(d, c) for d, c in zip(hist_dates, hist_closes) if d <= r.report_date]
-            if candidates:
-                r.price_at_report = round(candidates[-1][1], 2)
+            if r.price_at_report is None:
+                r.price_at_report = _price_on_or_before(r.report_date)
+            if r.price_5d_before is None:
+                r.price_5d_before = _price_on_or_before(r.report_date - timedelta(days=5))
+            if r.price_10d_before is None:
+                r.price_10d_before = _price_on_or_before(r.report_date - timedelta(days=10))
+            if r.price_20d_before is None:
+                r.price_20d_before = _price_on_or_before(r.report_date - timedelta(days=20))
         db.commit()
     except Exception:
         pass
+
+
+def _fill_all_prices_bg() -> None:
+    """背景批次填充所有報告的歷史價格（一次性工具，不重複填已有資料）。"""
+    from database import SessionLocal
+    db = SessionLocal()
+    try:
+        from sqlalchemy import or_
+        codes = [
+            row[0] for row in
+            db.query(Report.stock_code).filter(
+                Report.stock_code != "MARKET",
+                Report.report_date.isnot(None),
+                or_(
+                    Report.price_at_report.is_(None),
+                    Report.price_5d_before.is_(None),
+                    Report.price_10d_before.is_(None),
+                    Report.price_20d_before.is_(None),
+                )
+            ).distinct().all()
+        ]
+        for code in codes:
+            reports = db.query(Report).filter(
+                Report.stock_code == code,
+                Report.report_date.isnot(None),
+            ).all()
+            _fill_prices_at_report(code, reports, db)
+    finally:
+        db.close()
 
 
 @router.get("")
@@ -1633,3 +1679,13 @@ def get_stock_reports(stock_code: str, db: Session = Depends(get_db)):
         "reports": [_serialize_report(r) for r in reports],
         "related_news": [_serialize_report(r, include_mentioned=True) for r in news],
     }
+
+
+@router.post("/admin/fill-all-prices")
+async def fill_all_prices(
+    background_tasks: BackgroundTasks,
+    _=Depends(require_admin),
+):
+    """一次性批次填充所有報告的歷史價格（需 admin）"""
+    background_tasks.add_task(_fill_all_prices_bg)
+    return {"status": "started", "message": "背景批次填充已啟動，約需數分鐘"}

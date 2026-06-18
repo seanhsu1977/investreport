@@ -42,7 +42,10 @@ def _migrate():
         ("daily_articles", "fb_post_id",      "VARCHAR"),
         ("daily_articles", "fb_posted_at",    "DATETIME"),
         ("watchlist",      "group_id",        "INTEGER"),
-        ("reports",        "price_at_report", "FLOAT"),
+        ("reports",        "price_at_report",  "FLOAT"),
+        ("reports",        "price_5d_before",  "FLOAT"),
+        ("reports",        "price_10d_before", "FLOAT"),
+        ("reports",        "price_20d_before", "FLOAT"),
     ]
     for table, col, col_def in migrations:
         with engine.begin() as conn:

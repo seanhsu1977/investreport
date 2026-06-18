@@ -31,6 +31,9 @@ export interface Report {
   created_at: string;
   source_filename: string | null;
   price_at_report: number | null;
+  price_5d_before: number | null;
+  price_10d_before: number | null;
+  price_20d_before: number | null;
   mentioned_stocks?: string[];
 }
 
@@ -261,6 +264,8 @@ export const stocksApi = {
     api.get<{ items: KdjScreenItem[]; total: number; scanned: number; computed_at: string | null; data_date: string | null }>("/stocks/kdj-screen").then((r) => r.data),
   kdj_screen_refresh: () =>
     api.post<{ status: string }>("/stocks/kdj-screen/refresh").then((r) => r.data),
+  fill_all_prices: () =>
+    api.post<{ status: string; message: string }>("/stocks/admin/fill-all-prices").then((r) => r.data),
 };
 
 export const searchApi = {

@@ -52,9 +52,15 @@ export interface StockReportsResponse {
   related_news: Report[];
 }
 
+export interface DirectStock {
+  code: string;
+  name: string;
+}
+
 export interface RecentResponse {
   stock_reports: Report[];
   market_news: Report[];
+  direct_stocks?: DirectStock[];
 }
 
 export interface StockPrice {

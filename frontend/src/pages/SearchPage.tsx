@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { searchApi, type Report, type RecentResponse } from "../api/client";
+import { searchApi, type Report, type RecentResponse, type DirectStock } from "../api/client";
 import RecommendationBadge from "../components/RecommendationBadge";
 import ShareButton from "../components/ShareButton";
 import StockLinkedText from "../components/StockLinkedText";
@@ -190,6 +190,7 @@ export default function SearchPage() {
 
   const stockCount = data?.stock_reports.length ?? 0;
   const newsCount = data?.market_news.length ?? 0;
+  const directStocks: DirectStock[] = data?.direct_stocks ?? [];
 
   return (
     <div className="max-w-4xl mx-auto py-8 px-4 space-y-6">
@@ -219,8 +220,29 @@ export default function SearchPage() {
       {!loading && !searched && (
         <p className="text-gray-400 text-sm">請輸入關鍵字後按搜尋或 Enter</p>
       )}
-      {!loading && searched && stockCount === 0 && newsCount === 0 && (
-        <p className="text-gray-500 text-sm">找不到相關報告或新聞</p>
+      {!loading && searched && stockCount === 0 && newsCount === 0 && directStocks.length === 0 && (
+        <p className="text-gray-500 text-sm">找不到相關報告、新聞或個股</p>
+      )}
+
+      {/* 無報告個股快速跳轉 */}
+      {!loading && searched && directStocks.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">個股（無相關報告）</p>
+          <div className="flex flex-wrap gap-2">
+            {directStocks.map((s) => (
+              <Link
+                key={s.code}
+                to={`/stocks/${s.code}`}
+                state={{ from: "/search", label: "搜尋結果" }}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 bg-white hover:bg-blue-50 hover:border-blue-300 transition text-sm shadow-sm"
+              >
+                <span className="font-mono font-bold text-blue-600">{s.code}</span>
+                {s.name && <span className="text-gray-600">{s.name}</span>}
+                <span className="text-gray-300">→</span>
+              </Link>
+            ))}
+          </div>
+        </div>
       )}
 
       {/* 結果 */}

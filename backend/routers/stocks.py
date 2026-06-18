@@ -1298,11 +1298,12 @@ def get_stock_price(stock_code: str):
 
 @router.get("/search")
 def search_reports(q: str = Query(default=""), db: Session = Depends(get_db)):
-    """關鍵字搜尋報告與新聞"""
+    """關鍵字搜尋報告與新聞，同時回傳沒有報告的個股結果"""
     keyword = q.strip()
     if not keyword:
-        return {"stock_reports": [], "market_news": []}
+        return {"stock_reports": [], "market_news": [], "direct_stocks": []}
     from sqlalchemy import or_, nullslast
+    from models import Stock, Watchlist, EtfDailyChange
     pattern = f"%{keyword}%"
     reports = (
         db.query(Report)
@@ -1322,7 +1323,35 @@ def search_reports(q: str = Query(default=""), db: Session = Depends(get_db)):
     )
     stock_reports = [_serialize_report(r) for r in reports if r.stock_code != "MARKET"]
     market_news = [_serialize_report(r, include_mentioned=True) for r in reports if r.stock_code == "MARKET"]
-    return {"stock_reports": stock_reports, "market_news": market_news}
+
+    # 找出有報告的股票代號，避免重複
+    reported_codes = {r["stock_code"] for r in stock_reports}
+
+    # 從 stocks / watchlist / etf_daily_changes 找符合但無報告的個股
+    seen: dict[str, str] = {}  # code -> name
+    for row in db.query(Stock.code, Stock.name).filter(
+        or_(Stock.code.like(pattern), Stock.name.like(pattern))
+    ).limit(20).all():
+        if row.code not in reported_codes:
+            seen[row.code] = row.name
+
+    for row in db.query(Watchlist.stock_code, Watchlist.stock_name).filter(
+        or_(Watchlist.stock_code.like(pattern), Watchlist.stock_name.like(pattern))
+    ).limit(20).all():
+        if row.stock_code not in reported_codes and row.stock_code not in seen:
+            seen[row.stock_code] = row.stock_name or row.stock_code
+
+    for row in db.query(EtfDailyChange.stock_code, EtfDailyChange.stock_name).filter(
+        or_(EtfDailyChange.stock_code.like(pattern), EtfDailyChange.stock_name.like(pattern))
+    ).distinct(EtfDailyChange.stock_code).limit(20).all():
+        if row.stock_code not in reported_codes and row.stock_code not in seen:
+            seen[row.stock_code] = row.stock_name or row.stock_code
+
+    direct_stocks = sorted(
+        [{"code": code, "name": name} for code, name in seen.items()],
+        key=lambda x: x["code"],
+    )
+    return {"stock_reports": stock_reports, "market_news": market_news, "direct_stocks": direct_stocks}
 
 
 @router.get("/recent")

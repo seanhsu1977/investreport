@@ -28,27 +28,9 @@ from routers.auth import require_admin
 router = APIRouter(prefix="/stocks", tags=["stocks"])
 
 # ── Sector Rotation ─────────────────────────────────────────────────────────
-_SECTOR_ETF = {
-    "半導體":   "00929.TW",
-    "科技電子": "0052.TW",
-    "金融":     "0055.TW",
-    "生技醫療": "00515.TW",
-    "高息傳產": "0056.TW",
-    "航運":     "00895.TW",
-    "電動車":   "00893.TW",
-}
-_SECTOR_COLOR = {
-    "半導體":   "#3B82F6",
-    "科技電子": "#8B5CF6",
-    "金融":     "#10B981",
-    "生技醫療": "#F59E0B",
-    "高息傳產": "#6366F1",
-    "航運":     "#EF4444",
-    "電動車":   "#06B6D4",
-}
-_BENCHMARK_ETF = "0050.TW"
-_sr_cache: dict[str, tuple[dict, float]] = {}
-_SR_TTL = 4 * 3600
+# 資料來源：TWSE MI_INDEX 各類股指數及成交金額
+_SECTOR_CHIP_CACHE: dict[str, tuple[dict, float]] = {}
+_SECTOR_CHIP_TTL = 4 * 3600
 
 # ── Server-side in-memory cache for recommendations（TTL 10 分鐘）
 _rec_cache: dict[str, tuple[dict, float]] = {}
@@ -1714,87 +1696,102 @@ async def fill_all_prices(
     return {"status": "started", "message": "背景批次填充已啟動，約需數分鐘"}
 
 
+async def _fetch_mi_index(date_str: str) -> dict[str, float] | None:
+    """MI_INDEX 各類股指數：回傳 {類股名稱: 成交金額（億元）}，非交易日回傳 None"""
+    url = f"https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX?date={date_str}&type=IND&response=json"
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            data = (await client.get(url)).json()
+        if data.get("stat") != "OK":
+            return None
+        fields = data.get("fields", [])
+        amt_idx = next((i for i, f in enumerate(fields) if "成交金額" in f), None)
+        name_idx = 0
+        if amt_idx is None:
+            return None
+        result: dict[str, float] = {}
+        for row in data.get("data", []):
+            try:
+                name = str(row[name_idx]).strip()
+                amt = float(str(row[amt_idx]).replace(",", "")) / 1e8  # 轉億元
+                if name and amt > 0:
+                    result[name] = amt
+            except (ValueError, IndexError):
+                pass
+        return result or None
+    except Exception:
+        return None
+
+
 @router.get("/sector-rotation")
-async def sector_rotation(days: int = Query(default=60, ge=20, le=120)):
-    """台股類股輪動圖（RRG）：以代表性 ETF 計算 RS-Ratio / RS-Momentum"""
+async def sector_rotation():
+    """台股類股輪動泡泡圖：TWSE MI_INDEX 各類股成交金額，近 20 日累積與加速度"""
     now = time.time()
-    cache_key = f"sr_{days}"
-    if cache_key in _sr_cache:
-        data, ts = _sr_cache[cache_key]
-        if now - ts < _SR_TTL:
+    cache_key = "sector_rotation"
+    if cache_key in _SECTOR_CHIP_CACHE:
+        data, ts = _SECTOR_CHIP_CACHE[cache_key]
+        if now - ts < _SECTOR_CHIP_TTL:
             return data
 
-    try:
-        import yfinance as yf
-        import numpy as np
-        from datetime import timedelta
+    from collections import defaultdict
 
-        # 多抓 35 天以供 EMA 暖機（RS=10 期、RM=5 期）
-        fetch_days = days + 35
-        start = date.today() - timedelta(days=int(fetch_days * 1.8))
-        tickers = list(_SECTOR_ETF.values()) + [_BENCHMARK_ETF]
-        raw = yf.download(tickers, start=start, progress=False, auto_adjust=True)
+    # 收集最近 30 個工作日候選（取到有效的 22 日為止）
+    today = date.today()
+    candidates = [
+        (today - timedelta(days=i + 1)).strftime("%Y%m%d")
+        for i in range(45)
+        if (today - timedelta(days=i + 1)).weekday() < 5
+    ][:30]
 
-        # yfinance 0.2+ 回傳 MultiIndex (field, ticker)，取 Close 層
-        if hasattr(raw.columns, 'levels'):
-            close = raw["Close"]
-        else:
-            close = raw
+    sem = asyncio.Semaphore(6)
 
-        if close.empty:
-            raise HTTPException(status_code=503, detail="無法取得 ETF 報價")
+    async def _fetch(ds: str):
+        async with sem:
+            return ds, await _fetch_mi_index(ds)
 
-        bm_raw = close[_BENCHMARK_ETF].dropna()
+    fetched = await asyncio.gather(*[_fetch(ds) for ds in candidates])
+    daily_data = sorted(
+        [(ds, d) for ds, d in fetched if d],
+        key=lambda x: x[0],
+    )[-22:]
 
-        result_sectors = []
-        for name, ticker in _SECTOR_ETF.items():
-            if ticker not in close.columns:
-                continue
-            sec = close[ticker].dropna()
-            common = sec.index.intersection(bm_raw.index)
-            if len(common) < 30:
-                continue
+    if len(daily_data) < 5:
+        raise HTTPException(status_code=503, detail="MI_INDEX 資料不足，請稍後再試")
 
-            p = sec.loc[common].astype(float)
-            b = bm_raw.loc[common].astype(float)
+    n = len(daily_data)
 
-            # RS line（相對強弱）
-            rs = p / b * 100.0
-            # RS-Ratio（10 期 EMA 正規化，中心=100）
-            rs_ema = rs.ewm(span=10, adjust=False).mean()
-            rs_ratio = rs / rs_ema * 100.0
-            # RS-Momentum（5 期 EMA 正規化，中心=100）
-            rs_ratio_ema = rs_ratio.ewm(span=5, adjust=False).mean()
-            rs_momentum = rs_ratio / rs_ratio_ema * 100.0
+    # 各類股每日成交金額 series
+    sector_series: dict[str, list[float]] = defaultdict(lambda: [0.0] * n)
+    for day_idx, (_, daily) in enumerate(daily_data):
+        for sector, amt in daily.items():
+            sector_series[sector][day_idx] += amt
 
-            trail = []
-            for dt, x, y in zip(common[-days:],
-                                 rs_ratio.values[-days:],
-                                 rs_momentum.values[-days:]):
-                if np.isfinite(x) and np.isfinite(y):
-                    trail.append({
-                        "date": str(dt.date()),
-                        "x": round(float(x), 3),
-                        "y": round(float(y), 3),
-                    })
+    bubbles = []
+    for sector, series in sector_series.items():
+        x20 = sum(series[-20:])          # 20 日累積（億元）
+        x5  = sum(series[-5:])
+        avg5  = x5  / 5
+        avg20 = x20 / 20
+        y = avg5 - avg20                 # 加速度（億元/日）
+        size = x20
+        if size < 1:                     # 過濾極小板塊
+            continue
+        bubbles.append({
+            "name": sector,
+            "x": round(x20, 1),
+            "y": round(y, 1),
+            "size": round(size, 1),
+            "amt_5d":  round(x5,  1),    # 億元
+            "amt_20d": round(x20, 1),    # 億元
+        })
 
-            if trail:
-                result_sectors.append({
-                    "name": name,
-                    "ticker": ticker,
-                    "color": _SECTOR_COLOR[name],
-                    "trail": trail,
-                })
+    bubbles.sort(key=lambda b: b["size"], reverse=True)
 
-        result = {
-            "sectors": result_sectors,
-            "benchmark": _BENCHMARK_ETF,
-            "computed_at": datetime.utcnow().isoformat(),
-            "days": days,
-        }
-        _sr_cache[cache_key] = (result, now)
-        return result
-    except HTTPException:
-        raise
-    except Exception as exc:
-        raise HTTPException(status_code=503, detail=str(exc))
+    result = {
+        "bubbles": bubbles[:50],
+        "trading_days": n,
+        "latest_date": daily_data[-1][0],
+        "computed_at": datetime.utcnow().isoformat(),
+    }
+    _SECTOR_CHIP_CACHE[cache_key] = (result, now)
+    return result

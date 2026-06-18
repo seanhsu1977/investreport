@@ -50,6 +50,7 @@ function getRecCached(days: number, minReports: number, recFilter: string) {
 }
 
 const REC_PERIOD_OPTIONS = [
+  { days: 5,  label: "5 天"  },
   { days: 30, label: "30 天" },
   { days: 60, label: "60 天" },
   { days: 90, label: "90 天" },

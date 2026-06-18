@@ -266,6 +266,8 @@ export const watchlistApi = {
   remove: (stock_code: string) => api.delete(`/watchlist/${stock_code}`),
   assignGroup: (stock_code: string, group_id: number | null) =>
     api.patch(`/watchlist/${stock_code}/group`, { group_id }).then((r) => r.data),
+  rename: (stock_code: string, stock_name: string) =>
+    api.patch(`/watchlist/${stock_code}/name`, { stock_name }).then((r) => r.data),
   parseImage: (file: File) => {
     const form = new FormData();
     form.append("file", file);

@@ -1698,9 +1698,10 @@ async def fill_all_prices(
     return {"status": "started", "message": "背景批次填充已啟動，約需數分鐘"}
 
 
-_CONCEPT_MAX_STOCKS = 20   # 排除股票數超過此值的 ETF 型概念
-_CONCEPT_LIMIT     = 50   # 概念股清單最多取幾個
-_sector_computing  = False # 防止重複觸發背景計算
+_CONCEPT_MAX_STOCKS  = 30   # 排除股票數超過此值的 ETF 型概念
+_CONCEPT_LIMIT       = 25   # 概念股清單最多取幾個
+_CONCEPT_STOCKS_CAP  = 6    # 每個概念最多取幾支代表股
+_sector_computing    = False # 防止重複觸發背景計算
 
 
 async def _compute_sector_rotation() -> None:
@@ -1748,14 +1749,15 @@ async def _compute_sector_rotation() -> None:
                 continue
             _k, name, ids = item
             if 2 <= len(ids) <= _CONCEPT_MAX_STOCKS:
-                concept_map[name] = ids
+                # 只取前幾支代表股，避免 OOM
+                concept_map[name] = ids[:_CONCEPT_STOCKS_CAP]
 
         if not concept_map:
             return
 
         # Step 3: 並發抓所有不重複個股日K（semaphore 限制並發）
         all_codes = list({code for ids in concept_map.values() for code in ids})
-        sem = asyncio.Semaphore(15)
+        sem = asyncio.Semaphore(8)
 
         async def _fetch_one(code: str):
             async with sem:
@@ -1767,6 +1769,7 @@ async def _compute_sector_rotation() -> None:
             return_exceptions=True,
         )
 
+        # 只保留最近 22 根 K 棒，釋放其餘記憶體
         stock_daily: dict[str, list] = {}
         latest_date = ""
         for item in stock_results:
@@ -1774,7 +1777,7 @@ async def _compute_sector_rotation() -> None:
                 continue
             code, daily = item
             if daily and daily.get("日K"):
-                bars = daily["日K"]
+                bars = daily["日K"][:22]
                 stock_daily[code] = bars
                 if not latest_date and bars:
                     latest_date = str(bars[0].get("交易日", ""))

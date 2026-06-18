@@ -27,7 +27,30 @@ from routers.auth import require_admin
 
 router = APIRouter(prefix="/stocks", tags=["stocks"])
 
-# Server-side in-memory cache for recommendations（TTL 10 分鐘）
+# ── Sector Rotation ─────────────────────────────────────────────────────────
+_SECTOR_ETF = {
+    "半導體":   "00929.TW",
+    "科技電子": "0052.TW",
+    "金融":     "0055.TW",
+    "生技醫療": "00515.TW",
+    "高息傳產": "0056.TW",
+    "航運":     "00895.TW",
+    "電動車":   "00893.TW",
+}
+_SECTOR_COLOR = {
+    "半導體":   "#3B82F6",
+    "科技電子": "#8B5CF6",
+    "金融":     "#10B981",
+    "生技醫療": "#F59E0B",
+    "高息傳產": "#6366F1",
+    "航運":     "#EF4444",
+    "電動車":   "#06B6D4",
+}
+_BENCHMARK_ETF = "0050.TW"
+_sr_cache: dict[str, tuple[dict, float]] = {}
+_SR_TTL = 4 * 3600
+
+# ── Server-side in-memory cache for recommendations（TTL 10 分鐘）
 _rec_cache: dict[str, tuple[dict, float]] = {}
 _REC_CACHE_TTL = 10 * 60
 _REC_DB_CACHE_TTL = 12 * 3600  # DB 快取 12 小時
@@ -1689,3 +1712,89 @@ async def fill_all_prices(
     """一次性批次填充所有報告的歷史價格（需 admin）"""
     background_tasks.add_task(_fill_all_prices_bg)
     return {"status": "started", "message": "背景批次填充已啟動，約需數分鐘"}
+
+
+@router.get("/sector-rotation")
+async def sector_rotation(days: int = Query(default=60, ge=20, le=120)):
+    """台股類股輪動圖（RRG）：以代表性 ETF 計算 RS-Ratio / RS-Momentum"""
+    now = time.time()
+    cache_key = f"sr_{days}"
+    if cache_key in _sr_cache:
+        data, ts = _sr_cache[cache_key]
+        if now - ts < _SR_TTL:
+            return data
+
+    try:
+        import yfinance as yf
+        import numpy as np
+        from datetime import timedelta
+
+        # 多抓 35 天以供 EMA 暖機（RS=10 期、RM=5 期）
+        fetch_days = days + 35
+        start = date.today() - timedelta(days=int(fetch_days * 1.8))
+        tickers = list(_SECTOR_ETF.values()) + [_BENCHMARK_ETF]
+        raw = yf.download(tickers, start=start, progress=False, auto_adjust=True)
+
+        # yfinance 0.2+ 回傳 MultiIndex (field, ticker)，取 Close 層
+        if hasattr(raw.columns, 'levels'):
+            close = raw["Close"]
+        else:
+            close = raw
+
+        if close.empty:
+            raise HTTPException(status_code=503, detail="無法取得 ETF 報價")
+
+        bm_raw = close[_BENCHMARK_ETF].dropna()
+
+        result_sectors = []
+        for name, ticker in _SECTOR_ETF.items():
+            if ticker not in close.columns:
+                continue
+            sec = close[ticker].dropna()
+            common = sec.index.intersection(bm_raw.index)
+            if len(common) < 30:
+                continue
+
+            p = sec.loc[common].astype(float)
+            b = bm_raw.loc[common].astype(float)
+
+            # RS line（相對強弱）
+            rs = p / b * 100.0
+            # RS-Ratio（10 期 EMA 正規化，中心=100）
+            rs_ema = rs.ewm(span=10, adjust=False).mean()
+            rs_ratio = rs / rs_ema * 100.0
+            # RS-Momentum（5 期 EMA 正規化，中心=100）
+            rs_ratio_ema = rs_ratio.ewm(span=5, adjust=False).mean()
+            rs_momentum = rs_ratio / rs_ratio_ema * 100.0
+
+            trail = []
+            for dt, x, y in zip(common[-days:],
+                                 rs_ratio.values[-days:],
+                                 rs_momentum.values[-days:]):
+                if np.isfinite(x) and np.isfinite(y):
+                    trail.append({
+                        "date": str(dt.date()),
+                        "x": round(float(x), 3),
+                        "y": round(float(y), 3),
+                    })
+
+            if trail:
+                result_sectors.append({
+                    "name": name,
+                    "ticker": ticker,
+                    "color": _SECTOR_COLOR[name],
+                    "trail": trail,
+                })
+
+        result = {
+            "sectors": result_sectors,
+            "benchmark": _BENCHMARK_ETF,
+            "computed_at": datetime.utcnow().isoformat(),
+            "days": days,
+        }
+        _sr_cache[cache_key] = (result, now)
+        return result
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=str(exc))

@@ -316,9 +316,11 @@ async def _fetch_all_market_data(candidates: list[dict]) -> tuple[dict, dict, di
             if not data:
                 return code, None
             row = data[0]
+            _chg = float(row.get("漲跌幅") or 0)
             return code, {
                 "price": float(row.get("當盤成交價") or 0) or None,
-                "change_pct": float(row.get("漲跌幅") or 0) or None,
+                # 台股漲跌停 ±10%；nstock 在開盤前會回傳 -100 作為佔位，需過濾
+                "change_pct": _chg if _chg and abs(_chg) <= 20 else None,
                 "volume": int(float(row.get("累積成交量") or 0)) or None,
             }
         except Exception:

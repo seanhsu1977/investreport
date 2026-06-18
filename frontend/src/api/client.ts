@@ -250,6 +250,8 @@ export const stocksApi = {
     api.get<KlineResponse>(`/stocks/${code}/kline`).then((r) => r.data),
   kdj_screen: () =>
     api.get<{ items: KdjScreenItem[]; total: number; scanned: number; computed_at: string | null; data_date: string | null }>("/stocks/kdj-screen").then((r) => r.data),
+  kdj_screen_refresh: () =>
+    api.post<{ status: string }>("/stocks/kdj-screen/refresh").then((r) => r.data),
 };
 
 export const searchApi = {

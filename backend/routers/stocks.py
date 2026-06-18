@@ -5,7 +5,7 @@ import os
 import time
 import httpx
 from datetime import date, datetime, timedelta
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -1354,6 +1354,14 @@ def kdj_screen(db: Session = Depends(get_db)):
         "computed_at": row.computed_at,
         "data_date": row.data_date,
     }
+
+
+@router.post("/kdj-screen/refresh")
+def kdj_screen_refresh(background_tasks: BackgroundTasks):
+    """手動觸發 KDJ 選股重新掃描（背景執行，完成後快取更新）。"""
+    from scheduler import _kdj_screen_job
+    background_tasks.add_task(_kdj_screen_job)
+    return {"status": "started"}
 
 
 @router.get("/{stock_code}/kline")

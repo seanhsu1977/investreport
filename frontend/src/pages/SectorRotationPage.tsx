@@ -474,15 +474,16 @@ export default function SectorRotationPage() {
                   const bx = toSvgX(b.x);
                   const by = toSvgY(b.y);
                   const rad = r(b);
-                  const scaledR = rad / zoom.scale;
+                  // 泡泡本身用原始半徑（在縮放 group 內自然放大），只有筆畫除以 scale 保持細線
+                  const visualR = rad * zoom.scale; // 視覺半徑，用來判斷是否顯示文字
                   const isHov = hovered?.name === b.name;
                   const canDrill = !drillDown && "stocks" in b && (b.stocks?.length ?? 0) > 0;
 
-                  // 字體大小：隨泡泡縮放，保持在泡泡內部合理
-                  const fs1 = Math.min(11, scaledR * 0.42);
-                  const fs2 = Math.min(9.5, scaledR * 0.36);
-                  const showTwoLine = scaledR > 20;
-                  const showOneLine = scaledR > 11;
+                  // 字體大小在 SVG 座標系（會被 scale 放大），上限讓文字不超出泡泡
+                  const fs1 = Math.min(rad * 0.42, 11 / zoom.scale);
+                  const fs2 = Math.min(rad * 0.36, 9.5 / zoom.scale);
+                  const showTwoLine = visualR > 20;
+                  const showOneLine = visualR > 11;
 
                   return (
                     <g
@@ -493,10 +494,10 @@ export default function SectorRotationPage() {
                       style={{ cursor: dragging ? "grabbing" : canDrill ? "zoom-in" : "default" }}
                     >
                       {/* 光暈環 */}
-                      <circle cx={bx} cy={by} r={scaledR * 1.18} fill={color} fillOpacity={isHov ? 0.15 : 0.07} />
+                      <circle cx={bx} cy={by} r={rad * 1.18} fill={color} fillOpacity={isHov ? 0.15 : 0.07} />
                       {/* 主體 */}
                       <circle
-                        cx={bx} cy={by} r={scaledR}
+                        cx={bx} cy={by} r={rad}
                         fill={color}
                         fillOpacity={isHov ? 0.88 : 0.68}
                         stroke={color}

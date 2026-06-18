@@ -1347,6 +1347,20 @@ def search_reports(q: str = Query(default=""), db: Session = Depends(get_db)):
         if row.stock_code not in reported_codes and row.stock_code not in seen:
             seen[row.stock_code] = row.stock_name or row.stock_code
 
+    # 若關鍵字像股票代號（4-6 位英數）且什麼都沒找到，嘗試 nstock 即時查詢
+    import re as _re
+    if _re.fullmatch(r"[0-9A-Za-z]{4,6}", keyword) and keyword not in reported_codes and keyword not in seen:
+        try:
+            url = f"https://www.nstock.tw/api/v2/real-time-quotes/data?stock_id={keyword}"
+            with httpx.Client(timeout=4) as client:
+                data = client.get(url).json().get("data", [])
+            if data:
+                ns_name = data[0].get("股票名稱") or data[0].get("名稱") or None
+                if ns_name:
+                    seen[keyword] = ns_name
+        except Exception:
+            pass
+
     direct_stocks = sorted(
         [{"code": code, "name": name} for code, name in seen.items()],
         key=lambda x: x["code"],

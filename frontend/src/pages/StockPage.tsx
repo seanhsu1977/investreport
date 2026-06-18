@@ -26,7 +26,7 @@ const REC_COLOR: Record<string, string> = {
   Sell: "bg-red-500",
 };
 
-type StockTabKey = "reports" | "chips" | "tech" | "article" | "news";
+type StockTabKey = "reports" | "chips" | "tech" | "insight" | "article" | "news";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -149,6 +149,101 @@ export default function StockPage() {
     ? ((latest.target_price / stockPrice.price - 1) * 100)
     : null;
 
+  // ── 綜合分析分數計算 ─────────────────────────────────────────────────────────
+  const insightScores = (() => {
+    const instRows = fundamentals?.institutional ?? [];
+
+    // 投顧分 (0-100)
+    let brokerScore: number | null = null;
+    const brokerPoints: string[] = [];
+    const brokerNeg: string[] = [];
+    if (sortedReports.length > 0) {
+      const totalRec = buyCount + holdCount + sellCount;
+      const buyRatioPts = totalRec > 0 ? Math.round((buyCount / totalRec) * 50) : 0;
+      const upsidePts = avgUpside == null ? 0
+        : avgUpside >= 25 ? 30 : avgUpside >= 15 ? 22 : avgUpside >= 8 ? 14 : avgUpside >= 0 ? 8 : 0;
+      const latestDate = latest?.report_date ?? latest?.created_at?.slice(0, 10);
+      const daysSinceReport = latestDate
+        ? Math.floor((Date.now() - new Date(latestDate).getTime()) / 86400000) : 999;
+      const recentPts = daysSinceReport <= 14 ? 20 : daysSinceReport <= 30 ? 14 : daysSinceReport <= 60 ? 6 : 0;
+      brokerScore = Math.min(100, buyRatioPts + upsidePts + recentPts);
+      if (totalRec > 0 && buyCount / totalRec >= 0.6) brokerPoints.push(`${buyCount} 篇買進（${Math.round(buyCount/totalRec*100)}%）`);
+      if (avgUpside != null && avgUpside >= 8) brokerPoints.push(`平均目標漲幅 +${avgUpside.toFixed(1)}%`);
+      if (daysSinceReport <= 30) brokerPoints.push(`${daysSinceReport} 天前有新報告`);
+      if (totalRec > 0 && sellCount / totalRec >= 0.4) brokerNeg.push(`${sellCount} 篇賣出建議`);
+      if (avgUpside != null && avgUpside < 0) brokerNeg.push(`平均目標低於現價`);
+      if (daysSinceReport > 60) brokerNeg.push(`最近報告已超過 60 天`);
+    }
+
+    // 籌碼分 (0-100)
+    let chipScore: number | null = null;
+    const chipPoints: string[] = [];
+    const chipNeg: string[] = [];
+    if (instRows.length >= 3) {
+      const rows5 = instRows.slice(0, 5);
+      const f5 = rows5.reduce((s, d) => s + d.foreign, 0);
+      const t5 = rows5.reduce((s, d) => s + d.trust, 0);
+      const de5 = rows5.reduce((s, d) => s + d.dealer, 0);
+      const fPts  = f5 > 0 ? 40 : f5 === 0 ? 20 : 0;
+      const tPts  = t5 > 0 ? 35 : t5 === 0 ? 17 : 0;
+      const dePts = de5 > 0 ? 10 : de5 === 0 ? 5 : 0;
+      // 量能 bonus：三方都買超 → +15
+      const allBuy = f5 > 0 && t5 > 0 && de5 > 0;
+      chipScore = Math.min(100, fPts + tPts + dePts + (allBuy ? 15 : 0));
+      if (f5 > 0)  chipPoints.push(`外資 5 日買超 ${f5.toLocaleString()} 張`);
+      if (t5 > 0)  chipPoints.push(`投信 5 日買超 ${t5.toLocaleString()} 張`);
+      if (de5 > 0) chipPoints.push(`自營商 5 日買超 ${de5.toLocaleString()} 張`);
+      if (allBuy)  chipPoints.push("三大法人同步買超");
+      if (f5 < 0)  chipNeg.push(`外資 5 日賣超 ${Math.abs(f5).toLocaleString()} 張`);
+      if (t5 < 0)  chipNeg.push(`投信 5 日賣超 ${Math.abs(t5).toLocaleString()} 張`);
+    }
+
+    // 技術分 (0-100)
+    let techScore: number | null = null;
+    const techPoints: string[] = [];
+    const techNeg: string[] = [];
+    if (signal) {
+      const maPts = signal.ma_signal === "多頭排列" ? 25 : signal.ma_signal === "空頭排列" ? 0 : 12;
+      const rsi = signal.rsi ?? 50;
+      const rsiPts = rsi >= 40 && rsi <= 65 ? 20 : (rsi >= 30 && rsi < 40) || (rsi > 65 && rsi <= 75) ? 14 : rsi < 30 ? 18 : 5;
+      const kdjSig = signal.kdj_signal ?? "";
+      const kdjPts = kdjSig.includes("低位金叉") ? 25 : kdjSig.includes("金叉") ? 15
+        : kdjSig.includes("低位死叉") || kdjSig.includes("高位死叉") ? 0 : kdjSig.includes("死叉") ? 5 : 10;
+      const volPts = signal.volume_signal === "量增" ? 15 : signal.volume_signal === "量縮" ? 0 : 8;
+      const ch5 = signal.price_change_5d ?? 0;
+      const ch5Pts = ch5 > 2 ? 15 : ch5 > 0 ? 8 : 0;
+      techScore = Math.min(100, maPts + rsiPts + kdjPts + volPts + ch5Pts);
+      if (signal.ma_signal === "多頭排列") techPoints.push("均線多頭排列");
+      if (rsi < 35) techPoints.push(`RSI ${rsi} 相對低位`);
+      if (kdjSig.includes("金叉")) techPoints.push(`KDJ ${kdjSig}`);
+      if (signal.volume_signal === "量增") techPoints.push("量能放大");
+      if (signal.tower?.color === "陽") techPoints.push(`寶塔線陽（${signal.tower.count}根）`);
+      if (ch5 > 2) techPoints.push(`5 日漲 ${ch5}%`);
+      if (signal.ma_signal === "空頭排列") techNeg.push("均線空頭排列");
+      if (kdjSig.includes("死叉")) techNeg.push(`KDJ ${kdjSig}`);
+      if (signal.volume_signal === "量縮") techNeg.push("量能萎縮");
+      if (rsi > 75) techNeg.push(`RSI ${rsi} 偏高`);
+    }
+
+    // 綜合分
+    const scores = [brokerScore, chipScore, techScore];
+    const weights = [0.4, 0.3, 0.3];
+    const valid = scores.map((s, i) => s != null ? { s: s!, w: weights[i] } : null).filter(Boolean) as { s: number; w: number }[];
+    const totalW = valid.reduce((sum, x) => sum + x.w, 0);
+    const overall = totalW > 0
+      ? Math.round(valid.reduce((sum, x) => sum + x.s * x.w, 0) / totalW)
+      : null;
+
+    const verdictInfo = overall == null ? null
+      : overall >= 78 ? { text: "多方訊號強烈，積極布局", color: "text-[#DC2626]", bg: "bg-red-50", border: "border-red-200" }
+      : overall >= 60 ? { text: "偏多，適合分批進場",      color: "text-[#E95C2E]", bg: "bg-orange-50", border: "border-orange-200" }
+      : overall >= 42 ? { text: "訊號中性，建議觀望",      color: "text-[#B45309]", bg: "bg-amber-50",  border: "border-amber-200" }
+      : overall >= 25 ? { text: "偏空，謹慎操作",          color: "text-[#15803D]", bg: "bg-green-50",  border: "border-green-200" }
+      :                 { text: "空方訊號居多，不建議進場", color: "text-[#15803D]", bg: "bg-green-50",  border: "border-green-200" };
+
+    return { brokerScore, chipScore, techScore, overall, verdictInfo, brokerPoints, brokerNeg, chipPoints, chipNeg, techPoints, techNeg };
+  })();
+
   // beware: RecommendationItem is not available here — we're on the stock page
   // No score_breakdown data on StockPage — hero bars only show if signal exists
 
@@ -159,6 +254,7 @@ export default function StockPage() {
     { key: "reports", label: "投顧報告" },
     { key: "chips",   label: "籌碼面" },
     { key: "tech",    label: "技術訊號" },
+    { key: "insight", label: "綜合分析" },
     { key: "article", label: "AI 每日稿" },
   ];
 
@@ -849,6 +945,173 @@ export default function StockPage() {
             )}
           </>
         )}
+
+        {/* ════════════════ TAB: 綜合分析 ════════════════ */}
+        {!loading && activeTab === "insight" && (() => {
+          const { brokerScore, chipScore, techScore, overall, verdictInfo, brokerPoints, brokerNeg, chipPoints, chipNeg, techPoints, techNeg } = insightScores;
+
+          const ScoreRing = ({ score, color }: { score: number | null; color: string }) => {
+            if (score == null) return <div className="text-[11px] text-[#6B7A99]">無資料</div>;
+            const r = 22, circ = 2 * Math.PI * r;
+            const dash = (score / 100) * circ;
+            return (
+              <svg width="60" height="60" viewBox="0 0 60 60" className="-rotate-90">
+                <circle cx="30" cy="30" r={r} fill="none" stroke="#E8ECF4" strokeWidth="5" />
+                <circle cx="30" cy="30" r={r} fill="none" stroke={color} strokeWidth="5"
+                  strokeDasharray={`${dash} ${circ - dash}`} strokeLinecap="round" />
+                <text x="30" y="36" textAnchor="middle" className="rotate-90"
+                  style={{ fontSize: 14, fontWeight: 700, fill: color, transform: "rotate(90deg)", transformOrigin: "30px 30px" }}>
+                  {score}
+                </text>
+              </svg>
+            );
+          };
+
+          const dims = [
+            { key: "broker", label: "投顧共識", score: brokerScore, color: "#1B6FD8", points: brokerPoints, neg: brokerNeg },
+            { key: "chip",   label: "法人籌碼", score: chipScore,   color: "#7C3AED", points: chipPoints,  neg: chipNeg  },
+            { key: "tech",   label: "技術訊號", score: techScore,   color: "#F59E0B", points: techPoints,  neg: techNeg  },
+          ];
+
+          return (
+            <>
+              {/* Overall verdict card */}
+              <div className={`bg-white border rounded-2xl overflow-hidden mb-4 ${verdictInfo?.border ?? "border-[#DDE2EC]"}`}>
+                <div className="px-5 py-5">
+                  <div className="flex items-center gap-5">
+                    {/* big score */}
+                    <div className="relative flex-shrink-0">
+                      {(() => {
+                        const score = overall;
+                        if (score == null) return <div className="w-20 h-20 rounded-full border-4 border-[#DDE2EC] flex items-center justify-center text-[#6B7A99] text-xs">待計算</div>;
+                        const r = 34, circ = 2 * Math.PI * r, dash = (score / 100) * circ;
+                        const col = score >= 78 ? "#DC2626" : score >= 60 ? "#E95C2E" : score >= 42 ? "#D97706" : "#15803D";
+                        return (
+                          <svg width="88" height="88" viewBox="0 0 88 88">
+                            <circle cx="44" cy="44" r={r} fill="none" stroke="#E8ECF4" strokeWidth="7" />
+                            <circle cx="44" cy="44" r={r} fill="none" stroke={col} strokeWidth="7"
+                              strokeDasharray={`${dash} ${circ - dash}`} strokeLinecap="round"
+                              transform="rotate(-90 44 44)" />
+                            <text x="44" y="49" textAnchor="middle" style={{ fontSize: 22, fontWeight: 800, fill: col }}>{score}</text>
+                          </svg>
+                        );
+                      })()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[11px] text-[#6B7A99] mb-1">綜合進場評估</div>
+                      {verdictInfo ? (
+                        <div className={`text-[17px] font-extrabold ${verdictInfo.color} leading-snug`}>{verdictInfo.text}</div>
+                      ) : (
+                        <div className="text-[15px] font-bold text-[#6B7A99]">資料載入中…</div>
+                      )}
+                      <div className="text-[11px] text-[#6B7A99] mt-1">投顧×0.4 ＋ 籌碼×0.3 ＋ 技術×0.3</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Three dimension cards */}
+              <div className="grid grid-cols-3 gap-3 mb-4">
+                {dims.map((d) => (
+                  <div key={d.key} className="bg-white border border-[#DDE2EC] rounded-xl p-3 flex flex-col items-center gap-1">
+                    <div className="text-[10px] text-[#6B7A99] font-medium">{d.label}</div>
+                    <ScoreRing score={d.score} color={d.color} />
+                    <div className="text-[10px] text-[#6B7A99] text-center">/ 100</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Pros / Cons */}
+              {dims.some((d) => d.points.length > 0 || d.neg.length > 0) && (
+                <div className="bg-white border border-[#DDE2EC] rounded-2xl overflow-hidden mb-4">
+                  <div className="px-4 py-3 border-b border-[#DDE2EC]">
+                    <h3 className="text-[13px] font-bold text-[#0D1B2A]">訊號明細</h3>
+                  </div>
+                  <div className="divide-y divide-[#F5F7FC]">
+                    {dims.map((d) => (
+                      (d.points.length > 0 || d.neg.length > 0) && (
+                        <div key={d.key} className="px-4 py-3">
+                          <div className="text-[11px] font-semibold mb-1.5" style={{ color: d.color }}>{d.label}</div>
+                          <div className="space-y-1">
+                            {d.points.map((pt) => (
+                              <div key={pt} className="flex items-start gap-1.5 text-[12px] text-[#0D1B2A]">
+                                <span className="text-[#DC2626] mt-0.5">▲</span>{pt}
+                              </div>
+                            ))}
+                            {d.neg.map((pt) => (
+                              <div key={pt} className="flex items-start gap-1.5 text-[12px] text-[#0D1B2A]">
+                                <span className="text-[#1E8B4A] mt-0.5">▼</span>{pt}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Entry zone */}
+              {(signal?.support?.length || signal?.resistance?.length || kline?.kdj_k10_price) && (
+                <div className="bg-white border border-[#DDE2EC] rounded-2xl overflow-hidden">
+                  <div className="px-4 py-3 border-b border-[#DDE2EC]">
+                    <h3 className="text-[13px] font-bold text-[#0D1B2A]">進場參考區間</h3>
+                  </div>
+                  <div className="px-4 py-3 space-y-3">
+                    {stockPrice?.price && (
+                      <div className="flex items-center justify-between text-[12px]">
+                        <span className="text-[#6B7A99]">現價</span>
+                        <span className="font-bold tabular-nums text-[#0D1B2A]">{formatPrice(stockPrice.price)}</span>
+                      </div>
+                    )}
+                    {kline?.kdj_k10_price != null && kline?.kdj_k20_price != null && (
+                      <div className="flex items-center justify-between text-[12px]">
+                        <span className="text-[#6B7A99]">KDJ 低位參考（K=10~20）</span>
+                        <span className="font-bold tabular-nums text-[#15803D]">
+                          {formatPrice(kline.kdj_k10_price)} ~ {formatPrice(kline.kdj_k20_price)}
+                        </span>
+                      </div>
+                    )}
+                    {kline?.kdj_k80_price != null && kline?.kdj_k90_price != null && (
+                      <div className="flex items-center justify-between text-[12px]">
+                        <span className="text-[#6B7A99]">KDJ 高位參考（K=80~90）</span>
+                        <span className="font-bold tabular-nums text-[#DC2626]">
+                          {formatPrice(kline.kdj_k80_price)} ~ {formatPrice(kline.kdj_k90_price)}
+                        </span>
+                      </div>
+                    )}
+                    {(signal?.support?.length ?? 0) > 0 && (
+                      <div className="flex items-center justify-between text-[12px]">
+                        <span className="text-[#6B7A99]">技術支撐</span>
+                        <div className="flex gap-1.5">
+                          {signal!.support.map((v) => (
+                            <span key={v} className="px-1.5 py-0.5 rounded bg-green-50 text-[#1E8B4A] border border-green-100 tabular-nums font-medium">{v}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {(signal?.resistance?.length ?? 0) > 0 && (
+                      <div className="flex items-center justify-between text-[12px]">
+                        <span className="text-[#6B7A99]">技術壓力</span>
+                        <div className="flex gap-1.5">
+                          {signal!.resistance.map((v) => (
+                            <span key={v} className="px-1.5 py-0.5 rounded bg-red-50 text-[#E53935] border border-red-100 tabular-nums font-medium">{v}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {avgTarget != null && (
+                      <div className="flex items-center justify-between text-[12px]">
+                        <span className="text-[#6B7A99]">投顧平均目標價</span>
+                        <span className="font-bold tabular-nums text-[#1B6FD8]">{formatPrice(avgTarget)}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </>
+          );
+        })()}
 
         {/* ════════════════ TAB: AI 每日稿 ════════════════ */}
         {!loading && activeTab === "article" && (

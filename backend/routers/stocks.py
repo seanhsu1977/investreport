@@ -28,9 +28,12 @@ from routers.auth import require_admin
 router = APIRouter(prefix="/stocks", tags=["stocks"])
 
 # ── Sector Rotation ─────────────────────────────────────────────────────────
-# 資料來源：TWSE MI_INDEX 各類股指數及成交金額
+# 資料來源：TWSE STOCK_DAY_ALL 個股成交金額 + ISIN 產業對照
 _SECTOR_CHIP_CACHE: dict[str, tuple[dict, float]] = {}
 _SECTOR_CHIP_TTL = 4 * 3600
+_STOCK_SECTOR_MAP: dict[str, str] = {}
+_STOCK_SECTOR_TS: float = 0.0
+_STOCK_SECTOR_TTL = 7 * 86400
 
 # ── Server-side in-memory cache for recommendations（TTL 10 分鐘）
 _rec_cache: dict[str, tuple[dict, float]] = {}
@@ -1696,26 +1699,59 @@ async def fill_all_prices(
     return {"status": "started", "message": "背景批次填充已啟動，約需數分鐘"}
 
 
-async def _fetch_mi_index(date_str: str) -> dict[str, float] | None:
-    """MI_INDEX 各類股指數：回傳 {類股名稱: 成交金額（億元）}，非交易日回傳 None"""
-    url = f"https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX?date={date_str}&type=IND&response=json"
+async def _fetch_stock_sector_map() -> dict[str, str]:
+    """TWSE ISIN 頁：股票代號 → 產業別（快取 7 天）"""
+    global _STOCK_SECTOR_MAP, _STOCK_SECTOR_TS
+    now = time.time()
+    if _STOCK_SECTOR_MAP and (now - _STOCK_SECTOR_TS) < _STOCK_SECTOR_TTL:
+        return _STOCK_SECTOR_MAP
+    import re as _re
     try:
-        async with httpx.AsyncClient(timeout=15) as client:
+        url = "https://isin.twse.com.tw/isin/C_public.jsp?strMode=2"
+        async with httpx.AsyncClient(timeout=25, follow_redirects=True) as client:
+            resp = await client.get(url)
+        content = resp.content.decode("big5", errors="replace")
+        td_pat = _re.compile(r'<td[^>]*>(.*?)</td>', _re.DOTALL)
+        tr_pat = _re.compile(r'<tr[^>]*>(.*?)</tr>', _re.DOTALL)
+        tag_re = _re.compile(r'<[^>]+>')
+        mapping: dict[str, str] = {}
+        for tr in tr_pat.finditer(content):
+            tds = td_pat.findall(tr.group(1))
+            if len(tds) < 5:
+                continue
+            code_raw = tag_re.sub('', tds[0]).replace('　', '').replace('\xa0', '').strip()
+            industry = tag_re.sub('', tds[4]).strip()
+            m = _re.match(r'^(\d{4,6})', code_raw)
+            if m and len(industry) > 1:
+                mapping[m.group(1)] = industry
+        if mapping:
+            _STOCK_SECTOR_MAP = mapping
+            _STOCK_SECTOR_TS = now
+    except Exception:
+        pass
+    return _STOCK_SECTOR_MAP
+
+
+async def _fetch_stock_day_all(date_str: str) -> dict[str, float] | None:
+    """STOCK_DAY_ALL 全股成交金額：回傳 {stock_code: 成交金額（億元）}，非交易日回傳 None"""
+    import re as _re
+    url = f"https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY_ALL?date={date_str}&response=json"
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
             data = (await client.get(url)).json()
         if data.get("stat") != "OK":
             return None
         fields = data.get("fields", [])
-        amt_idx = next((i for i, f in enumerate(fields) if "成交金額" in f), None)
-        name_idx = 0
-        if amt_idx is None:
-            return None
+        amt_idx = next((i for i, f in enumerate(fields) if "成交金額" in f), 3)
         result: dict[str, float] = {}
         for row in data.get("data", []):
+            code = str(row[0]).strip() if row else ""
+            if not _re.match(r'^\d{4}$', code):  # 只取 4 位數上市股票
+                continue
             try:
-                name = str(row[name_idx]).strip()
-                amt = float(str(row[amt_idx]).replace(",", "")) / 1e8  # 轉億元
-                if name and amt > 0:
-                    result[name] = amt
+                amt = float(str(row[amt_idx]).replace(",", "")) / 1e8  # 億元
+                if amt > 0:
+                    result[code] = amt
             except (ValueError, IndexError):
                 pass
         return result or None
@@ -1725,7 +1761,7 @@ async def _fetch_mi_index(date_str: str) -> dict[str, float] | None:
 
 @router.get("/sector-rotation")
 async def sector_rotation():
-    """台股類股輪動泡泡圖：TWSE MI_INDEX 各類股成交金額，近 20 日累積與加速度"""
+    """台股類股輪動泡泡圖：STOCK_DAY_ALL 個股成交金額依 TWSE 產業彙總"""
     now = time.time()
     cache_key = "sector_rotation"
     if cache_key in _SECTOR_CHIP_CACHE:
@@ -1735,7 +1771,8 @@ async def sector_rotation():
 
     from collections import defaultdict
 
-    # 收集最近 30 個工作日候選（取到有效的 22 日為止）
+    sector_map = await _fetch_stock_sector_map()
+
     today = date.today()
     candidates = [
         (today - timedelta(days=i + 1)).strftime("%Y%m%d")
@@ -1743,11 +1780,11 @@ async def sector_rotation():
         if (today - timedelta(days=i + 1)).weekday() < 5
     ][:30]
 
-    sem = asyncio.Semaphore(6)
+    sem = asyncio.Semaphore(5)
 
     async def _fetch(ds: str):
         async with sem:
-            return ds, await _fetch_mi_index(ds)
+            return ds, await _fetch_stock_day_all(ds)
 
     fetched = await asyncio.gather(*[_fetch(ds) for ds in candidates])
     daily_data = sorted(
@@ -1756,33 +1793,34 @@ async def sector_rotation():
     )[-22:]
 
     if len(daily_data) < 5:
-        raise HTTPException(status_code=503, detail="MI_INDEX 資料不足，請稍後再試")
+        raise HTTPException(status_code=503, detail="STOCK_DAY_ALL 資料不足，請稍後再試")
 
     n = len(daily_data)
 
-    # 各類股每日成交金額 series
+    # 依產業彙總每日成交金額
     sector_series: dict[str, list[float]] = defaultdict(lambda: [0.0] * n)
     for day_idx, (_, daily) in enumerate(daily_data):
-        for sector, amt in daily.items():
-            sector_series[sector][day_idx] += amt
+        for code, amt in daily.items():
+            ind = sector_map.get(code)
+            if ind:
+                sector_series[ind][day_idx] += amt
 
     bubbles = []
     for sector, series in sector_series.items():
-        x20 = sum(series[-20:])          # 20 日累積（億元）
+        x20 = sum(series[-20:])
         x5  = sum(series[-5:])
         avg5  = x5  / 5
         avg20 = x20 / 20
         y = avg5 - avg20                 # 加速度（億元/日）
-        size = x20
-        if size < 1:                     # 過濾極小板塊
+        if x20 < 1:
             continue
         bubbles.append({
             "name": sector,
             "x": round(x20, 1),
             "y": round(y, 1),
-            "size": round(size, 1),
-            "amt_5d":  round(x5,  1),    # 億元
-            "amt_20d": round(x20, 1),    # 億元
+            "size": round(x20, 1),
+            "amt_5d":  round(x5,  1),
+            "amt_20d": round(x20, 1),
         })
 
     bubbles.sort(key=lambda b: b["size"], reverse=True)

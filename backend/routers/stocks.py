@@ -27,13 +27,10 @@ from routers.auth import require_admin
 
 router = APIRouter(prefix="/stocks", tags=["stocks"])
 
-# ── Sector Chip Rotation ────────────────────────────────────────────────────
-# 資料來源：TWSE T86 三大法人買賣超 + ISIN 產業別對照
+# ── Sector Rotation ─────────────────────────────────────────────────────────
+# 資料來源：TWSE MI_INDEX 各類股指數及成交金額
 _SECTOR_CHIP_CACHE: dict[str, tuple[dict, float]] = {}
 _SECTOR_CHIP_TTL = 4 * 3600
-_STOCK_SECTOR_MAP: dict[str, str] = {}   # {stock_code: industry_name}
-_STOCK_SECTOR_TS: float = 0.0
-_STOCK_SECTOR_TTL = 7 * 86400
 
 # ── Server-side in-memory cache for recommendations（TTL 10 分鐘）
 _rec_cache: dict[str, tuple[dict, float]] = {}
@@ -1699,56 +1696,26 @@ async def fill_all_prices(
     return {"status": "started", "message": "背景批次填充已啟動，約需數分鐘"}
 
 
-async def _fetch_stock_sector_map() -> dict[str, str]:
-    """從 TWSE ISIN 頁取得 股票代號 → 產業別 對照表（快取 7 天）"""
-    global _STOCK_SECTOR_MAP, _STOCK_SECTOR_TS
-    now = time.time()
-    if _STOCK_SECTOR_MAP and (now - _STOCK_SECTOR_TS) < _STOCK_SECTOR_TTL:
-        return _STOCK_SECTOR_MAP
-    import re as _re
-    try:
-        url = "https://isin.twse.com.tw/isin/C_public.jsp?strMode=2"
-        async with httpx.AsyncClient(timeout=25, follow_redirects=True) as client:
-            resp = await client.get(url)
-        content = resp.content.decode("big5", errors="replace")
-        td_pat = _re.compile(r'<td[^>]*>(.*?)</td>', _re.DOTALL)
-        tr_pat = _re.compile(r'<tr[^>]*>(.*?)</tr>', _re.DOTALL)
-        tag_re = _re.compile(r'<[^>]+>')
-        mapping: dict[str, str] = {}
-        for tr in tr_pat.finditer(content):
-            tds = td_pat.findall(tr.group(1))
-            if len(tds) < 5:
-                continue
-            code_raw = tag_re.sub('', tds[0]).replace('　', '').replace('\xa0', '').strip()
-            industry = tag_re.sub('', tds[4]).strip()
-            m = _re.match(r'^(\d{4,6})', code_raw)
-            if m and len(industry) > 1:
-                mapping[m.group(1)] = industry
-        if mapping:
-            _STOCK_SECTOR_MAP = mapping
-            _STOCK_SECTOR_TS = now
-    except Exception:
-        pass
-    return _STOCK_SECTOR_MAP
-
-
-async def _fetch_t86(date_str: str) -> dict[str, int] | None:
-    """T86 三大法人買賣超：回傳 {stock_code: net_lots（張）}，非交易日回傳 None"""
-    import re as _re
-    url = f"https://www.twse.com.tw/rwd/zh/fund/T86?date={date_str}&selectType=ALL&response=json"
+async def _fetch_mi_index(date_str: str) -> dict[str, float] | None:
+    """MI_INDEX 各類股指數：回傳 {類股名稱: 成交金額（億元）}，非交易日回傳 None"""
+    url = f"https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX?date={date_str}&type=IND&response=json"
     try:
         async with httpx.AsyncClient(timeout=15) as client:
             data = (await client.get(url)).json()
         if data.get("stat") != "OK":
             return None
-        result: dict[str, int] = {}
+        fields = data.get("fields", [])
+        amt_idx = next((i for i, f in enumerate(fields) if "成交金額" in f), None)
+        name_idx = 0
+        if amt_idx is None:
+            return None
+        result: dict[str, float] = {}
         for row in data.get("data", []):
-            code = str(row[0]).strip() if row else ""
-            if not _re.match(r'^\d{4,6}$', code):
-                continue
             try:
-                net_shares = int(str(row[-1]).replace(',', '').replace('+', ''))
-                result[code] = net_shares // 1000
+                name = str(row[name_idx]).strip()
+                amt = float(str(row[amt_idx]).replace(",", "")) / 1e8  # 轉億元
+                if name and amt > 0:
+                    result[name] = amt
             except (ValueError, IndexError):
                 pass
         return result or None
@@ -1757,26 +1724,22 @@ async def _fetch_t86(date_str: str) -> dict[str, int] | None:
 
 
 @router.get("/sector-rotation")
-async def sector_chip_rotation():
-    """台股類股籌碼輪動泡泡圖：T86 三大法人買賣超，依 TWSE 產業別彙總"""
+async def sector_rotation():
+    """台股類股輪動泡泡圖：TWSE MI_INDEX 各類股成交金額，近 20 日累積與加速度"""
     now = time.time()
-    cache_key = "sector_chip"
+    cache_key = "sector_rotation"
     if cache_key in _SECTOR_CHIP_CACHE:
         data, ts = _SECTOR_CHIP_CACHE[cache_key]
         if now - ts < _SECTOR_CHIP_TTL:
             return data
 
-    import re as _re
     from collections import defaultdict
 
-    # 1. 產業對照表
-    sector_map = await _fetch_stock_sector_map()
-
-    # 2. 收集最近 22 個交易日的 T86（跳週末，並發抓取）
+    # 收集最近 30 個工作日候選（取到有效的 22 日為止）
     today = date.today()
     candidates = [
         (today - timedelta(days=i + 1)).strftime("%Y%m%d")
-        for i in range(40)
+        for i in range(45)
         if (today - timedelta(days=i + 1)).weekday() < 5
     ][:30]
 
@@ -1784,7 +1747,7 @@ async def sector_chip_rotation():
 
     async def _fetch(ds: str):
         async with sem:
-            return ds, await _fetch_t86(ds)
+            return ds, await _fetch_mi_index(ds)
 
     fetched = await asyncio.gather(*[_fetch(ds) for ds in candidates])
     daily_data = sorted(
@@ -1793,41 +1756,39 @@ async def sector_chip_rotation():
     )[-22:]
 
     if len(daily_data) < 5:
-        raise HTTPException(status_code=503, detail="T86 資料不足，請稍後再試")
+        raise HTTPException(status_code=503, detail="MI_INDEX 資料不足，請稍後再試")
 
     n = len(daily_data)
 
-    # 3. 依產業彙總每日淨買超（張）
-    sector_series: dict[str, list[int]] = defaultdict(lambda: [0] * n)
+    # 各類股每日成交金額 series
+    sector_series: dict[str, list[float]] = defaultdict(lambda: [0.0] * n)
     for day_idx, (_, daily) in enumerate(daily_data):
-        for code, net in daily.items():
-            ind = sector_map.get(code)
-            if ind:
-                sector_series[ind][day_idx] += net
+        for sector, amt in daily.items():
+            sector_series[sector][day_idx] += amt
 
-    # 4. 計算 X / Y / Size
     bubbles = []
-    for ind, series in sector_series.items():
-        x = sum(series[-20:])           # 20 日累積（張）
-        avg5  = sum(series[-5:])  / 5
-        avg20 = sum(series[-20:]) / 20
-        y = avg5 - avg20                # 加速度（張/日）
-        size = abs(x)
-        if size < 200:                  # 過濾流量過小的板塊
+    for sector, series in sector_series.items():
+        x20 = sum(series[-20:])          # 20 日累積（億元）
+        x5  = sum(series[-5:])
+        avg5  = x5  / 5
+        avg20 = x20 / 20
+        y = avg5 - avg20                 # 加速度（億元/日）
+        size = x20
+        if size < 1:                     # 過濾極小板塊
             continue
         bubbles.append({
-            "name": ind,
-            "x": x,
+            "name": sector,
+            "x": round(x20, 1),
             "y": round(y, 1),
-            "size": size,
-            "net_5d":  round(sum(series[-5:])  / 1000, 1),   # 千張
-            "net_20d": round(x / 1000, 1),                    # 千張
+            "size": round(size, 1),
+            "amt_5d":  round(x5,  1),    # 億元
+            "amt_20d": round(x20, 1),    # 億元
         })
 
     bubbles.sort(key=lambda b: b["size"], reverse=True)
 
     result = {
-        "bubbles": bubbles[:45],
+        "bubbles": bubbles[:50],
         "trading_days": n,
         "latest_date": daily_data[-1][0],
         "computed_at": datetime.utcnow().isoformat(),

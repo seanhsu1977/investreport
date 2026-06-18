@@ -5,11 +5,11 @@ import { stocksApi } from "../api/client";
 
 interface Bubble {
   name: string;
-  x: number;       // 20日累積淨買超（張）
-  y: number;       // 加速度（5日均 - 20日均，張/日）
-  size: number;    // abs(x)
-  net_5d: number;  // 千張
-  net_20d: number; // 千張
+  x: number;      // 20日累積成交金額（億元）
+  y: number;      // 加速度（5日均 - 20日均，億元/日）
+  size: number;   // 20日累積成交金額
+  amt_5d: number;  // 億元
+  amt_20d: number; // 億元
 }
 
 interface SectorChipData {
@@ -111,7 +111,7 @@ export default function SectorRotationPage() {
           </p>
         </div>
         <div className="text-xs text-gray-400">
-          橫軸 20日累積量（張）· 縱軸 加速度（5日均 − 20日均）· 泡泡大小 = 20日規模
+          橫軸 20日累積成交金額（億元）· 縱軸 加速度（5日均 − 20日均）· 泡泡大小 = 20日規模
         </div>
       </div>
 
@@ -263,9 +263,9 @@ export default function SectorRotationPage() {
               <div className="font-bold text-gray-900 mb-1">{hovered.name}</div>
               <div className="flex flex-col gap-0.5 text-gray-600">
                 <span>狀態：<span style={{ color: Q_META[quadrant(hovered)].color }} className="font-semibold">{Q_META[quadrant(hovered)].label} ({Q_META[quadrant(hovered)].desc})</span></span>
-                <span>20日累積：<span className={hovered.net_20d >= 0 ? "text-red-600 font-medium" : "text-green-700 font-medium"}>{hovered.net_20d >= 0 ? "+" : ""}{hovered.net_20d}K張</span></span>
-                <span>5日累積：<span className={hovered.net_5d >= 0 ? "text-red-600 font-medium" : "text-green-700 font-medium"}>{hovered.net_5d >= 0 ? "+" : ""}{hovered.net_5d}K張</span></span>
-                <span>加速度：<span className={hovered.y >= 0 ? "text-red-600" : "text-green-700"}>{hovered.y >= 0 ? "+" : ""}{hovered.y}張/日</span></span>
+                <span>20日成交：<span className="text-gray-900 font-medium">{hovered.amt_20d} 億元</span></span>
+                <span>5日成交：<span className="text-gray-900 font-medium">{hovered.amt_5d} 億元</span></span>
+                <span>加速度：<span className={hovered.y >= 0 ? "text-red-600" : "text-green-700"}>{hovered.y >= 0 ? "+" : ""}{hovered.y} 億/日</span></span>
               </div>
             </div>
           )}
@@ -283,9 +283,9 @@ export default function SectorRotationPage() {
               <tr className="bg-gray-50 text-xs text-gray-500 uppercase">
                 <th className="text-left px-4 py-2">產業</th>
                 <th className="text-right px-4 py-2">狀態</th>
-                <th className="text-right px-4 py-2">20日累積（千張）</th>
-                <th className="text-right px-4 py-2">5日累積（千張）</th>
-                <th className="text-right px-4 py-2">加速度</th>
+                <th className="text-right px-4 py-2">20日成交（億元）</th>
+                <th className="text-right px-4 py-2">5日成交（億元）</th>
+                <th className="text-right px-4 py-2">加速度（億/日）</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
@@ -308,11 +308,11 @@ export default function SectorRotationPage() {
                           {Q_META[q].label}
                         </span>
                       </td>
-                      <td className={`px-4 py-2.5 text-right font-medium ${b.net_20d >= 0 ? "text-red-600" : "text-green-700"}`}>
-                        {b.net_20d >= 0 ? "+" : ""}{b.net_20d}
+                      <td className="px-4 py-2.5 text-right font-medium text-gray-800">
+                        {b.amt_20d}
                       </td>
-                      <td className={`px-4 py-2.5 text-right font-medium ${b.net_5d >= 0 ? "text-red-600" : "text-green-700"}`}>
-                        {b.net_5d >= 0 ? "+" : ""}{b.net_5d}
+                      <td className="px-4 py-2.5 text-right font-medium text-gray-800">
+                        {b.amt_5d}
                       </td>
                       <td className={`px-4 py-2.5 text-right ${b.y >= 0 ? "text-red-500" : "text-green-600"}`}>
                         {b.y >= 0 ? "+" : ""}{b.y}

@@ -35,17 +35,18 @@ interface SectorChipData {
 
 // ── chart constants ────────────────────────────────────────────────────────
 
-const W = 560;
-const H = 480;
-const PAD = { top: 40, right: 24, bottom: 50, left: 58 };
+const W = 620;
+const H = 500;
+const PAD = { top: 44, right: 32, bottom: 52, left: 62 };
 const CW = W - PAD.left - PAD.right;
 const CH = H - PAD.top - PAD.bottom;
+const CHART_BG = "#0C1018";
 
 const Q_META = [
-  { label: "主力", desc: "資金加速流入", color: "#15803D", bg: "rgba(21,128,61,0.05)",  xSide: "right", ySide: "top"    },
-  { label: "輪動", desc: "流入放緩",     color: "#B45309", bg: "rgba(180,83,9,0.05)",   xSide: "right", ySide: "bottom" },
-  { label: "觀望", desc: "方向不明",     color: "#1D4ED8", bg: "rgba(29,78,216,0.05)",  xSide: "left",  ySide: "top"    },
-  { label: "退潮", desc: "籌碼鬆動",     color: "#B91C1C", bg: "rgba(185,28,28,0.05)",  xSide: "left",  ySide: "bottom" },
+  { label: "主力", desc: "資金加速流入", color: "#10B981", corner: "top-right"    },
+  { label: "輪動", desc: "流入但放緩",   color: "#F59E0B", corner: "bottom-right" },
+  { label: "觀望", desc: "資金匯聚",     color: "#818CF8", corner: "top-left"     },
+  { label: "退潮", desc: "資金流出",     color: "#FB923C", corner: "bottom-left"  },
 ];
 
 function quadrant(b: Bubble) {
@@ -202,12 +203,13 @@ export default function SectorRotationPage() {
   // quadrant counts (概念層）
   const counts = [0, 1, 2, 3].map(q => data.bubbles.filter(b => quadrant(b) === q).length);
 
-  const fmtDate = (s: string) => `${s.slice(0, 4)}/${s.slice(4, 6)}/${s.slice(6, 8)}`;
+  const fmtDate = (s: string) => s ? `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}` : "—";
+  // 概念層 x 單位為十億，×10 顯示億；個股層 x 已是億
+  const fmtAmt = (x: number) => `${x >= 0 ? "+" : ""}${(drillDown ? x : x * 10).toFixed(1)}億`;
 
   const handleBubbleClick = (b: Bubble | StockBubble) => {
     if (dragging) return;
     if (!drillDown && "stocks" in b && b.stocks?.length) {
-      // 概念層 → 下鑽
       setDrillDown(b as Bubble);
       resetZoom();
       setFilter(null);
@@ -221,68 +223,77 @@ export default function SectorRotationPage() {
     setHovered(null);
   };
 
+  const DARK = "rgba(255,255,255,";
+  const gridColor = `${DARK}0.07)`;
+  const axisColor = `${DARK}0.22)`;
+  const tickColor = `${DARK}0.38)`;
+
   return (
-    <div className="max-w-5xl mx-auto px-4 py-6 space-y-4">
-      {/* header */}
-      <div className="flex items-start justify-between flex-wrap gap-2">
+    <div className="max-w-6xl mx-auto px-4 py-6 space-y-4">
+      {/* ── 標題列 ── */}
+      <div className="flex items-end justify-between flex-wrap gap-2">
         <div>
-          {/* breadcrumb */}
-          <div className="flex items-center gap-1.5 text-sm mb-1">
-            <button
-              onClick={drillDown ? handleBackToConcepts : undefined}
-              className={drillDown ? "text-blue-600 hover:underline font-medium" : "text-gray-900 font-bold text-xl"}
-            >
-              {drillDown ? "概念股輪動圖" : "概念股籌碼輪動圖"}
-            </button>
-            {drillDown && (
+          <div className="flex items-center gap-2 flex-wrap">
+            {drillDown ? (
               <>
-                <span className="text-gray-400">/</span>
-                <span className="font-semibold text-gray-900">{drillDown.name}</span>
+                <button onClick={handleBackToConcepts} className="text-sm text-blue-500 hover:underline">← 概念股輪動</button>
+                <span className="text-gray-300">/</span>
+                <span className="text-lg font-bold text-gray-900">{drillDown.name}</span>
               </>
+            ) : (
+              <h1 className="text-xl font-bold text-gray-900">台股概念股輪動</h1>
             )}
           </div>
-          <p className="text-sm text-gray-500">
-            依 nstock 概念股清單彙整成交金額 · 最新資料：{fmtDate(data.latest_date)} · {data.trading_days} 個交易日
+          <p className="text-xs text-gray-400 mt-0.5">
+            資料日期：{fmtDate(data.latest_date)} · {data.trading_days} 個交易日 · nstock 概念股清單
           </p>
         </div>
-        <div className="text-xs text-gray-400 text-right">
-          {drillDown
-            ? "橫軸 個股20日成交金額（億） · 縱軸 加速度 · 泡泡大小 = 成交規模"
-            : "橫軸 20日累積成交金額（十億） · 縱軸 加速度（近5日均 − 近20日均）"}
-        </div>
+        <p className="text-xs text-gray-400">
+          {drillDown ? "橫軸 個股20日累積金額（億）· 縱軸 5日均 − 20日均加速度" : "橫軸 概念20日累積金額 · 縱軸 加速度 · 泡泡大小 ∝ 成交量"}
+        </p>
       </div>
 
-      {/* quadrant filter pills（概念層才顯示） */}
-      {!drillDown && (
-        <div className="flex flex-wrap gap-2">
-          <button
-            onClick={() => setFilter(null)}
-            className={`px-3 py-1 rounded-full text-sm font-medium border transition ${
-              filter === null ? "bg-gray-800 text-white border-gray-800" : "bg-white text-gray-600 border-gray-200 hover:border-gray-400"
-            }`}
-          >
-            全部 ({data.bubbles.length})
-          </button>
-          {Q_META.map((q, i) => (
-            <button
-              key={q.label}
-              onClick={() => setFilter(filter === i ? null : i)}
-              className="px-3 py-1 rounded-full text-sm font-medium border transition"
-              style={filter === i ? { background: q.color, color: "#fff", borderColor: q.color } : { background: "#fff", color: q.color, borderColor: q.color }}
-            >
-              {q.label} ({counts[i]})
-            </button>
-          ))}
-        </div>
-      )}
+      {/* ── 深色主卡：sidebar + 圖表 ── */}
+      <div className="rounded-2xl overflow-hidden flex" style={{ background: CHART_BG, border: "1px solid rgba(255,255,255,0.08)" }}>
 
-      {/* chart */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="relative overflow-x-auto">
+        {/* 左側象限統計（概念層才顯示） */}
+        {!drillDown && (
+          <div className="w-[120px] shrink-0 flex flex-col" style={{ borderRight: "1px solid rgba(255,255,255,0.08)" }}>
+            {Q_META.map((q, i) => (
+              <button
+                key={q.label}
+                onClick={() => setFilter(filter === i ? null : i)}
+                className="flex-1 px-3 py-4 text-left transition-colors"
+                style={{
+                  borderLeft: `3px solid ${filter === i ? q.color : "transparent"}`,
+                  background: filter === i ? `${q.color}15` : "transparent",
+                }}
+              >
+                <div className="text-2xl font-black leading-none" style={{ color: q.color }}>{counts[i]}</div>
+                <div className="text-xs font-semibold mt-1" style={{ color: "rgba(255,255,255,0.8)" }}>{q.label}</div>
+                <div className="text-[10px] leading-tight mt-0.5" style={{ color: "rgba(255,255,255,0.35)" }}>{q.desc}</div>
+              </button>
+            ))}
+            {/* 篩選中說明 */}
+            {filter !== null && (
+              <button
+                onClick={() => setFilter(null)}
+                className="py-2 text-[10px] text-center transition-colors hover:text-white"
+                style={{ color: "rgba(255,255,255,0.3)", borderTop: "1px solid rgba(255,255,255,0.08)" }}
+              >
+                清除篩選
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* 圖表區 */}
+        <div className="flex-1 relative min-w-0">
           {isZoomed && (
             <button
               onClick={resetZoom}
-              className="absolute top-2 right-2 z-10 px-2.5 py-1 text-xs font-medium bg-white border border-gray-300 rounded-lg shadow-sm hover:bg-gray-50 transition"
+              className="absolute top-2.5 right-2.5 z-10 px-2.5 py-1 text-xs font-medium rounded-lg transition"
+              style={{ background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.7)" }}
             >
               重設縮放
             </button>
@@ -291,7 +302,7 @@ export default function SectorRotationPage() {
             ref={svgRef}
             viewBox={`0 0 ${W} ${H}`}
             className="w-full"
-            style={{ minWidth: 320, cursor: dragging ? "grabbing" : "grab" }}
+            style={{ minWidth: 300, cursor: dragging ? "grabbing" : "grab", display: "block" }}
             onMouseDown={onSvgMouseDown}
             onMouseMove={onSvgMouseMove}
             onMouseLeave={() => { setDragging(false); setHovered(null); }}
@@ -302,103 +313,132 @@ export default function SectorRotationPage() {
               </clipPath>
             </defs>
 
-            {/* fixed quadrant backgrounds (always fill correct quadrants) */}
-            <rect x={ox} y={PAD.top} width={W - PAD.right - ox} height={oy - PAD.top} fill="rgba(21,128,61,0.04)" />
-            <rect x={PAD.left} y={PAD.top} width={ox - PAD.left} height={oy - PAD.top} fill="rgba(29,78,216,0.04)" />
-            <rect x={ox} y={oy} width={W - PAD.right - ox} height={H - PAD.bottom - oy} fill="rgba(180,83,9,0.04)" />
-            <rect x={PAD.left} y={oy} width={ox - PAD.left} height={H - PAD.bottom - oy} fill="rgba(185,28,28,0.04)" />
+            {/* 深色背景 */}
+            <rect width={W} height={H} fill={CHART_BG} />
 
-            {/* fixed quadrant labels */}
-            <text x={W - PAD.right - 6} y={PAD.top + 16} fontSize={11} fontWeight={700} fill="#15803D" textAnchor="end">主力</text>
-            <text x={PAD.left + 6} y={PAD.top + 16} fontSize={11} fontWeight={700} fill="#1D4ED8">觀望</text>
-            <text x={W - PAD.right - 6} y={H - PAD.bottom - 6} fontSize={11} fontWeight={700} fill="#B45309" textAnchor="end">輪動</text>
-            <text x={PAD.left + 6} y={H - PAD.bottom - 6} fontSize={11} fontWeight={700} fill="#B91C1C">退潮</text>
+            {/* 固定：象限角落標籤 */}
+            <text x={PAD.left + 6} y={PAD.top + 16} fontSize={10} fill={Q_META[2].color} fontWeight={700}>觀望</text>
+            <text x={W - PAD.right - 6} y={PAD.top + 16} fontSize={10} fill={Q_META[0].color} fontWeight={700} textAnchor="end">主力加速流入 ★</text>
+            <text x={PAD.left + 6} y={H - PAD.bottom - 7} fontSize={10} fill={Q_META[3].color} fontWeight={700}>退潮</text>
+            <text x={W - PAD.right - 6} y={H - PAD.bottom - 7} fontSize={10} fill={Q_META[1].color} fontWeight={700} textAnchor="end">輪動</text>
 
-            {/* fixed axis direction labels */}
-            <text x={W - PAD.right - 2} y={PAD.top + 10} fontSize={9} fill="#6b7280" textAnchor="end">累積流入 →</text>
-            <text x={PAD.left + 4} y={PAD.top + 10} fontSize={9} fill="#6b7280">加速 ↑</text>
+            {/* 固定：軸方向標籤 */}
+            <text x={W - PAD.right} y={H - PAD.bottom + 38} fontSize={8.5} fill={tickColor} textAnchor="end">資金流入（億）→</text>
+            <text x={PAD.left} y={H - PAD.bottom + 38} fontSize={8.5} fill={tickColor}>← 資金流出（億）</text>
+            <text x={ox < PAD.left + 20 ? PAD.left + 4 : ox + 4} y={PAD.top + 28} fontSize={8} fill={tickColor}>加速 ↑</text>
 
-            {/* zoomable + clipped chart content */}
+            {/* 可縮放內容 */}
             <g clipPath="url(#chart-clip)">
               <g transform={`translate(${zoom.tx},${zoom.ty}) scale(${zoom.scale})`}>
-                {/* grid lines */}
-                {[-0.5, 0.5].map(f => (
-                  <g key={f}>
-                    <line x1={toSvgX(xMin + (xMax - xMin) * (0.5 + f * 0.5))} y1={PAD.top} x2={toSvgX(xMin + (xMax - xMin) * (0.5 + f * 0.5))} y2={H - PAD.bottom} stroke="#e5e7eb" strokeWidth={0.5 / zoom.scale} />
-                    <line x1={PAD.left} y1={toSvgY(yMin + (yMax - yMin) * (0.5 + f * 0.5))} x2={W - PAD.right} y2={toSvgY(yMin + (yMax - yMin) * (0.5 + f * 0.5))} stroke="#e5e7eb" strokeWidth={0.5 / zoom.scale} />
-                  </g>
-                ))}
 
-                {/* axes */}
-                <line x1={PAD.left} y1={oy} x2={W - PAD.right} y2={oy} stroke="#9ca3af" strokeWidth={1 / zoom.scale} />
-                <line x1={ox} y1={PAD.top} x2={ox} y2={H - PAD.bottom} stroke="#9ca3af" strokeWidth={1 / zoom.scale} />
-
-                {/* x axis ticks */}
-                {[-1, -0.5, 0.5, 1].map(f => {
-                  const val = f * maxAbs;
-                  const sx = toSvgX(val);
+                {/* 格線 */}
+                {[-0.75, -0.5, -0.25, 0.25, 0.5, 0.75].map(f => {
+                  const xv = toSvgX(xMin + (xMax - xMin) * (0.5 + f * 0.5));
+                  const yv = toSvgY(yMin + (yMax - yMin) * (0.5 + f * 0.5));
                   return (
                     <g key={f}>
-                      <line x1={sx} y1={oy - 3 / zoom.scale} x2={sx} y2={oy + 3 / zoom.scale} stroke="#9ca3af" strokeWidth={1 / zoom.scale} />
-                      <text x={sx} y={oy + 13 / zoom.scale} fontSize={8 / zoom.scale} fill="#9ca3af" textAnchor="middle">
-                        {fmtK(val)}
-                      </text>
+                      <line x1={xv} y1={PAD.top} x2={xv} y2={H - PAD.bottom} stroke={gridColor} strokeWidth={1 / zoom.scale} />
+                      <line x1={PAD.left} y1={yv} x2={W - PAD.right} y2={yv} stroke={gridColor} strokeWidth={1 / zoom.scale} />
                     </g>
                   );
                 })}
 
-                {/* y axis ticks */}
+                {/* 軸線 */}
+                <line x1={PAD.left} y1={oy} x2={W - PAD.right} y2={oy} stroke={axisColor} strokeWidth={1.5 / zoom.scale} />
+                <line x1={ox} y1={PAD.top} x2={ox} y2={H - PAD.bottom} stroke={axisColor} strokeWidth={1.5 / zoom.scale} />
+
+                {/* X 軸刻度 */}
+                {[-1, -0.5, 0.5, 1].map(f => {
+                  const val = f * maxAbs;
+                  const sx = toSvgX(val);
+                  const label = drillDown
+                    ? `${val >= 0 ? "+" : ""}${val.toFixed(0)}億`
+                    : `${val >= 0 ? "+" : ""}${(val * 10).toFixed(0)}億`;
+                  return (
+                    <g key={f}>
+                      <line x1={sx} y1={oy - 4 / zoom.scale} x2={sx} y2={oy + 4 / zoom.scale} stroke={axisColor} strokeWidth={1 / zoom.scale} />
+                      <text x={sx} y={oy + 14 / zoom.scale} fontSize={8 / zoom.scale} fill={tickColor} textAnchor="middle">{label}</text>
+                    </g>
+                  );
+                })}
+
+                {/* Y 軸刻度 */}
                 {[-0.75, -0.25, 0.25, 0.75].map(f => {
                   const val = f * maxAbsY;
                   const sy = toSvgY(val);
                   return (
                     <g key={f}>
-                      <line x1={ox - 3 / zoom.scale} y1={sy} x2={ox + 3 / zoom.scale} y2={sy} stroke="#9ca3af" strokeWidth={1 / zoom.scale} />
-                      <text x={ox - 5 / zoom.scale} y={sy + 3 / zoom.scale} fontSize={8 / zoom.scale} fill="#9ca3af" textAnchor="end">
-                        {fmtK(val)}
+                      <line x1={ox - 4 / zoom.scale} y1={sy} x2={ox + 4 / zoom.scale} y2={sy} stroke={axisColor} strokeWidth={1 / zoom.scale} />
+                      <text x={PAD.left - 4 / zoom.scale} y={sy + 3 / zoom.scale} fontSize={8 / zoom.scale} fill={tickColor} textAnchor="end">
+                        {val >= 0 ? "+" : ""}{val.toFixed(1)}
                       </text>
                     </g>
                   );
                 })}
 
-                {/* bubbles */}
+                {/* 泡泡 */}
                 {activeBubbles.map(b => {
                   const q = quadrant(b);
                   const color = Q_META[q].color;
                   const bx = toSvgX(b.x);
                   const by = toSvgY(b.y);
                   const rad = r(b);
+                  const scaledR = rad / zoom.scale;
                   const isHov = hovered?.name === b.name;
                   const canDrill = !drillDown && "stocks" in b && (b.stocks?.length ?? 0) > 0;
-                  const label = "code" in b ? b.name : b.name;
+
+                  // 字體大小：隨泡泡縮放，保持在泡泡內部合理
+                  const fs1 = Math.min(11, scaledR * 0.42);
+                  const fs2 = Math.min(9.5, scaledR * 0.36);
+                  const showTwoLine = scaledR > 20;
+                  const showOneLine = scaledR > 11;
+
                   return (
                     <g
                       key={b.name}
                       onMouseEnter={() => !dragging && setHovered(b)}
                       onMouseLeave={() => setHovered(null)}
                       onClick={() => handleBubbleClick(b)}
-                      style={{ cursor: dragging ? "grabbing" : canDrill ? "zoom-in" : "pointer" }}
+                      style={{ cursor: dragging ? "grabbing" : canDrill ? "zoom-in" : "default" }}
                     >
+                      {/* 光暈環 */}
+                      <circle cx={bx} cy={by} r={scaledR * 1.18} fill={color} fillOpacity={isHov ? 0.15 : 0.07} />
+                      {/* 主體 */}
                       <circle
-                        cx={bx}
-                        cy={by}
-                        r={rad / zoom.scale}
+                        cx={bx} cy={by} r={scaledR}
                         fill={color}
-                        fillOpacity={isHov ? 0.55 : 0.28}
+                        fillOpacity={isHov ? 0.88 : 0.68}
                         stroke={color}
-                        strokeWidth={(isHov ? 1.5 : 0.8) / zoom.scale}
+                        strokeWidth={(isHov ? 2 : 1) / zoom.scale}
+                        strokeOpacity={isHov ? 1 : 0.7}
                       />
-                      {rad > 10 && (
+                      {/* 概念名稱 */}
+                      {showOneLine && (
                         <text
                           x={bx}
-                          y={by + 3 / zoom.scale}
-                          fontSize={(rad > 16 ? 9 : 8) / zoom.scale}
-                          fill={color}
+                          y={by + (showTwoLine ? -fs1 * 0.6 : fs1 * 0.35)}
+                          fontSize={fs1}
+                          fill="white"
                           textAnchor="middle"
-                          fontWeight={600}
+                          fontWeight={700}
+                          pointerEvents="none"
+                          style={{ textShadow: "0 1px 3px rgba(0,0,0,0.5)" }}
+                        >
+                          {b.name.length > 6 ? b.name.slice(0, 5) + "…" : b.name}
+                        </text>
+                      )}
+                      {/* 金額 */}
+                      {showTwoLine && (
+                        <text
+                          x={bx}
+                          y={by + fs1 * 0.85}
+                          fontSize={fs2}
+                          fill="rgba(255,255,255,0.82)"
+                          textAnchor="middle"
+                          fontWeight={500}
                           pointerEvents="none"
                         >
-                          {label.length > 5 ? label.slice(0, 5) + "…" : label}
+                          {fmtAmt(b.x)}
                         </text>
                       )}
                     </g>
@@ -408,36 +448,50 @@ export default function SectorRotationPage() {
             </g>
           </svg>
 
-          {/* tooltip */}
+          {/* Tooltip */}
           {hovered && !dragging && (
             <div
-              className="absolute pointer-events-none z-10 bg-white border border-gray-200 shadow-lg rounded-xl px-3 py-2 text-xs"
+              className="absolute pointer-events-none z-10 rounded-xl px-3 py-2.5 text-xs"
               style={{
-                left: mousePos.x + 14,
+                left: Math.min(mousePos.x + 14, 320),
                 top: mousePos.y - 10,
-                maxWidth: 200,
+                maxWidth: 210,
+                background: "rgba(10,14,22,0.95)",
+                border: "1px solid rgba(255,255,255,0.12)",
+                color: "white",
+                backdropFilter: "blur(8px)",
               }}
             >
-              <div className="font-bold text-gray-900 mb-1">
-                {"code" in hovered ? `${hovered.name} (${(hovered as StockBubble).code})` : hovered.name}
+              <div className="font-bold text-sm mb-1.5">
+                {"code" in hovered
+                  ? <><span className="font-mono text-gray-400 text-xs">{(hovered as StockBubble).code} </span>{hovered.name}</>
+                  : hovered.name}
               </div>
-              <div className="flex flex-col gap-0.5 text-gray-600">
-                <span>狀態：<span style={{ color: Q_META[quadrant(hovered)].color }} className="font-semibold">{Q_META[quadrant(hovered)].label} ({Q_META[quadrant(hovered)].desc})</span></span>
-                <span>今日成交金額：<span className="text-gray-900 font-medium">{hovered.rt_amt} 億元</span></span>
-                {"code" in hovered ? (
-                  <>
-                    <span>近20日成交金額：<span className="text-gray-900 font-medium">{hovered.amt_20d} 億元</span></span>
-                    <span>近5日成交金額：<span className="text-gray-900 font-medium">{hovered.amt_5d} 億元</span></span>
-                  </>
-                ) : (
-                  <>
-                    <span>近20日累積金額：<span className="text-gray-900 font-medium">{hovered.amt_20d} 十億</span></span>
-                    <span>近5日累積金額：<span className="text-gray-900 font-medium">{hovered.amt_5d} 十億</span></span>
-                  </>
-                )}
-                <span>加速度：<span className={hovered.y >= 0 ? "text-red-600" : "text-green-700"}>{hovered.y >= 0 ? "+" : ""}{hovered.y}</span></span>
+              <div className="flex flex-col gap-1" style={{ color: "rgba(255,255,255,0.65)" }}>
+                <div className="flex justify-between gap-3">
+                  <span>狀態</span>
+                  <span style={{ color: Q_META[quadrant(hovered)].color }} className="font-semibold">
+                    {Q_META[quadrant(hovered)].label}
+                  </span>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <span>今日成交</span>
+                  <span className="text-white font-medium">{hovered.rt_amt} 億</span>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <span>20日累積</span>
+                  <span className="text-white font-medium">
+                    {"code" in hovered ? `${hovered.amt_20d} 億` : `${hovered.amt_20d} 十億`}
+                  </span>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <span>加速度</span>
+                  <span style={{ color: hovered.y >= 0 ? "#10B981" : "#FB923C" }} className="font-semibold">
+                    {hovered.y >= 0 ? "+" : ""}{hovered.y}
+                  </span>
+                </div>
                 {!drillDown && "stocks" in hovered && (hovered.stocks?.length ?? 0) > 0 && (
-                  <span className="text-blue-500 text-xs mt-0.5">點擊查看個股明細</span>
+                  <div className="pt-1 text-blue-400 text-[10px]">🔍 點擊查看 {(hovered as Bubble).stocks!.length} 支成分股</div>
                 )}
               </div>
             </div>
@@ -445,32 +499,28 @@ export default function SectorRotationPage() {
         </div>
       </div>
 
-      {/* table */}
+      {/* ── 下方表格 ── */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         {drillDown ? (
-          // ── 個股列表（下鑽）──────────────────────────────
           <>
             <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-              <span className="text-sm font-semibold text-gray-700">
+              <span className="text-sm font-semibold text-gray-800">
                 {drillDown.name} 成分股（{drillDown.stocks?.length ?? 0} 支）
               </span>
-              <button
-                onClick={handleBackToConcepts}
-                className="text-xs text-blue-600 hover:underline"
-              >
-                ← 返回概念股
+              <button onClick={handleBackToConcepts} className="text-xs text-blue-500 hover:underline">
+                ← 返回概念股列表
               </button>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="bg-gray-50 text-xs text-gray-500 uppercase">
-                    <th className="text-left px-4 py-2">代號</th>
-                    <th className="text-left px-4 py-2">名稱</th>
-                    <th className="text-right px-4 py-2">狀態</th>
-                    <th className="text-right px-4 py-2">今日成交金額（億）</th>
-                    <th className="text-right px-4 py-2">20日累積金額（億）</th>
-                    <th className="text-right px-4 py-2">加速度</th>
+                  <tr className="bg-gray-50 text-xs text-gray-500">
+                    <th className="text-left px-4 py-2.5 font-medium">代號</th>
+                    <th className="text-left px-4 py-2.5 font-medium">名稱</th>
+                    <th className="text-right px-4 py-2.5 font-medium">狀態</th>
+                    <th className="text-right px-4 py-2.5 font-medium">今日成交（億）</th>
+                    <th className="text-right px-4 py-2.5 font-medium">20日累積（億）</th>
+                    <th className="text-right px-4 py-2.5 font-medium">加速度</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
@@ -480,20 +530,20 @@ export default function SectorRotationPage() {
                     return (
                       <tr
                         key={s.code}
-                        className={`hover:bg-gray-50 transition ${hovered?.name === s.name ? "bg-blue-50" : ""}`}
+                        className={`transition ${hovered?.name === s.name ? "bg-gray-50" : "hover:bg-gray-50"}`}
                         onMouseEnter={() => setHovered(s)}
                         onMouseLeave={() => setHovered(null)}
                       >
-                        <td className="px-4 py-2.5 font-mono text-gray-500">{s.code}</td>
+                        <td className="px-4 py-2.5 font-mono text-xs text-gray-400">{s.code}</td>
                         <td className="px-4 py-2.5 text-gray-900 font-medium">{s.name}</td>
                         <td className="px-4 py-2.5 text-right">
                           <span className="px-2 py-0.5 rounded-full text-xs font-semibold" style={{ background: `${color}18`, color }}>
                             {Q_META[q].label}
                           </span>
                         </td>
-                        <td className="px-4 py-2.5 text-right font-medium text-gray-800">{s.rt_amt}</td>
-                        <td className="px-4 py-2.5 text-right font-medium text-gray-800">{s.amt_20d}</td>
-                        <td className={`px-4 py-2.5 text-right ${s.y >= 0 ? "text-red-500" : "text-green-600"}`}>
+                        <td className="px-4 py-2.5 text-right tabular-nums text-gray-800">{s.rt_amt}</td>
+                        <td className="px-4 py-2.5 text-right tabular-nums text-gray-800">{s.amt_20d}</td>
+                        <td className={`px-4 py-2.5 text-right tabular-nums font-medium ${s.y >= 0 ? "text-emerald-600" : "text-orange-500"}`}>
                           {s.y >= 0 ? "+" : ""}{s.y}
                         </td>
                       </tr>
@@ -504,54 +554,54 @@ export default function SectorRotationPage() {
             </div>
           </>
         ) : (
-          // ── 概念股列表（預設）──────────────────────────────
           <>
-            <div className="px-4 py-3 border-b border-gray-100 text-sm font-semibold text-gray-700">
-              概念股列表（{activeBubbles.length} 個）<span className="text-gray-400 font-normal ml-2 text-xs">點擊泡泡可查看成分股</span>
+            <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+              <span className="text-sm font-semibold text-gray-800">
+                概念股列表（{activeBubbles.length} 個）
+              </span>
+              <span className="text-xs text-gray-400">點擊列或泡泡可下鑽查看個股</span>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="bg-gray-50 text-xs text-gray-500 uppercase">
-                    <th className="text-left px-4 py-2">概念股</th>
-                    <th className="text-right px-4 py-2">狀態</th>
-                    <th className="text-right px-4 py-2">今日成交金額（億）</th>
-                    <th className="text-right px-4 py-2">20日累積金額（十億）</th>
-                    <th className="text-right px-4 py-2">加速度</th>
+                  <tr className="bg-gray-50 text-xs text-gray-500">
+                    <th className="text-left px-4 py-2.5 font-medium">概念股</th>
+                    <th className="text-right px-4 py-2.5 font-medium">狀態</th>
+                    <th className="text-right px-4 py-2.5 font-medium">今日成交（億）</th>
+                    <th className="text-right px-4 py-2.5 font-medium">20日累積（十億）</th>
+                    <th className="text-right px-4 py-2.5 font-medium">加速度</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {(activeBubbles as Bubble[])
-                    .slice()
-                    .sort((a, b_) => b_.size - a.size)
-                    .map(b => {
-                      const q = quadrant(b);
-                      const color = Q_META[q].color;
-                      return (
-                        <tr
-                          key={b.name}
-                          className={`hover:bg-gray-50 transition cursor-pointer ${hovered?.name === b.name ? "bg-blue-50" : ""}`}
-                          onMouseEnter={() => setHovered(b)}
-                          onMouseLeave={() => setHovered(null)}
-                          onClick={() => handleBubbleClick(b)}
-                        >
-                          <td className="px-4 py-2.5 text-gray-900 font-medium">
-                            {b.name}
-                            {(b.stocks?.length ?? 0) > 0 && <span className="text-blue-400 ml-1 text-xs">↗</span>}
-                          </td>
-                          <td className="px-4 py-2.5 text-right">
-                            <span className="px-2 py-0.5 rounded-full text-xs font-semibold" style={{ background: `${color}18`, color }}>
-                              {Q_META[q].label}
-                            </span>
-                          </td>
-                          <td className="px-4 py-2.5 text-right font-medium text-gray-800">{b.rt_amt}</td>
-                          <td className="px-4 py-2.5 text-right font-medium text-gray-800">{b.amt_20d}</td>
-                          <td className={`px-4 py-2.5 text-right ${b.y >= 0 ? "text-red-500" : "text-green-600"}`}>
-                            {b.y >= 0 ? "+" : ""}{b.y}
-                          </td>
-                        </tr>
-                      );
-                    })}
+                  {(activeBubbles as Bubble[]).slice().sort((a, z) => z.size - a.size).map(b => {
+                    const q = quadrant(b);
+                    const color = Q_META[q].color;
+                    const canDrill = (b.stocks?.length ?? 0) > 0;
+                    return (
+                      <tr
+                        key={b.name}
+                        className={`transition ${hovered?.name === b.name ? "bg-gray-50" : "hover:bg-gray-50"} ${canDrill ? "cursor-pointer" : ""}`}
+                        onMouseEnter={() => setHovered(b)}
+                        onMouseLeave={() => setHovered(null)}
+                        onClick={() => canDrill && handleBubbleClick(b)}
+                      >
+                        <td className="px-4 py-2.5 text-gray-900 font-medium">
+                          {b.name}
+                          {canDrill && <span className="ml-1.5 text-[10px] text-gray-400">({b.stocks!.length}支 ↗)</span>}
+                        </td>
+                        <td className="px-4 py-2.5 text-right">
+                          <span className="px-2 py-0.5 rounded-full text-xs font-semibold" style={{ background: `${color}18`, color }}>
+                            {Q_META[q].label}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2.5 text-right tabular-nums text-gray-800">{b.rt_amt}</td>
+                        <td className="px-4 py-2.5 text-right tabular-nums text-gray-800">{b.amt_20d}</td>
+                        <td className={`px-4 py-2.5 text-right tabular-nums font-medium ${b.y >= 0 ? "text-emerald-600" : "text-orange-500"}`}>
+                          {b.y >= 0 ? "+" : ""}{b.y}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

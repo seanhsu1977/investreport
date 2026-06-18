@@ -289,15 +289,36 @@ export default function SectorRotationPage() {
 
         {/* 圖表區 */}
         <div className="flex-1 relative min-w-0">
-          {isZoomed && (
+          {/* 縮放控制按鈕 */}
+          <div className="absolute top-2.5 right-2.5 z-10 flex items-center gap-1">
             <button
-              onClick={resetZoom}
-              className="absolute top-2.5 right-2.5 z-10 px-2.5 py-1 text-xs font-medium rounded-lg transition"
+              onClick={() => setZoom(prev => {
+                const cx = W / 2, cy = H / 2;
+                const newScale = Math.min(12, prev.scale * 1.4);
+                return { scale: newScale, tx: cx - (cx - prev.tx) * (newScale / prev.scale), ty: cy - (cy - prev.ty) * (newScale / prev.scale) };
+              })}
+              className="w-7 h-7 flex items-center justify-center rounded-lg text-base font-bold transition"
               style={{ background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.7)" }}
-            >
-              重設縮放
-            </button>
-          )}
+              title="放大"
+            >+</button>
+            <button
+              onClick={() => setZoom(prev => {
+                const cx = W / 2, cy = H / 2;
+                const newScale = Math.max(0.4, prev.scale / 1.4);
+                return { scale: newScale, tx: cx - (cx - prev.tx) * (newScale / prev.scale), ty: cy - (cy - prev.ty) * (newScale / prev.scale) };
+              })}
+              className="w-7 h-7 flex items-center justify-center rounded-lg text-base font-bold transition"
+              style={{ background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.7)" }}
+              title="縮小"
+            >−</button>
+            {isZoomed && (
+              <button
+                onClick={resetZoom}
+                className="px-2.5 h-7 text-xs font-medium rounded-lg transition"
+                style={{ background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.7)" }}
+              >重設</button>
+            )}
+          </div>
           <svg
             ref={svgRef}
             viewBox={`0 0 ${W} ${H}`}

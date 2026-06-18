@@ -164,13 +164,13 @@ export default function SectorRotationPage() {
       {/* header */}
       <div className="flex items-start justify-between flex-wrap gap-2">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">類股籌碼輪動圖</h1>
+          <h1 className="text-xl font-bold text-gray-900">概念股籌碼輪動圖</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            依 TWSE 產業類別彙總三大法人買賣超 · 最新資料：{fmtDate(data.latest_date)} · {data.trading_days} 個交易日
+            依 nstock 概念股清單彙整成交金額 · 最新資料：{fmtDate(data.latest_date)} · {data.trading_days} 個交易日
           </p>
         </div>
         <div className="text-xs text-gray-400">
-          橫軸 20日累積成交量 · 縱軸 加速度（近5日均 − 近20日均）· 泡泡大小 = 成交量規模
+          橫軸 20日累積成交金額（十億） · 縱軸 加速度（近5日均 − 近20日均）· 泡泡大小 = 成交規模
         </div>
       </div>
 
@@ -339,8 +339,8 @@ export default function SectorRotationPage() {
               <div className="flex flex-col gap-0.5 text-gray-600">
                 <span>狀態：<span style={{ color: Q_META[quadrant(hovered)].color }} className="font-semibold">{Q_META[quadrant(hovered)].label} ({Q_META[quadrant(hovered)].desc})</span></span>
                 <span>今日成交金額：<span className="text-gray-900 font-medium">{hovered.rt_amt} 億元</span></span>
-                <span>近20日累積量：<span className="text-gray-900 font-medium">{hovered.amt_20d}</span></span>
-                <span>近5日累積量：<span className="text-gray-900 font-medium">{hovered.amt_5d}</span></span>
+                <span>近20日累積金額：<span className="text-gray-900 font-medium">{hovered.amt_20d} 十億</span></span>
+                <span>近5日累積金額：<span className="text-gray-900 font-medium">{hovered.amt_5d} 十億</span></span>
                 <span>加速度：<span className={hovered.y >= 0 ? "text-red-600" : "text-green-700"}>{hovered.y >= 0 ? "+" : ""}{hovered.y}</span></span>
               </div>
             </div>
@@ -351,16 +351,16 @@ export default function SectorRotationPage() {
       {/* table */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-100 text-sm font-semibold text-gray-700">
-          板塊列表（{bubbles.length} 個）
+          概念股列表（{bubbles.length} 個）
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50 text-xs text-gray-500 uppercase">
-                <th className="text-left px-4 py-2">產業</th>
+                <th className="text-left px-4 py-2">概念股</th>
                 <th className="text-right px-4 py-2">狀態</th>
                 <th className="text-right px-4 py-2">今日成交金額（億）</th>
-                <th className="text-right px-4 py-2">20日累積量</th>
+                <th className="text-right px-4 py-2">20日累積金額（十億）</th>
                 <th className="text-right px-4 py-2">加速度</th>
               </tr>
             </thead>

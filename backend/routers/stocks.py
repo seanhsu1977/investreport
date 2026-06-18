@@ -28,23 +28,11 @@ from routers.auth import require_admin
 
 router = APIRouter(prefix="/stocks", tags=["stocks"])
 
-# ── Sector Rotation ─────────────────────────────────────────────────────────
-# 資料來源：nstock 類股指數日K（成交量），各類指數代號 → 顯示名稱
+# ── Concept Stock Rotation ───────────────────────────────────────────────────
+# 資料來源：nstock 概念股清單 (StockChip)，各股成交金額加總計算動能
 _SECTOR_CHIP_CACHE: dict[str, tuple[dict, float]] = {}
 _SECTOR_CHIP_TTL = 4 * 3600
-
-_SECTOR_IX: dict[str, str] = {
-    "IX0010": "水泥",     "IX0011": "食品",     "IX0012": "塑膠",
-    "IX0016": "紡織纖維", "IX0017": "電機機械", "IX0018": "電器電纜",
-    "IX0020": "化學工業", "IX0021": "生技醫療", "IX0022": "玻璃陶瓷",
-    "IX0023": "造紙",     "IX0024": "鋼鐵",     "IX0025": "橡膠",
-    "IX0026": "汽車",     "IX0028": "半導體",   "IX0029": "電腦週邊",
-    "IX0030": "光電",     "IX0031": "通信網路", "IX0032": "電子組件",
-    "IX0033": "電子通路", "IX0034": "資訊服務", "IX0035": "其他電子",
-    "IX0036": "營造建材", "IX0037": "運輸",     "IX0038": "觀光",
-    "IX0039": "金融保險", "IX0040": "百貨貿易", "IX0041": "油電燃氣",
-    "IX0042": "其他",
-}
+_NSTOCK_STRATEGY = "https://api.nstock.tw/strategy/"
 
 # ── Server-side in-memory cache for recommendations（TTL 10 分鐘）
 _rec_cache: dict[str, tuple[dict, float]] = {}
@@ -1712,7 +1700,7 @@ async def fill_all_prices(
 
 @router.get("/sector-rotation")
 async def sector_rotation():
-    """台股類股輪動泡泡圖：nstock 類股指數日K 成交量，20日累積與加速度"""
+    """概念股輪動泡泡圖：nstock StockChip 概念股清單，各股成交金額加總，20日累積與加速度"""
     now = time.time()
     cache_key = "sector_rotation"
     if cache_key in _SECTOR_CHIP_CACHE:
@@ -1720,58 +1708,116 @@ async def sector_rotation():
         if now - ts < _SECTOR_CHIP_TTL:
             return data
 
-    # 並發抓各類股日K
-    async def _fetch_one(code: str, name: str):
-        daily = await asyncio.to_thread(ns.get_daily, code)
-        return code, name, daily
+    # Step 1: 取概念股清單
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.get(f"{_NSTOCK_STRATEGY}?agent=StockChip")
+        resp.raise_for_status()
+        raw_list = resp.json()
 
-    results = await asyncio.gather(
-        *[_fetch_one(c, n_) for c, n_ in _SECTOR_IX.items()],
+    # 正規化回傳格式（list 或 {"data": [...]}）
+    if isinstance(raw_list, list):
+        concept_keys = [item["key"] for item in raw_list if item.get("key")]
+    else:
+        concept_keys = [item["key"] for item in raw_list.get("data", []) if item.get("key")]
+
+    if not concept_keys:
+        raise HTTPException(status_code=503, detail="概念股清單資料不足")
+
+    # Step 2: 並發抓各概念股 stock_ids
+    async def _get_concept_stocks(key: str) -> tuple[str, list[str]]:
+        async with httpx.AsyncClient(timeout=10) as c:
+            r = await c.post(_NSTOCK_STRATEGY, json={"strategies": [{"key": key, "options": []}]})
+            r.raise_for_status()
+            ids = r.json().get("data", {}).get("stock_ids", [])
+            return key, ids
+
+    concept_results = await asyncio.gather(
+        *[_get_concept_stocks(k) for k in concept_keys],
         return_exceptions=True,
     )
 
-    # 取即時成交金額（今日，萬元）
-    rt_list = await asyncio.to_thread(ns.get_index_realtime, 1)
-    rt_map = {item["股票代號"]: item for item in rt_list}
+    concept_map: dict[str, list[str]] = {}
+    for item in concept_results:
+        if isinstance(item, Exception):
+            continue
+        key, ids = item
+        if ids:
+            concept_map[key] = ids
 
-    bubbles = []
+    # Step 3: 並發抓所有不重複個股日K
+    all_codes = list({code for ids in concept_map.values() for code in ids})
+
+    async def _fetch_stock(code: str):
+        daily = await asyncio.to_thread(ns.get_daily, code)
+        return code, daily
+
+    stock_results = await asyncio.gather(
+        *[_fetch_stock(c) for c in all_codes],
+        return_exceptions=True,
+    )
+
+    stock_daily: dict[str, list] = {}
     latest_date = ""
-    for item in results:
-        if isinstance(item, Exception) or item is None:
+    for item in stock_results:
+        if isinstance(item, Exception):
             continue
-        code, name, daily = item
-        if not daily or not daily.get("日K"):
+        code, daily = item
+        if daily and daily.get("日K"):
+            bars = daily["日K"]
+            stock_daily[code] = bars
+            if not latest_date and bars:
+                latest_date = str(bars[0].get("交易日", ""))
+
+    # Step 4: 各概念股成交金額加總 → 計算動能
+    bubbles = []
+    for key, ids in concept_map.items():
+        x20_total = 0.0
+        x5_total  = 0.0
+        valid_stocks = 0
+
+        for code in ids:
+            if code not in stock_daily:
+                continue
+            bars = stock_daily[code]
+            # 成交金額（元）× 近22日，由舊到新
+            series = []
+            for b in reversed(bars[:22]):
+                amt = float(b.get("成交金額", 0))
+                if amt == 0:
+                    # fallback：成交量(張) × 收盤價 × 1000
+                    amt = float(b.get("成交量", 0)) * float(b.get("收盤價", 0)) * 1000
+                series.append(amt)
+            if len(series) < 10:
+                continue
+            x20_total += sum(series[-20:])
+            x5_total  += sum(series[-5:])
+            valid_stocks += 1
+
+        if valid_stocks == 0 or x20_total <= 0:
             continue
 
-        bars = daily["日K"]  # 最新在前
-        if not latest_date and bars:
-            latest_date = str(bars[0].get("交易日", ""))
+        avg5  = x5_total  / 5
+        avg20 = x20_total / 20
+        y = avg5 - avg20
 
-        # 近 22 日成交量序列（由舊到新）
-        series = [float(b.get("成交量", 0)) for b in reversed(bars[:22])]
-        if len(series) < 10:
-            continue
+        # 今日成交金額：取最新一日各股成交金額之和（元）
+        rt_amt = sum(
+            float(stock_daily[c][0].get("成交金額", 0)) or
+            float(stock_daily[c][0].get("成交量", 0)) * float(stock_daily[c][0].get("收盤價", 0)) * 1000
+            for c in ids if c in stock_daily
+        )
 
-        x20  = sum(series[-20:])
-        x5   = sum(series[-5:])
-        avg5  = x5  / 5
-        avg20 = x20 / 20
-        y = round(avg5 - avg20, 0)
-
-        if x20 <= 0:
-            continue
-
-        # 今日即時成交金額（萬元）
-        rt_amt = float(rt_map.get(code, {}).get("成交金額", 0))
+        # 顯示名稱：去掉開頭的「概」字
+        display_name = key[1:] if key.startswith("概") else key
 
         bubbles.append({
-            "name":    name,
-            "x":       round(x20 / 1e4, 1),   # 萬→億（相對）
-            "y":       round(y  / 1e3, 1),
-            "size":    round(x20 / 1e4, 1),
-            "amt_5d":  round(x5  / 1e4, 1),
-            "amt_20d": round(x20 / 1e4, 1),
-            "rt_amt":  round(rt_amt / 1e4, 1), # 今日成交金額（億元）
+            "name":    display_name,
+            "x":       round(x20_total / 1e9, 1),   # 元→十億（顯示用）
+            "y":       round(y          / 1e8, 1),   # 加速度，億元/日
+            "size":    round(x20_total / 1e9, 1),
+            "amt_5d":  round(x5_total  / 1e9, 1),
+            "amt_20d": round(x20_total / 1e9, 1),
+            "rt_amt":  round(rt_amt    / 1e8, 1),    # 今日成交金額（億元）
         })
 
     bubbles.sort(key=lambda b: b["size"], reverse=True)

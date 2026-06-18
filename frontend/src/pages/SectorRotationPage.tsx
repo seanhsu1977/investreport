@@ -79,19 +79,13 @@ export default function SectorRotationPage() {
   const [zoom, setZoom] = useState({ scale: 1, tx: 0, ty: 0 });
   const [dragging, setDragging] = useState(false);
   const dragOrigin = useRef({ clientX: 0, clientY: 0, tx0: 0, ty0: 0 });
+  // touch: track last pinch distance and midpoint
+  const touchRef = useRef({ dist: 0, mx: 0, my: 0, tx0: 0, ty0: 0, scale0: 1 });
 
   const resetZoom = () => setZoom({ scale: 1, tx: 0, ty: 0 });
   const isZoomed = zoom.scale !== 1 || zoom.tx !== 0 || zoom.ty !== 0;
 
-  // non-passive wheel to allow preventDefault
-  const handleWheel = useCallback((e: WheelEvent) => {
-    e.preventDefault();
-    const svg = svgRef.current;
-    if (!svg) return;
-    const rect = svg.getBoundingClientRect();
-    const mx = (e.clientX - rect.left) * (W / rect.width);
-    const my = (e.clientY - rect.top) * (H / rect.height);
-    const factor = e.deltaY < 0 ? 1.2 : 1 / 1.2;
+  const applyZoomAt = useCallback((mx: number, my: number, factor: number) => {
     setZoom(prev => {
       const newScale = Math.min(12, Math.max(0.4, prev.scale * factor));
       return {
@@ -102,12 +96,88 @@ export default function SectorRotationPage() {
     });
   }, []);
 
+  // non-passive wheel (mouse scroll / trackpad)
+  const handleWheel = useCallback((e: WheelEvent) => {
+    e.preventDefault();
+    const svg = svgRef.current;
+    if (!svg) return;
+    const rect = svg.getBoundingClientRect();
+    const mx = (e.clientX - rect.left) * (W / rect.width);
+    const my = (e.clientY - rect.top) * (H / rect.height);
+    applyZoomAt(mx, my, e.deltaY < 0 ? 1.15 : 1 / 1.15);
+  }, [applyZoomAt]);
+
+  // touch events: pinch-to-zoom + single-finger pan
+  const handleTouchStart = useCallback((e: TouchEvent) => {
+    e.preventDefault();
+    const svg = svgRef.current;
+    if (!svg) return;
+    const rect = svg.getBoundingClientRect();
+    const ratio = W / rect.width;
+    if (e.touches.length === 2) {
+      const t0 = e.touches[0], t1 = e.touches[1];
+      const dist = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
+      const mx = ((t0.clientX + t1.clientX) / 2 - rect.left) * ratio;
+      const my = ((t0.clientY + t1.clientY) / 2 - rect.top) * ratio;
+      setZoom(prev => {
+        touchRef.current = { dist, mx, my, tx0: prev.tx, ty0: prev.ty, scale0: prev.scale };
+        return prev;
+      });
+    } else if (e.touches.length === 1) {
+      const t = e.touches[0];
+      setZoom(prev => {
+        dragOrigin.current = { clientX: t.clientX, clientY: t.clientY, tx0: prev.tx, ty0: prev.ty };
+        return prev;
+      });
+      setDragging(true);
+    }
+  }, []);
+
+  const handleTouchMove = useCallback((e: TouchEvent) => {
+    e.preventDefault();
+    const svg = svgRef.current;
+    if (!svg) return;
+    const rect = svg.getBoundingClientRect();
+    const ratio = W / rect.width;
+    if (e.touches.length === 2) {
+      const t0 = e.touches[0], t1 = e.touches[1];
+      const dist = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
+      const ref = touchRef.current;
+      if (ref.dist === 0) return;
+      const factor = dist / ref.dist;
+      const newScale = Math.min(12, Math.max(0.4, ref.scale0 * factor));
+      setZoom({
+        scale: newScale,
+        tx: ref.mx - (ref.mx - ref.tx0) * (newScale / ref.scale0),
+        ty: ref.my - (ref.my - ref.ty0) * (newScale / ref.scale0),
+      });
+    } else if (e.touches.length === 1) {
+      const t = e.touches[0];
+      const dx = (t.clientX - dragOrigin.current.clientX) * ratio;
+      const dy = (t.clientY - dragOrigin.current.clientY) * ratio;
+      setZoom(z => ({ ...z, tx: dragOrigin.current.tx0 + dx, ty: dragOrigin.current.ty0 + dy }));
+    }
+  }, []);
+
+  const handleTouchEnd = useCallback(() => {
+    touchRef.current.dist = 0;
+    setDragging(false);
+  }, []);
+
   useEffect(() => {
     const svg = svgRef.current;
     if (!svg) return;
     svg.addEventListener("wheel", handleWheel, { passive: false });
-    return () => svg.removeEventListener("wheel", handleWheel);
-  }, [handleWheel]);
+    svg.addEventListener("touchstart", handleTouchStart, { passive: false });
+    svg.addEventListener("touchmove", handleTouchMove, { passive: false });
+    svg.addEventListener("touchend", handleTouchEnd);
+    return () => {
+      svg.removeEventListener("wheel", handleWheel);
+      svg.removeEventListener("touchstart", handleTouchStart);
+      svg.removeEventListener("touchmove", handleTouchMove);
+      svg.removeEventListener("touchend", handleTouchEnd);
+    };
+  }, [handleWheel, handleTouchStart, handleTouchMove, handleTouchEnd]);
 
   // stop drag on mouseup outside SVG
   useEffect(() => {

@@ -120,6 +120,9 @@ export default function SectorRotationPage() {
 
   useEffect(() => {
     let cancelled = false;
+    let retries = 0;
+    const MAX_RETRIES = 10;
+
     const poll = () => {
       stocksApi.sectorRotation()
         .then(d => {
@@ -132,10 +135,16 @@ export default function SectorRotationPage() {
             setLoading(false);
           }
         })
-        .catch(e => {
+        .catch(() => {
           if (cancelled) return;
-          setError(e.message ?? "載入失敗");
-          setLoading(false);
+          // 冷啟動或暫時錯誤 → 最多重試 MAX_RETRIES 次
+          retries++;
+          if (retries < MAX_RETRIES) {
+            setTimeout(poll, 4000);
+          } else {
+            setError("伺服器無回應，請稍後再試");
+            setLoading(false);
+          }
         });
     };
     poll();
@@ -143,8 +152,9 @@ export default function SectorRotationPage() {
   }, []);
 
   if (loading) return (
-    <div className="min-h-screen flex items-center justify-center text-gray-500">
-      載入類股籌碼資料中…
+    <div className="min-h-screen flex flex-col items-center justify-center gap-2 text-gray-500">
+      <div className="text-base">概念股籌碼資料計算中…</div>
+      <div className="text-sm text-gray-400">首次載入需等待 30–90 秒，請稍候</div>
     </div>
   );
   if (error) return (

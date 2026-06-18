@@ -3,14 +3,26 @@ import { stocksApi } from "../api/client";
 
 // ── types ──────────────────────────────────────────────────────────────────
 
+interface StockBubble {
+  code: string;
+  name: string;
+  x: number;
+  y: number;
+  size: number;
+  amt_5d: number;
+  amt_20d: number;
+  rt_amt: number;
+}
+
 interface Bubble {
   name: string;
-  x: number;       // 20日累積成交量（相對）
-  y: number;       // 加速度（5日均 - 20日均）
-  size: number;    // 同 x
-  amt_5d: number;  // 近5日量
-  amt_20d: number; // 近20日量
-  rt_amt: number;  // 今日成交金額（億元）
+  x: number;
+  y: number;
+  size: number;
+  amt_5d: number;
+  amt_20d: number;
+  rt_amt: number;
+  stocks?: StockBubble[];
 }
 
 interface SectorChipData {
@@ -56,9 +68,10 @@ export default function SectorRotationPage() {
   const [data, setData] = useState<SectorChipData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [hovered, setHovered] = useState<Bubble | null>(null);
+  const [hovered, setHovered] = useState<Bubble | StockBubble | null>(null);
   const [mousePos, setMousePos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [filter, setFilter] = useState<number | null>(null);
+  const [drillDown, setDrillDown] = useState<Bubble | null>(null); // 下鑽概念
 
   // zoom / pan
   const svgRef = useRef<SVGSVGElement>(null);
@@ -162,19 +175,23 @@ export default function SectorRotationPage() {
   );
   if (!data) return null;
 
-  const bubbles = filter === null ? data.bubbles : data.bubbles.filter(b => quadrant(b) === filter);
+  // 下鑽時用個股清單，否則用概念清單
+  const activeBubbles: (Bubble | StockBubble)[] = drillDown
+    ? (drillDown.stocks ?? [])
+    : (filter === null ? data.bubbles : data.bubbles.filter(b => quadrant(b) === filter));
 
   // axis ranges: symmetric around 0, pad by 20%
-  const maxAbs = Math.max(...data.bubbles.map(b => Math.abs(b.x)), 1);
-  const maxAbsY = Math.max(...data.bubbles.map(b => Math.abs(b.y)), 1);
+  const allB = drillDown ? (drillDown.stocks ?? []) : data.bubbles;
+  const maxAbs  = Math.max(...allB.map(b => Math.abs(b.x)), 1);
+  const maxAbsY = Math.max(...allB.map(b => Math.abs(b.y)), 1);
   const xMin = -maxAbs * 1.2;
   const xMax =  maxAbs * 1.2;
   const yMin = -maxAbsY * 1.2;
   const yMax =  maxAbsY * 1.2;
 
   // bubble size: max radius = 26, min = 5
-  const maxSize = Math.max(...data.bubbles.map(b => b.size), 1);
-  const r = (b: Bubble) => 5 + (b.size / maxSize) * 21;
+  const maxSize = Math.max(...allB.map(b => b.size), 1);
+  const r = (b: Bubble | StockBubble) => 5 + (b.size / maxSize) * 21;
 
   const toSvgX = (v: number) => PAD.left + ((v - xMin) / (xMax - xMin)) * CW;
   const toSvgY = (v: number) => PAD.top  + ((yMax - v) / (yMax - yMin)) * CH;
@@ -182,47 +199,82 @@ export default function SectorRotationPage() {
   const ox = toSvgX(0);
   const oy = toSvgY(0);
 
-  // quadrant counts
+  // quadrant counts (概念層）
   const counts = [0, 1, 2, 3].map(q => data.bubbles.filter(b => quadrant(b) === q).length);
 
   const fmtDate = (s: string) => `${s.slice(0, 4)}/${s.slice(4, 6)}/${s.slice(6, 8)}`;
+
+  const handleBubbleClick = (b: Bubble | StockBubble) => {
+    if (dragging) return;
+    if (!drillDown && "stocks" in b && b.stocks?.length) {
+      // 概念層 → 下鑽
+      setDrillDown(b as Bubble);
+      resetZoom();
+      setFilter(null);
+      setHovered(null);
+    }
+  };
+
+  const handleBackToConcepts = () => {
+    setDrillDown(null);
+    resetZoom();
+    setHovered(null);
+  };
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-6 space-y-4">
       {/* header */}
       <div className="flex items-start justify-between flex-wrap gap-2">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">概念股籌碼輪動圖</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
+          {/* breadcrumb */}
+          <div className="flex items-center gap-1.5 text-sm mb-1">
+            <button
+              onClick={drillDown ? handleBackToConcepts : undefined}
+              className={drillDown ? "text-blue-600 hover:underline font-medium" : "text-gray-900 font-bold text-xl"}
+            >
+              {drillDown ? "概念股輪動圖" : "概念股籌碼輪動圖"}
+            </button>
+            {drillDown && (
+              <>
+                <span className="text-gray-400">/</span>
+                <span className="font-semibold text-gray-900">{drillDown.name}</span>
+              </>
+            )}
+          </div>
+          <p className="text-sm text-gray-500">
             依 nstock 概念股清單彙整成交金額 · 最新資料：{fmtDate(data.latest_date)} · {data.trading_days} 個交易日
           </p>
         </div>
-        <div className="text-xs text-gray-400">
-          橫軸 20日累積成交金額（十億） · 縱軸 加速度（近5日均 − 近20日均）· 泡泡大小 = 成交規模
+        <div className="text-xs text-gray-400 text-right">
+          {drillDown
+            ? "橫軸 個股20日成交金額（億） · 縱軸 加速度 · 泡泡大小 = 成交規模"
+            : "橫軸 20日累積成交金額（十億） · 縱軸 加速度（近5日均 − 近20日均）"}
         </div>
       </div>
 
-      {/* quadrant filter pills */}
-      <div className="flex flex-wrap gap-2">
-        <button
-          onClick={() => setFilter(null)}
-          className={`px-3 py-1 rounded-full text-sm font-medium border transition ${
-            filter === null ? "bg-gray-800 text-white border-gray-800" : "bg-white text-gray-600 border-gray-200 hover:border-gray-400"
-          }`}
-        >
-          全部 ({data.bubbles.length})
-        </button>
-        {Q_META.map((q, i) => (
+      {/* quadrant filter pills（概念層才顯示） */}
+      {!drillDown && (
+        <div className="flex flex-wrap gap-2">
           <button
-            key={q.label}
-            onClick={() => setFilter(filter === i ? null : i)}
-            className={`px-3 py-1 rounded-full text-sm font-medium border transition`}
-            style={filter === i ? { background: q.color, color: "#fff", borderColor: q.color } : { background: "#fff", color: q.color, borderColor: q.color }}
+            onClick={() => setFilter(null)}
+            className={`px-3 py-1 rounded-full text-sm font-medium border transition ${
+              filter === null ? "bg-gray-800 text-white border-gray-800" : "bg-white text-gray-600 border-gray-200 hover:border-gray-400"
+            }`}
           >
-            {q.label} ({counts[i]})
+            全部 ({data.bubbles.length})
           </button>
-        ))}
-      </div>
+          {Q_META.map((q, i) => (
+            <button
+              key={q.label}
+              onClick={() => setFilter(filter === i ? null : i)}
+              className="px-3 py-1 rounded-full text-sm font-medium border transition"
+              style={filter === i ? { background: q.color, color: "#fff", borderColor: q.color } : { background: "#fff", color: q.color, borderColor: q.color }}
+            >
+              {q.label} ({counts[i]})
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* chart */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
@@ -310,19 +362,22 @@ export default function SectorRotationPage() {
                 })}
 
                 {/* bubbles */}
-                {bubbles.map(b => {
+                {activeBubbles.map(b => {
                   const q = quadrant(b);
                   const color = Q_META[q].color;
                   const bx = toSvgX(b.x);
                   const by = toSvgY(b.y);
                   const rad = r(b);
                   const isHov = hovered?.name === b.name;
+                  const canDrill = !drillDown && "stocks" in b && (b.stocks?.length ?? 0) > 0;
+                  const label = "code" in b ? b.name : b.name;
                   return (
                     <g
                       key={b.name}
                       onMouseEnter={() => !dragging && setHovered(b)}
                       onMouseLeave={() => setHovered(null)}
-                      style={{ cursor: dragging ? "grabbing" : "pointer" }}
+                      onClick={() => handleBubbleClick(b)}
+                      style={{ cursor: dragging ? "grabbing" : canDrill ? "zoom-in" : "pointer" }}
                     >
                       <circle
                         cx={bx}
@@ -343,7 +398,7 @@ export default function SectorRotationPage() {
                           fontWeight={600}
                           pointerEvents="none"
                         >
-                          {b.name.length > 5 ? b.name.slice(0, 5) + "…" : b.name}
+                          {label.length > 5 ? label.slice(0, 5) + "…" : label}
                         </text>
                       )}
                     </g>
@@ -363,13 +418,27 @@ export default function SectorRotationPage() {
                 maxWidth: 200,
               }}
             >
-              <div className="font-bold text-gray-900 mb-1">{hovered.name}</div>
+              <div className="font-bold text-gray-900 mb-1">
+                {"code" in hovered ? `${hovered.name} (${(hovered as StockBubble).code})` : hovered.name}
+              </div>
               <div className="flex flex-col gap-0.5 text-gray-600">
                 <span>狀態：<span style={{ color: Q_META[quadrant(hovered)].color }} className="font-semibold">{Q_META[quadrant(hovered)].label} ({Q_META[quadrant(hovered)].desc})</span></span>
                 <span>今日成交金額：<span className="text-gray-900 font-medium">{hovered.rt_amt} 億元</span></span>
-                <span>近20日累積金額：<span className="text-gray-900 font-medium">{hovered.amt_20d} 十億</span></span>
-                <span>近5日累積金額：<span className="text-gray-900 font-medium">{hovered.amt_5d} 十億</span></span>
+                {"code" in hovered ? (
+                  <>
+                    <span>近20日成交金額：<span className="text-gray-900 font-medium">{hovered.amt_20d} 億元</span></span>
+                    <span>近5日成交金額：<span className="text-gray-900 font-medium">{hovered.amt_5d} 億元</span></span>
+                  </>
+                ) : (
+                  <>
+                    <span>近20日累積金額：<span className="text-gray-900 font-medium">{hovered.amt_20d} 十億</span></span>
+                    <span>近5日累積金額：<span className="text-gray-900 font-medium">{hovered.amt_5d} 十億</span></span>
+                  </>
+                )}
                 <span>加速度：<span className={hovered.y >= 0 ? "text-red-600" : "text-green-700"}>{hovered.y >= 0 ? "+" : ""}{hovered.y}</span></span>
+                {!drillDown && "stocks" in hovered && (hovered.stocks?.length ?? 0) > 0 && (
+                  <span className="text-blue-500 text-xs mt-0.5">點擊查看個股明細</span>
+                )}
               </div>
             </div>
           )}
@@ -378,55 +447,116 @@ export default function SectorRotationPage() {
 
       {/* table */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="px-4 py-3 border-b border-gray-100 text-sm font-semibold text-gray-700">
-          概念股列表（{bubbles.length} 個）
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-gray-50 text-xs text-gray-500 uppercase">
-                <th className="text-left px-4 py-2">概念股</th>
-                <th className="text-right px-4 py-2">狀態</th>
-                <th className="text-right px-4 py-2">今日成交金額（億）</th>
-                <th className="text-right px-4 py-2">20日累積金額（十億）</th>
-                <th className="text-right px-4 py-2">加速度</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {bubbles
-                .slice()
-                .sort((a, b_) => b_.size - a.size)
-                .map(b => {
-                  const q = quadrant(b);
-                  const color = Q_META[q].color;
-                  return (
-                    <tr
-                      key={b.name}
-                      className={`hover:bg-gray-50 transition ${hovered?.name === b.name ? "bg-blue-50" : ""}`}
-                      onMouseEnter={() => setHovered(b)}
-                      onMouseLeave={() => setHovered(null)}
-                    >
-                      <td className="px-4 py-2.5 text-gray-900 font-medium">{b.name}</td>
-                      <td className="px-4 py-2.5 text-right">
-                        <span className="px-2 py-0.5 rounded-full text-xs font-semibold" style={{ background: `${color}18`, color }}>
-                          {Q_META[q].label}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2.5 text-right font-medium text-gray-800">
-                        {b.rt_amt}
-                      </td>
-                      <td className="px-4 py-2.5 text-right font-medium text-gray-800">
-                        {b.amt_20d}
-                      </td>
-                      <td className={`px-4 py-2.5 text-right ${b.y >= 0 ? "text-red-500" : "text-green-600"}`}>
-                        {b.y >= 0 ? "+" : ""}{b.y}
-                      </td>
-                    </tr>
-                  );
-                })}
-            </tbody>
-          </table>
-        </div>
+        {drillDown ? (
+          // ── 個股列表（下鑽）──────────────────────────────
+          <>
+            <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+              <span className="text-sm font-semibold text-gray-700">
+                {drillDown.name} 成分股（{drillDown.stocks?.length ?? 0} 支）
+              </span>
+              <button
+                onClick={handleBackToConcepts}
+                className="text-xs text-blue-600 hover:underline"
+              >
+                ← 返回概念股
+              </button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50 text-xs text-gray-500 uppercase">
+                    <th className="text-left px-4 py-2">代號</th>
+                    <th className="text-left px-4 py-2">名稱</th>
+                    <th className="text-right px-4 py-2">狀態</th>
+                    <th className="text-right px-4 py-2">今日成交金額（億）</th>
+                    <th className="text-right px-4 py-2">20日累積金額（億）</th>
+                    <th className="text-right px-4 py-2">加速度</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {(drillDown.stocks ?? []).map(s => {
+                    const q = quadrant(s);
+                    const color = Q_META[q].color;
+                    return (
+                      <tr
+                        key={s.code}
+                        className={`hover:bg-gray-50 transition ${hovered?.name === s.name ? "bg-blue-50" : ""}`}
+                        onMouseEnter={() => setHovered(s)}
+                        onMouseLeave={() => setHovered(null)}
+                      >
+                        <td className="px-4 py-2.5 font-mono text-gray-500">{s.code}</td>
+                        <td className="px-4 py-2.5 text-gray-900 font-medium">{s.name}</td>
+                        <td className="px-4 py-2.5 text-right">
+                          <span className="px-2 py-0.5 rounded-full text-xs font-semibold" style={{ background: `${color}18`, color }}>
+                            {Q_META[q].label}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2.5 text-right font-medium text-gray-800">{s.rt_amt}</td>
+                        <td className="px-4 py-2.5 text-right font-medium text-gray-800">{s.amt_20d}</td>
+                        <td className={`px-4 py-2.5 text-right ${s.y >= 0 ? "text-red-500" : "text-green-600"}`}>
+                          {s.y >= 0 ? "+" : ""}{s.y}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
+        ) : (
+          // ── 概念股列表（預設）──────────────────────────────
+          <>
+            <div className="px-4 py-3 border-b border-gray-100 text-sm font-semibold text-gray-700">
+              概念股列表（{activeBubbles.length} 個）<span className="text-gray-400 font-normal ml-2 text-xs">點擊泡泡可查看成分股</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50 text-xs text-gray-500 uppercase">
+                    <th className="text-left px-4 py-2">概念股</th>
+                    <th className="text-right px-4 py-2">狀態</th>
+                    <th className="text-right px-4 py-2">今日成交金額（億）</th>
+                    <th className="text-right px-4 py-2">20日累積金額（十億）</th>
+                    <th className="text-right px-4 py-2">加速度</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {(activeBubbles as Bubble[])
+                    .slice()
+                    .sort((a, b_) => b_.size - a.size)
+                    .map(b => {
+                      const q = quadrant(b);
+                      const color = Q_META[q].color;
+                      return (
+                        <tr
+                          key={b.name}
+                          className={`hover:bg-gray-50 transition cursor-pointer ${hovered?.name === b.name ? "bg-blue-50" : ""}`}
+                          onMouseEnter={() => setHovered(b)}
+                          onMouseLeave={() => setHovered(null)}
+                          onClick={() => handleBubbleClick(b)}
+                        >
+                          <td className="px-4 py-2.5 text-gray-900 font-medium">
+                            {b.name}
+                            {(b.stocks?.length ?? 0) > 0 && <span className="text-blue-400 ml-1 text-xs">↗</span>}
+                          </td>
+                          <td className="px-4 py-2.5 text-right">
+                            <span className="px-2 py-0.5 rounded-full text-xs font-semibold" style={{ background: `${color}18`, color }}>
+                              {Q_META[q].label}
+                            </span>
+                          </td>
+                          <td className="px-4 py-2.5 text-right font-medium text-gray-800">{b.rt_amt}</td>
+                          <td className="px-4 py-2.5 text-right font-medium text-gray-800">{b.amt_20d}</td>
+                          <td className={`px-4 py-2.5 text-right ${b.y >= 0 ? "text-red-500" : "text-green-600"}`}>
+                            {b.y >= 0 ? "+" : ""}{b.y}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

@@ -1769,8 +1769,8 @@ async def _compute_sector_rotation() -> None:
             return_exceptions=True,
         )
 
-        # 只保留最近 22 根 K 棒，釋放其餘記憶體
-        stock_daily: dict[str, list] = {}
+        # 只保留最近 22 根 K 棒 + 股票名稱，釋放其餘記憶體
+        stock_daily: dict[str, dict] = {}  # code → {name, bars}
         latest_date = ""
         for item in stock_results:
             if isinstance(item, Exception):
@@ -1778,53 +1778,72 @@ async def _compute_sector_rotation() -> None:
             code, daily = item
             if daily and daily.get("日K"):
                 bars = daily["日K"][:22]
-                stock_daily[code] = bars
+                stock_daily[code] = {
+                    "name": daily.get("股票名稱", code),
+                    "bars": bars,
+                }
                 if not latest_date and bars:
                     latest_date = str(bars[0].get("交易日", ""))
 
-        # Step 4: 各概念股成交金額加總 → 動能
+        def _stock_metrics(bars: list) -> tuple[float, float, float, float]:
+            """回傳 (x20, x5, rt_amt, y)，成交金額單位：元"""
+            series = []
+            for b in reversed(bars):
+                amt = float(b.get("成交金額", 0))
+                if amt == 0:
+                    amt = float(b.get("成交量", 0)) * float(b.get("收盤價", 0)) * 1000
+                series.append(amt)
+            if len(series) < 10:
+                return 0, 0, 0, 0
+            x20 = sum(series[-20:])
+            x5  = sum(series[-5:])
+            rt  = series[-1]
+            y   = x5 / 5 - x20 / 20
+            return x20, x5, rt, y
+
+        # Step 4: 各概念股成交金額加總 → 動能；同時計算每支個股指標
         bubbles = []
         for name, ids in concept_map.items():
             x20_total = 0.0
             x5_total  = 0.0
-            valid = 0
+            rt_total  = 0.0
+            stock_items = []
+
             for code in ids:
                 if code not in stock_daily:
                     continue
-                bars = stock_daily[code]
-                series = []
-                for b in reversed(bars[:22]):
-                    amt = float(b.get("成交金額", 0))
-                    if amt == 0:
-                        amt = float(b.get("成交量", 0)) * float(b.get("收盤價", 0)) * 1000
-                    series.append(amt)
-                if len(series) < 10:
+                info = stock_daily[code]
+                x20, x5, rt, y = _stock_metrics(info["bars"])
+                if x20 <= 0:
                     continue
-                x20_total += sum(series[-20:])
-                x5_total  += sum(series[-5:])
-                valid += 1
+                x20_total += x20
+                x5_total  += x5
+                rt_total  += rt
+                stock_items.append({
+                    "code":    code,
+                    "name":    info["name"],
+                    "x":       round(x20 / 1e8, 1),   # 億元
+                    "y":       round(y   / 1e7, 1),   # 千萬元/日
+                    "size":    round(x20 / 1e8, 1),
+                    "amt_5d":  round(x5  / 1e8, 1),
+                    "amt_20d": round(x20 / 1e8, 1),
+                    "rt_amt":  round(rt  / 1e8, 1),
+                })
 
-            if valid == 0 or x20_total <= 0:
+            if not stock_items or x20_total <= 0:
                 continue
 
-            avg5  = x5_total  / 5
-            avg20 = x20_total / 20
-            y = avg5 - avg20
-
-            rt_amt = sum(
-                float(stock_daily[c][0].get("成交金額", 0)) or
-                float(stock_daily[c][0].get("成交量", 0)) * float(stock_daily[c][0].get("收盤價", 0)) * 1000
-                for c in ids if c in stock_daily
-            )
+            y_concept = x5_total / 5 - x20_total / 20
 
             bubbles.append({
                 "name":    name,
                 "x":       round(x20_total / 1e9, 1),
-                "y":       round(y          / 1e8, 1),
+                "y":       round(y_concept  / 1e8, 1),
                 "size":    round(x20_total / 1e9, 1),
                 "amt_5d":  round(x5_total  / 1e9, 1),
                 "amt_20d": round(x20_total / 1e9, 1),
-                "rt_amt":  round(rt_amt    / 1e8, 1),
+                "rt_amt":  round(rt_total  / 1e8, 1),
+                "stocks":  sorted(stock_items, key=lambda s: s["size"], reverse=True),
             })
 
         bubbles.sort(key=lambda b: b["size"], reverse=True)

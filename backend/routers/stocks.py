@@ -1698,6 +1698,8 @@ async def fill_all_prices(
     return {"status": "started", "message": "背景批次填充已啟動，約需數分鐘"}
 
 
+_CONCEPT_LIMIT = 40  # 最多取幾個概念，避免 OOM 與 rate-limit
+
 @router.get("/sector-rotation")
 async def sector_rotation():
     """概念股輪動泡泡圖：nstock StockChip 概念股清單，各股成交金額加總，20日累積與加速度"""
@@ -1708,47 +1710,57 @@ async def sector_rotation():
         if now - ts < _SECTOR_CHIP_TTL:
             return data
 
-    # Step 1: 取概念股清單
+    # Step 1: 取概念股清單（回傳格式：[{groupName, subGroup:[{condition:[{key,name,...}]}]}]）
     async with httpx.AsyncClient(timeout=15) as client:
         resp = await client.get(f"{_NSTOCK_STRATEGY}?agent=StockChip")
         resp.raise_for_status()
-        raw_list = resp.json()
+        raw_groups = resp.json()
 
-    # 正規化回傳格式（list 或 {"data": [...]}）
-    if isinstance(raw_list, list):
-        concept_keys = [item["key"] for item in raw_list if item.get("key")]
-    else:
-        concept_keys = [item["key"] for item in raw_list.get("data", []) if item.get("key")]
+    # 找 groupName == "概念" 的 group，取出所有 condition 的 key/name
+    concept_keys: list[tuple[str, str]] = []  # [(key, name), ...]
+    for group in raw_groups:
+        if group.get("groupName") == "概念":
+            for sg in group.get("subGroup", []):
+                for cond in sg.get("condition", []):
+                    k = cond.get("key", "")
+                    n = cond.get("name", k)
+                    if k:
+                        concept_keys.append((k, n))
+            break
 
+    concept_keys = concept_keys[:_CONCEPT_LIMIT]
     if not concept_keys:
         raise HTTPException(status_code=503, detail="概念股清單資料不足")
 
     # Step 2: 並發抓各概念股 stock_ids
-    async def _get_concept_stocks(key: str) -> tuple[str, list[str]]:
+    async def _get_concept_stocks(key: str, name: str) -> tuple[str, str, list[str]]:
         async with httpx.AsyncClient(timeout=10) as c:
             r = await c.post(_NSTOCK_STRATEGY, json={"strategies": [{"key": key, "options": []}]})
             r.raise_for_status()
             ids = r.json().get("data", {}).get("stock_ids", [])
-            return key, ids
+            return key, name, ids
 
     concept_results = await asyncio.gather(
-        *[_get_concept_stocks(k) for k in concept_keys],
+        *[_get_concept_stocks(k, n) for k, n in concept_keys],
         return_exceptions=True,
     )
 
+    # concept_map: name → stock_ids
     concept_map: dict[str, list[str]] = {}
     for item in concept_results:
         if isinstance(item, Exception):
             continue
-        key, ids = item
+        _key, name, ids = item
         if ids:
-            concept_map[key] = ids
+            concept_map[name] = ids
 
-    # Step 3: 並發抓所有不重複個股日K
+    # Step 3: 並發抓所有不重複個股日K（semaphore 限制並發）
     all_codes = list({code for ids in concept_map.values() for code in ids})
+    _sem = asyncio.Semaphore(20)
 
     async def _fetch_stock(code: str):
-        daily = await asyncio.to_thread(ns.get_daily, code)
+        async with _sem:
+            daily = await asyncio.to_thread(ns.get_daily, code)
         return code, daily
 
     stock_results = await asyncio.gather(
@@ -1807,11 +1819,8 @@ async def sector_rotation():
             for c in ids if c in stock_daily
         )
 
-        # 顯示名稱：去掉開頭的「概」字
-        display_name = key[1:] if key.startswith("概") else key
-
         bubbles.append({
-            "name":    display_name,
+            "name":    key,
             "x":       round(x20_total / 1e9, 1),   # 元→十億（顯示用）
             "y":       round(y          / 1e8, 1),   # 加速度，億元/日
             "size":    round(x20_total / 1e9, 1),

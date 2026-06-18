@@ -266,6 +266,13 @@ export const stocksApi = {
     api.post<{ status: string }>("/stocks/kdj-screen/refresh").then((r) => r.data),
   fill_all_prices: () =>
     api.post<{ status: string; message: string }>("/stocks/admin/fill-all-prices").then((r) => r.data),
+  sectorRotation: () =>
+    api.get<{
+      bubbles: { name: string; x: number; y: number; size: number; net_5d: number; net_20d: number }[];
+      trading_days: number;
+      latest_date: string;
+      computed_at: string;
+    }>("/stocks/sector-rotation").then((r) => r.data),
 };
 
 export const searchApi = {

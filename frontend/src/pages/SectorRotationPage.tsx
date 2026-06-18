@@ -17,6 +17,7 @@ interface SectorChipData {
   bubbles: Bubble[];
   trading_days: number;
   latest_date: string;
+  computing?: boolean;
   computed_at: string;
 }
 
@@ -118,10 +119,27 @@ export default function SectorRotationPage() {
   };
 
   useEffect(() => {
-    setLoading(true);
-    stocksApi.sectorRotation()
-      .then(d => { setData(d); setLoading(false); })
-      .catch(e => { setError(e.message ?? "載入失敗"); setLoading(false); });
+    let cancelled = false;
+    const poll = () => {
+      stocksApi.sectorRotation()
+        .then(d => {
+          if (cancelled) return;
+          if (d.computing) {
+            // 背景計算中，3 秒後再試
+            setTimeout(poll, 3000);
+          } else {
+            setData(d);
+            setLoading(false);
+          }
+        })
+        .catch(e => {
+          if (cancelled) return;
+          setError(e.message ?? "載入失敗");
+          setLoading(false);
+        });
+    };
+    poll();
+    return () => { cancelled = true; };
   }, []);
 
   if (loading) return (

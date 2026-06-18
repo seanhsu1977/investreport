@@ -271,6 +271,7 @@ export const stocksApi = {
       bubbles: { name: string; x: number; y: number; size: number; amt_5d: number; amt_20d: number; rt_amt: number }[];
       trading_days: number;
       latest_date: string;
+      computing?: boolean;
       computed_at: string;
     }>("/stocks/sector-rotation").then((r) => r.data),
 };

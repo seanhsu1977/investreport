@@ -496,9 +496,12 @@ export default function SectorRotationPage() {
             </div>
 
             {/* Tooltip */}
-            {hovered && !dragging && (
+            {hovered && !dragging && (() => {
+              const cw = svgRef.current?.getBoundingClientRect().width ?? 400;
+              const tipLeft = mousePos.x + 14 + 210 > cw ? Math.max(4, mousePos.x - 224) : mousePos.x + 14;
+              return (
               <div className="absolute pointer-events-none z-10 rounded-xl px-3 py-2.5 text-xs"
-                style={{ left: Math.min(mousePos.x + 14, 320), top: mousePos.y - 10, maxWidth: 210, background: "rgba(10,14,22,0.95)", border: "1px solid rgba(255,255,255,0.12)", color: "white", backdropFilter: "blur(8px)" }}>
+                style={{ left: tipLeft, top: Math.max(4, mousePos.y - 10), maxWidth: 210, background: "rgba(10,14,22,0.95)", border: "1px solid rgba(255,255,255,0.12)", color: "white", backdropFilter: "blur(8px)" }}>
                 <div className="font-bold text-sm mb-1.5">
                   {"code" in hovered ? <><span className="font-mono text-gray-400 text-xs">{(hovered as StockBubble).code} </span>{hovered.name}</> : hovered.name}
                 </div>
@@ -510,7 +513,8 @@ export default function SectorRotationPage() {
                   {!drillDown && "stocks" in hovered && (hovered.stocks?.length ?? 0) > 0 && <div className="pt-1 text-blue-400 text-[10px]">🔍 點擊查看 {(hovered as Bubble).stocks!.length} 支成分股</div>}
                 </div>
               </div>
-            )}
+              );
+            })()}
           </div>
           </div>{/* /圖表區 flex-col wrapper */}
         </div>

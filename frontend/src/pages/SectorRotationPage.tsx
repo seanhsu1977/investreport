@@ -477,12 +477,21 @@ export default function SectorRotationPage() {
                   <span style={{ color: "rgba(255,255,255,0.6)" }}>{q.label}</span>
                 </span>
               ))}
+              {/* 移動按鈕：拖曳的替代操作 */}
               <div className="ml-auto flex items-center gap-1">
-                <button onClick={() => setZoom(prev => { const cx=W/2,cy=H/2,ns=Math.min(12,prev.scale*1.4); return {scale:ns,...clampPan(cx-(cx-prev.tx)*(ns/prev.scale),cy-(cy-prev.ty)*(ns/prev.scale),ns)}; })}
-                  className="w-7 h-7 flex items-center justify-center rounded-lg text-base font-bold" style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:"rgba(255,255,255,0.8)"}}>+</button>
-                <button onClick={() => setZoom(prev => { const cx=W/2,cy=H/2,ns=Math.max(0.4,prev.scale/1.4); return {scale:ns,...clampPan(cx-(cx-prev.tx)*(ns/prev.scale),cy-(cy-prev.ty)*(ns/prev.scale),ns)}; })}
-                  className="w-7 h-7 flex items-center justify-center rounded-lg text-base font-bold" style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:"rgba(255,255,255,0.8)"}}>−</button>
-                {isZoomed && <button onClick={resetZoom} className="px-2.5 h-7 text-xs font-medium rounded-lg" style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:"rgba(255,255,255,0.8)"}}>重設</button>}
+                {(["←","↑","↓","→"] as const).map((arrow) => {
+                  const step = 80;
+                  const dx = arrow === "←" ? step : arrow === "→" ? -step : 0;
+                  const dy = arrow === "↑" ? step : arrow === "↓" ? -step : 0;
+                  return (
+                    <button key={arrow}
+                      onClick={() => setZoom(z => ({ ...z, ...clampPan(z.tx + dx, z.ty + dy, z.scale) }))}
+                      className="w-7 h-7 flex items-center justify-center rounded-lg text-sm" style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:"rgba(255,255,255,0.8)"}}>
+                      {arrow}
+                    </button>
+                  );
+                })}
+                {isZoomed && <button onClick={resetZoom} className="px-2 h-7 text-xs font-medium rounded-lg ml-1" style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:"rgba(255,255,255,0.8)"}}>重設</button>}
               </div>
             </div>
 

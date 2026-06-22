@@ -234,34 +234,37 @@ function RestCard({ item, rank, onAskReason }: { item: RecommendationItem; rank:
       </div>
 
       {/* ── rec + signal ── */}
-      <div className="flex items-center gap-2 mt-2 sm:mt-0 sm:w-36 shrink-0">
-        {item.latest_recommendation && (
-          <span className={`text-xs font-bold px-2 py-0.5 rounded border ${REC_BADGE[item.latest_recommendation] ?? "bg-gray-100 text-gray-600 border-gray-200"}`}>
-            {item.latest_recommendation}
-          </span>
-        )}
-        <div className="flex items-center gap-1">
-          {hasBullDot && <div className="w-2 h-2 rounded-full bg-[#E53935]" />}
-          {hasBearDot && <div className="w-2 h-2 rounded-full bg-[#1E8B4A]" />}
-          {hasVolDot && <div className="w-2 h-2 rounded-full bg-amber-400" />}
-          {(maSig || volSig) && (
-            <span className="text-xs text-[#6B7A99]">{[maSig, volSig].filter(Boolean).join("·")}</span>
+      {/* ── rec / score / signal / reason (兩行) ── */}
+      <div className="mt-2 sm:mt-0 sm:w-44 shrink-0 flex items-center justify-between sm:flex-col sm:items-stretch sm:gap-1.5">
+        {/* 第一行：評等 + 總分 */}
+        <div className="flex items-center gap-2">
+          {item.latest_recommendation && (
+            <span className={`text-xs font-bold px-2 py-0.5 rounded border ${REC_BADGE[item.latest_recommendation] ?? "bg-gray-100 text-gray-600 border-gray-200"}`}>
+              {item.latest_recommendation}
+            </span>
           )}
+          <div className="sm:ml-auto flex items-baseline gap-0.5">
+            <span className="text-[20px] font-extrabold text-[#0B1E3D] tabular-nums leading-none">{item.score.toFixed(0)}</span>
+            <span className="text-[11px] text-[#6B7A99]">分</span>
+          </div>
         </div>
-      </div>
-
-      {/* ── score + reason ── */}
-      <div className="flex items-center justify-between mt-2 sm:mt-0 sm:gap-4 shrink-0">
-        <div className="text-right sm:w-12">
-          <div className="text-[22px] font-extrabold text-[#0B1E3D] tabular-nums leading-none">{item.score.toFixed(0)}</div>
-          <div className="text-[11px] text-[#6B7A99]">總分</div>
+        {/* 第二行：訊號 + 理由按鈕 */}
+        <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1 flex-1 min-w-0">
+            {hasBullDot && <div className="w-2 h-2 rounded-full bg-[#E53935] shrink-0" />}
+            {hasBearDot && <div className="w-2 h-2 rounded-full bg-[#1E8B4A] shrink-0" />}
+            {hasVolDot && <div className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />}
+            {(maSig || volSig) && (
+              <span className="text-[11px] text-[#6B7A99] truncate">{[maSig, volSig].filter(Boolean).join("·")}</span>
+            )}
+          </div>
+          <button
+            onClick={onAskReason}
+            className="text-xs font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 border-none rounded-md px-2.5 py-1.5 transition shrink-0"
+          >
+            💡 理由
+          </button>
         </div>
-        <button
-          onClick={onAskReason}
-          className="text-xs font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 border-none rounded-md px-2.5 py-1.5 transition"
-        >
-          💡 理由
-        </button>
       </div>
     </div>
   );
@@ -579,10 +582,9 @@ export default function RecommendationsPage() {
               <span className="w-20 text-[11px] font-bold text-[#6B7A99] uppercase tracking-wide">報告後</span>
               <span className="w-16 text-[11px] font-bold text-[#6B7A99] uppercase tracking-wide">報告數</span>
             </div>
-            <span className="w-36 shrink-0 text-[11px] font-bold text-[#6B7A99] uppercase tracking-wide">評等</span>
-            <div className="shrink-0 flex gap-4">
-              <span className="w-12 text-right text-[11px] font-bold text-[#6B7A99] uppercase tracking-wide">總分</span>
-              <span className="w-14" />
+            <div className="w-44 shrink-0 flex items-center justify-between">
+              <span className="text-[11px] font-bold text-[#6B7A99] uppercase tracking-wide">評等</span>
+              <span className="text-[11px] font-bold text-[#6B7A99] uppercase tracking-wide">總分</span>
             </div>
           </div>
 

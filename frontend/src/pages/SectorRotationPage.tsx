@@ -311,28 +311,43 @@ export default function SectorRotationPage() {
       {true && (
         <div className="flex flex-1 min-w-0">
 
-          {/* 左側象限統計 */}
-          {!drillDown && (
-            <div className="w-[110px] shrink-0 flex flex-col" style={{ borderRight: "1px solid rgba(255,255,255,0.08)" }}>
-              {Q_META.map((q, i) => (
-                <button
-                  key={q.label}
-                  onClick={() => setFilter(filter === i ? null : i)}
-                  className="flex-1 px-3 py-3 text-left transition-colors"
-                  style={{ borderLeft: `3px solid ${filter === i ? q.color : "transparent"}`, background: filter === i ? `${q.color}15` : "transparent" }}
-                >
-                  <div className="text-2xl font-black leading-none" style={{ color: q.color }}>{counts[i]}</div>
-                  <div className="text-xs font-semibold mt-1" style={{ color: "rgba(255,255,255,0.8)" }}>{q.label}</div>
-                  <div className="text-[10px] leading-tight mt-0.5" style={{ color: "rgba(255,255,255,0.35)" }}>{q.desc}</div>
+          {/* 左側象限統計（下鑽時保留寬度，改顯示概念股資訊）*/}
+          <div className="w-[110px] shrink-0 flex flex-col" style={{ borderRight: "1px solid rgba(255,255,255,0.08)" }}>
+            {drillDown ? (
+              /* 下鑽模式：顯示概念股名稱 + 返回按鈕 */
+              <div className="flex flex-col items-center justify-center flex-1 gap-3 px-2 text-center">
+                <div className="text-[10px] font-semibold leading-tight" style={{ color: "rgba(255,255,255,0.5)" }}>{drillDown.name}</div>
+                <div className="text-2xl font-black leading-none" style={{ color: "rgba(255,255,255,0.85)" }}>{drillDown.stocks?.length ?? 0}</div>
+                <div className="text-[10px]" style={{ color: "rgba(255,255,255,0.3)" }}>支成分股</div>
+                <button onClick={handleBackToConcepts}
+                  className="mt-2 text-[10px] px-2 py-1 rounded transition hover:text-white"
+                  style={{ color: "rgba(99,179,237,0.7)", border: "1px solid rgba(99,179,237,0.25)" }}>
+                  ← 返回
                 </button>
-              ))}
-              {filter !== null && (
-                <button onClick={() => setFilter(null)} className="py-2 text-[10px] text-center hover:text-white" style={{ color: "rgba(255,255,255,0.3)", borderTop: "1px solid rgba(255,255,255,0.08)" }}>
-                  清除篩選
-                </button>
-              )}
-            </div>
-          )}
+              </div>
+            ) : (
+              /* 概念股模式：象限統計 */
+              <>
+                {Q_META.map((q, i) => (
+                  <button
+                    key={q.label}
+                    onClick={() => setFilter(filter === i ? null : i)}
+                    className="flex-1 px-3 py-3 text-left transition-colors"
+                    style={{ borderLeft: `3px solid ${filter === i ? q.color : "transparent"}`, background: filter === i ? `${q.color}15` : "transparent" }}
+                  >
+                    <div className="text-2xl font-black leading-none" style={{ color: q.color }}>{counts[i]}</div>
+                    <div className="text-xs font-semibold mt-1" style={{ color: "rgba(255,255,255,0.8)" }}>{q.label}</div>
+                    <div className="text-[10px] leading-tight mt-0.5" style={{ color: "rgba(255,255,255,0.35)" }}>{q.desc}</div>
+                  </button>
+                ))}
+                {filter !== null && (
+                  <button onClick={() => setFilter(null)} className="py-2 text-[10px] text-center hover:text-white" style={{ color: "rgba(255,255,255,0.3)", borderTop: "1px solid rgba(255,255,255,0.08)" }}>
+                    清除篩選
+                  </button>
+                )}
+              </>
+            )}
+          </div>
 
           {/* 圖表區 */}
           <div className="flex-1 relative min-w-0">
@@ -489,9 +504,6 @@ export default function SectorRotationPage() {
                   排行榜
                 </button>
               </div>
-            )}
-            {drillDown && (
-              <button onClick={handleBackToConcepts} className="text-xs transition" style={{ color: "rgba(99,179,237,0.8)" }}>← 返回</button>
             )}
           </div>
 

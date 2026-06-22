@@ -252,7 +252,7 @@ export default function SectorRotationPage() {
           </div>
         </div>
 
-        {/* 視圖切換（只在概念層顯示） */}
+        {/* 控制列 */}
         {!drillDown && (
           <div className="flex items-center gap-2">
             <button
@@ -262,7 +262,8 @@ export default function SectorRotationPage() {
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>
               怎麼看這張圖
             </button>
-            <div className="flex border border-gray-200 rounded-lg overflow-hidden text-sm">
+            {/* 視圖切換：手機用（桌機左右並排不需要）*/}
+            <div className="flex lg:hidden border border-gray-200 rounded-lg overflow-hidden text-sm">
               <button onClick={() => setViewMode("bubble")} className={`px-3 py-1.5 transition ${viewMode === "bubble" ? "bg-gray-800 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}>泡泡圖</button>
               <button onClick={() => setViewMode("list")}   className={`px-3 py-1.5 transition ${viewMode === "list"   ? "bg-gray-800 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}>榜單</button>
             </div>
@@ -288,7 +289,7 @@ export default function SectorRotationPage() {
       )}
 
       {/* ── 搜尋列（概念層才顯示） ── */}
-      {!drillDown && viewMode === "bubble" && (
+      {!drillDown && (
         <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white border border-gray-200 shadow-sm">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
           <input
@@ -301,8 +302,13 @@ export default function SectorRotationPage() {
         </div>
       )}
 
+      {/* ── 主體：左圖右表（桌機左右並排，手機上下）── */}
+      <div className="lg:grid lg:grid-cols-2 lg:gap-4 space-y-4 lg:space-y-0 items-start">
+
+      {/* 左欄：泡泡圖（手機切榜單時隱藏） */}
+      <div className={!drillDown && viewMode === "list" ? "hidden lg:block" : ""}>
       {/* ── 深色主卡：sidebar + 圖表 ── */}
-      {viewMode === "bubble" && (
+      {true && (
         <div className="rounded-2xl overflow-hidden flex" style={{ background: CHART_BG, border: "1px solid rgba(255,255,255,0.08)" }}>
 
           {/* 左側象限統計 */}
@@ -454,12 +460,13 @@ export default function SectorRotationPage() {
           </div>
         </div>
       )}
+      </div>{/* /左欄 */}
 
-      {/* ── 下方：表格 + 排行榜 ── */}
-      <div className={`gap-4 ${!drillDown ? "grid grid-cols-1 lg:grid-cols-3" : ""}`}>
+      {/* 右欄：表格 + 排行榜 */}
+      <div className="flex flex-col gap-4">
 
         {/* 表格 */}
-        <div className={`bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden ${!drillDown ? "lg:col-span-2" : ""}`}>
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
           {drillDown ? (
             <>
               <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
@@ -598,49 +605,9 @@ export default function SectorRotationPage() {
 
           </div>
         )}
-      </div>
+      </div>{/* /右欄 */}
 
-      {/* ── 榜單模式（視圖切換） ── */}
-      {viewMode === "list" && !drillDown && (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
-            <span className="text-sm font-semibold text-gray-800">概念股榜單</span>
-            <span className="text-xs text-gray-400 ml-auto">按 20 日累積金額排序</span>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead><tr className="bg-gray-50 text-xs text-gray-500">
-                <th className="text-left px-4 py-2.5 font-medium w-8">#</th>
-                <th className="text-left px-4 py-2.5 font-medium">概念股</th>
-                <th className="text-right px-4 py-2.5 font-medium">狀態</th>
-                <th className="text-right px-4 py-2.5 font-medium">今日成交（億）</th>
-                <th className="text-right px-4 py-2.5 font-medium">20日累積（十億）</th>
-                <th className="text-right px-4 py-2.5 font-medium">加速度</th>
-              </tr></thead>
-              <tbody className="divide-y divide-gray-50">
-                {data.bubbles.slice().sort((a, z) => z.amt_20d - a.amt_20d).map((b, i) => {
-                  const q = quadrant(b), color = Q_META[q].color, canDrill = (b.stocks?.length ?? 0) > 0;
-                  return (
-                    <tr key={b.name}
-                      className={`transition ${hovered?.name === b.name ? "bg-gray-50" : "hover:bg-gray-50"} ${canDrill ? "cursor-pointer" : ""}`}
-                      onMouseEnter={() => setHovered(b)} onMouseLeave={() => setHovered(null)}
-                      onClick={() => { if (canDrill) { setViewMode("bubble"); handleBubbleClick(b); } }}>
-                      <td className="px-4 py-2.5 text-gray-400 tabular-nums text-xs">{i + 1}</td>
-                      <td className="px-4 py-2.5 text-gray-900 font-medium">
-                        {b.name}{canDrill && <span className="ml-1 text-[10px] text-gray-400">↗</span>}
-                      </td>
-                      <td className="px-4 py-2.5 text-right"><span className="px-2 py-0.5 rounded-full text-xs font-semibold" style={{ background: `${color}18`, color }}>{Q_META[q].label}</span></td>
-                      <td className="px-4 py-2.5 text-right tabular-nums text-gray-800">{b.rt_amt}</td>
-                      <td className="px-4 py-2.5 text-right tabular-nums text-gray-800">{b.amt_20d}</td>
-                      <td className={`px-4 py-2.5 text-right tabular-nums font-medium ${b.y >= 0 ? "text-emerald-600" : "text-orange-500"}`}>{b.y >= 0 ? "+" : ""}{b.y}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+      </div>{/* /主體 lg:grid */}
 
     </div>
   );

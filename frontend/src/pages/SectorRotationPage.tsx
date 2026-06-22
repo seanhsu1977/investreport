@@ -57,6 +57,8 @@ export default function SectorRotationPage() {
   // zoom / pan
   const svgRef = useRef<SVGSVGElement>(null);
   const [zoom, setZoom] = useState({ scale: 1, tx: 0, ty: 0 });
+  const zoomRef = useRef(zoom);          // always up-to-date, readable from native event handlers
+  zoomRef.current = zoom;               // sync on every render
   const [dragging, setDragging] = useState(false);
   const dragOrigin = useRef({ clientX: 0, clientY: 0, tx0: 0, ty0: 0 });
   const touchRef = useRef({ dist: 0, mx: 0, my: 0, tx0: 0, ty0: 0, scale0: 1 });
@@ -87,15 +89,16 @@ export default function SectorRotationPage() {
     const svg = svgRef.current; if (!svg) return;
     const rect = svg.getBoundingClientRect();
     const ratio = W / rect.width;
+    const cz = zoomRef.current;           // read current zoom synchronously from ref
     if (e.touches.length === 2) {
       const t0 = e.touches[0], t1 = e.touches[1];
       const dist = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
       const mx = ((t0.clientX + t1.clientX) / 2 - rect.left) * ratio;
       const my = ((t0.clientY + t1.clientY) / 2 - rect.top) * ratio;
-      setZoom(prev => { touchRef.current = { dist, mx, my, tx0: prev.tx, ty0: prev.ty, scale0: prev.scale }; return prev; });
+      touchRef.current = { dist, mx, my, tx0: cz.tx, ty0: cz.ty, scale0: cz.scale };
     } else if (e.touches.length === 1) {
       const t = e.touches[0];
-      setZoom(prev => { dragOrigin.current = { clientX: t.clientX, clientY: t.clientY, tx0: prev.tx, ty0: prev.ty }; return prev; });
+      dragOrigin.current = { clientX: t.clientX, clientY: t.clientY, tx0: cz.tx, ty0: cz.ty };
       setDragging(true);
     }
   }, []);

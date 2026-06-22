@@ -462,16 +462,18 @@ export default function SectorRotationPage() {
       )}
         </div>{/* /左側 flex */}
 
-        {/* 右側：深色排行面板（桌機顯示，手機折到下方）*/}
-        {!drillDown && (
-          <div className="lg:w-[280px] shrink-0 flex flex-col" style={{ borderTop: "1px solid rgba(255,255,255,0.08)", borderLeft: "none" }}
-            // eslint-disable-next-line react/no-unknown-property
-            {...({ "data-panel": true } as object)}>
-            <style>{`@media (min-width: 1024px) { [data-panel] { border-left: 1px solid rgba(255,255,255,0.08); border-top: none; } }`}</style>
+        {/* 右側：概念股列表面板 */}
+        <div className="lg:w-[300px] shrink-0 flex flex-col" style={{ borderTop: "1px solid rgba(255,255,255,0.08)", borderLeft: "none" }}
+          // eslint-disable-next-line react/no-unknown-property
+          {...({ "data-panel": true } as object)}>
+          <style>{`@media (min-width: 1024px) { [data-panel] { border-left: 1px solid rgba(255,255,255,0.08); border-top: none; } }`}</style>
 
-            {/* 頂列：視圖切換 */}
-            <div className="flex items-center justify-between px-4 py-2.5" style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-              <span className="text-xs font-semibold" style={{ color: "rgba(255,255,255,0.4)" }}>排行面板</span>
+          {/* 頂列：標題 + 視圖切換 */}
+          <div className="flex items-center justify-between px-4 py-2.5 shrink-0" style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+            <span className="text-xs font-semibold" style={{ color: "rgba(255,255,255,0.4)" }}>
+              {drillDown ? `${drillDown.name} 成分股（${drillDown.stocks?.length ?? 0}）` : `概念股（${allConcepts.length}）`}
+            </span>
+            {!drillDown && (
               <div className="flex rounded-lg overflow-hidden text-xs" style={{ border: "1px solid rgba(255,255,255,0.12)" }}>
                 <button onClick={() => setViewMode("bubble")}
                   className="px-3 py-1.5 transition"
@@ -484,143 +486,113 @@ export default function SectorRotationPage() {
                   榜單
                 </button>
               </div>
-            </div>
+            )}
+            {drillDown && (
+              <button onClick={handleBackToConcepts} className="text-xs transition" style={{ color: "rgba(99,179,237,0.8)" }}>← 返回</button>
+            )}
+          </div>
 
-            {/* CP 值排行 */}
-            <div className="flex-1 px-4 py-3">
-              <div className="flex items-center gap-2 mb-3">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="#fde047"><path d="M12 2l2 6h6l-5 4 2 7-7-4-7 4 2-7-5-4h6z"/></svg>
-                <span className="text-sm font-semibold" style={{ color: "rgba(255,255,255,0.9)" }}>CP 值排行</span>
-                <span className="text-xs" style={{ color: "rgba(255,255,255,0.3)" }}>· 補漲機會</span>
-              </div>
-              {cpRanking.map(({ b }, i) => {
-                const q = quadrant(b), color = Q_META[q].color;
+          {/* 列表本體（可捲動） */}
+          <div className="flex-1 overflow-y-auto" style={{ maxHeight: 460 }}>
+            {drillDown ? (
+              /* 成分股列表 */
+              (drillDown.stocks ?? []).map(s => {
+                const q = quadrant(s), color = Q_META[q].color;
                 return (
-                  <div key={b.name}
-                    className="flex items-center gap-2 py-2.5 cursor-pointer rounded px-1 -mx-1 transition"
-                    style={{ borderBottom: "1px solid rgba(255,255,255,0.05)", background: hovered?.name === b.name ? "rgba(255,255,255,0.05)" : "transparent" }}
-                    onMouseEnter={() => setHovered(b)} onMouseLeave={() => setHovered(null)}
-                    onClick={() => { if (b.stocks?.length) handleBubbleClick(b); setViewMode("bubble"); }}>
-                    <span className="text-xs tabular-nums w-4 shrink-0" style={{ color: "rgba(255,255,255,0.3)" }}>{i + 1}</span>
-                    <span className="flex-1 text-sm font-medium truncate" style={{ color: hovered?.name === b.name ? "white" : "rgba(255,255,255,0.8)" }}>{b.name}</span>
-                    <span className="text-xs tabular-nums shrink-0" style={{ color: "rgba(255,255,255,0.35)" }}>
-                      {(b.amt_20d * 10).toFixed(0)}億
-                    </span>
+                  <div key={s.code}
+                    className="flex items-center gap-2 px-4 py-2.5 cursor-default transition"
+                    style={{ borderBottom: "1px solid rgba(255,255,255,0.04)", background: hovered?.name === s.name ? "rgba(255,255,255,0.05)" : "transparent" }}
+                    onMouseEnter={() => setHovered(s)} onMouseLeave={() => setHovered(null)}>
+                    <span className="font-mono text-[10px] shrink-0 w-10" style={{ color: "rgba(255,255,255,0.3)" }}>{s.code}</span>
+                    <span className="flex-1 text-sm font-medium truncate" style={{ color: hovered?.name === s.name ? "white" : "rgba(255,255,255,0.8)" }}>{s.name}</span>
+                    <span className={`text-xs tabular-nums font-medium shrink-0 ${s.y >= 0 ? "text-emerald-400" : "text-orange-400"}`}>{s.y >= 0 ? "+" : ""}{s.y}</span>
                     <span className="text-xs font-semibold shrink-0" style={{ color }}>{Q_META[q].label}</span>
                   </div>
                 );
-              })}
-              {cpRanking.length === 0 && <div className="text-xs py-2" style={{ color: "rgba(255,255,255,0.3)" }}>暫無資料</div>}
-            </div>
-
-            {/* 抄底偵測 */}
-            <div className="px-4 py-3" style={{ borderTop: "1px solid rgba(255,255,255,0.08)" }}>
-              <div className="flex items-center gap-2 mb-3">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2.5"><path d="M12 22V8M5 12l7-7 7 7"/></svg>
-                <span className="text-sm font-semibold" style={{ color: "rgba(255,255,255,0.9)" }}>抄底偵測</span>
-                <span className="text-xs" style={{ color: "rgba(255,255,255,0.3)" }}>· 動能回升</span>
-              </div>
-              {dipRanking.map(b => (
-                <div key={b.name}
-                  className="flex items-center gap-2 py-2.5 cursor-pointer rounded px-1 -mx-1 transition"
-                  style={{ borderBottom: "1px solid rgba(255,255,255,0.05)", background: hovered?.name === b.name ? "rgba(255,255,255,0.05)" : "transparent" }}
-                  onMouseEnter={() => setHovered(b)} onMouseLeave={() => setHovered(null)}
-                  onClick={() => { if (b.stocks?.length) handleBubbleClick(b); setViewMode("bubble"); }}>
-                  <span className="flex-1 text-sm font-medium truncate" style={{ color: hovered?.name === b.name ? "white" : "rgba(255,255,255,0.8)" }}>{b.name}</span>
-                  <span className="text-xs font-semibold tabular-nums" style={{ color: "#34d399" }}>逆勢買 +{b.y}</span>
-                </div>
-              ))}
-              {dipRanking.length === 0 && <div className="text-xs py-2" style={{ color: "rgba(255,255,255,0.3)" }}>目前無觀望象限資料</div>}
-            </div>
-
+              })
+            ) : (
+              /* 概念股列表 */
+              (allConcepts as Bubble[])
+                .filter(b => !sq || b.name.toLowerCase().includes(sq))
+                .slice().sort((a, z) => z.size - a.size)
+                .map(b => {
+                  const q = quadrant(b), color = Q_META[q].color, canDrill = (b.stocks?.length ?? 0) > 0;
+                  return (
+                    <div key={b.name}
+                      className={`flex items-center gap-2 px-4 py-2.5 transition ${canDrill ? "cursor-pointer" : ""}`}
+                      style={{ borderBottom: "1px solid rgba(255,255,255,0.04)", background: hovered?.name === b.name ? "rgba(255,255,255,0.05)" : "transparent" }}
+                      onMouseEnter={() => setHovered(b)} onMouseLeave={() => setHovered(null)}
+                      onClick={() => canDrill && handleBubbleClick(b)}>
+                      <span className="flex-1 text-sm font-medium truncate" style={{ color: hovered?.name === b.name ? "white" : "rgba(255,255,255,0.8)" }}>
+                        {b.name}{canDrill && <span className="ml-1 text-[10px]" style={{ color: "rgba(255,255,255,0.25)" }}>↗</span>}
+                      </span>
+                      <span className="text-xs tabular-nums shrink-0" style={{ color: "rgba(255,255,255,0.3)" }}>{b.rt_amt}</span>
+                      <span className={`text-xs tabular-nums font-medium shrink-0 ${b.y >= 0 ? "text-emerald-400" : "text-orange-400"}`}>{b.y >= 0 ? "+" : ""}{b.y}</span>
+                      <span className="text-xs font-semibold shrink-0" style={{ color }}>{Q_META[q].label}</span>
+                    </div>
+                  );
+                })
+            )}
           </div>
-        )}
+        </div>
 
         </div>{/* /flex row */}
       </div>{/* /主深色卡 */}
 
-      {/* ── 下方白卡：概念股列表 or 成分股 ── */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-        {drillDown ? (
-          <>
-            <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-              <span className="text-sm font-semibold text-gray-800">{drillDown.name} 成分股（{drillDown.stocks?.length ?? 0} 支）</span>
-              <button onClick={handleBackToConcepts} className="text-xs text-blue-500 hover:underline">← 返回概念股列表</button>
+      {/* ── 下方：CP值排行 + 抄底偵測 ── */}
+      {!drillDown && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+          {/* CP 值排行 */}
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="px-4 py-3 flex items-center gap-2" style={{ borderBottom: "1px solid #f3f4f6" }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="#F59E0B"><path d="M12 2l2 6h6l-5 4 2 7-7-4-7 4 2-7-5-4h6z"/></svg>
+              <span className="text-sm font-semibold text-gray-800">CP 值排行</span>
+              <span className="text-xs text-gray-400 ml-auto">資金充裕但尚未加速</span>
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead><tr className="bg-gray-50 text-xs text-gray-500">
-                  <th className="text-left px-4 py-2.5 font-medium">代號</th>
-                  <th className="text-left px-4 py-2.5 font-medium">名稱</th>
-                  <th className="text-right px-4 py-2.5 font-medium">狀態</th>
-                  <th className="text-right px-4 py-2.5 font-medium">今日成交（億）</th>
-                  <th className="text-right px-4 py-2.5 font-medium">20日累積（億）</th>
-                  <th className="text-right px-4 py-2.5 font-medium">加速度</th>
-                </tr></thead>
-                <tbody className="divide-y divide-gray-50">
-                  {(drillDown.stocks ?? []).map(s => {
-                    const q = quadrant(s), color = Q_META[q].color;
-                    return (
-                      <tr key={s.code} className={`transition ${hovered?.name === s.name ? "bg-gray-50" : "hover:bg-gray-50"}`}
-                        onMouseEnter={() => setHovered(s)} onMouseLeave={() => setHovered(null)}>
-                        <td className="px-4 py-2.5 font-mono text-xs text-gray-400">{s.code}</td>
-                        <td className="px-4 py-2.5 text-gray-900 font-medium">{s.name}</td>
-                        <td className="px-4 py-2.5 text-right"><span className="px-2 py-0.5 rounded-full text-xs font-semibold" style={{ background: `${color}18`, color }}>{Q_META[q].label}</span></td>
-                        <td className="px-4 py-2.5 text-right tabular-nums text-gray-800">{s.rt_amt}</td>
-                        <td className="px-4 py-2.5 text-right tabular-nums text-gray-800">{s.amt_20d}</td>
-                        <td className={`px-4 py-2.5 text-right tabular-nums font-medium ${s.y >= 0 ? "text-emerald-600" : "text-orange-500"}`}>{s.y >= 0 ? "+" : ""}{s.y}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+            <div className="divide-y divide-gray-50">
+              {cpRanking.map(({ b }, i) => {
+                const q = quadrant(b), color = Q_META[q].color;
+                return (
+                  <div key={b.name}
+                    className={`px-4 py-2.5 flex items-center gap-3 cursor-pointer transition ${hovered?.name === b.name ? "bg-gray-50" : "hover:bg-gray-50"}`}
+                    onMouseEnter={() => setHovered(b)} onMouseLeave={() => setHovered(null)}
+                    onClick={() => { if (b.stocks?.length) handleBubbleClick(b); }}>
+                    <span className="text-sm font-bold tabular-nums text-gray-400 w-4">{i + 1}</span>
+                    <span className="flex-1 text-sm text-gray-900 font-medium">{b.name}</span>
+                    <span className="text-xs tabular-nums text-gray-500">{(b.amt_20d * 10).toFixed(0)}億</span>
+                    <span className="px-1.5 py-0.5 rounded text-xs font-semibold" style={{ background: `${color}18`, color }}>{Q_META[q].label}</span>
+                  </div>
+                );
+              })}
+              {cpRanking.length === 0 && <div className="px-4 py-4 text-sm text-gray-400 text-center">暫無資料</div>}
             </div>
-          </>
-        ) : (
-          <>
-            <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-              <span className="text-sm font-semibold text-gray-800">
-                概念股列表（{allConcepts.length} 個）
-                {sq && <span className="ml-1.5 text-xs text-blue-500">· 搜尋「{sq}」</span>}
-              </span>
-              <span className="text-xs text-gray-400">點擊列或泡泡可下鑽查看個股</span>
+          </div>
+
+          {/* 抄底偵測 */}
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="px-4 py-3 flex items-center gap-2" style={{ borderBottom: "1px solid #f3f4f6" }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2"><path d="M12 22V8M5 12l7-7 7 7M5 18h14"/></svg>
+              <span className="text-sm font-semibold text-gray-800">抄底偵測</span>
+              <span className="text-xs text-gray-400 ml-auto">觀望象限・動能回升中</span>
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead><tr className="bg-gray-50 text-xs text-gray-500">
-                  <th className="text-left px-4 py-2.5 font-medium">概念股</th>
-                  <th className="text-right px-4 py-2.5 font-medium">狀態</th>
-                  <th className="text-right px-4 py-2.5 font-medium">今日成交（億）</th>
-                  <th className="text-right px-4 py-2.5 font-medium">20日累積（十億）</th>
-                  <th className="text-right px-4 py-2.5 font-medium">加速度</th>
-                </tr></thead>
-                <tbody className="divide-y divide-gray-50">
-                  {(allConcepts as Bubble[])
-                    .filter(b => !sq || b.name.toLowerCase().includes(sq))
-                    .slice().sort((a, z) => z.size - a.size)
-                    .map(b => {
-                      const q = quadrant(b), color = Q_META[q].color, canDrill = (b.stocks?.length ?? 0) > 0;
-                      return (
-                        <tr key={b.name}
-                          className={`transition ${hovered?.name === b.name ? "bg-gray-50" : "hover:bg-gray-50"} ${canDrill ? "cursor-pointer" : ""}`}
-                          onMouseEnter={() => setHovered(b)} onMouseLeave={() => setHovered(null)}
-                          onClick={() => canDrill && handleBubbleClick(b)}>
-                          <td className="px-4 py-2.5 text-gray-900 font-medium">
-                            {b.name}{canDrill && <span className="ml-1.5 text-[10px] text-gray-400">({b.stocks!.length}支 ↗)</span>}
-                          </td>
-                          <td className="px-4 py-2.5 text-right"><span className="px-2 py-0.5 rounded-full text-xs font-semibold" style={{ background: `${color}18`, color }}>{Q_META[q].label}</span></td>
-                          <td className="px-4 py-2.5 text-right tabular-nums text-gray-800">{b.rt_amt}</td>
-                          <td className="px-4 py-2.5 text-right tabular-nums text-gray-800">{b.amt_20d}</td>
-                          <td className={`px-4 py-2.5 text-right tabular-nums font-medium ${b.y >= 0 ? "text-emerald-600" : "text-orange-500"}`}>{b.y >= 0 ? "+" : ""}{b.y}</td>
-                        </tr>
-                      );
-                    })}
-                </tbody>
-              </table>
+            <div className="divide-y divide-gray-50">
+              {dipRanking.map(b => (
+                <div key={b.name}
+                  className={`px-4 py-2.5 flex items-center gap-3 cursor-pointer transition ${hovered?.name === b.name ? "bg-gray-50" : "hover:bg-gray-50"}`}
+                  onMouseEnter={() => setHovered(b)} onMouseLeave={() => setHovered(null)}
+                  onClick={() => { if (b.stocks?.length) handleBubbleClick(b); }}>
+                  <span className="flex-1 text-sm text-gray-900 font-medium">{b.name}</span>
+                  <span className="text-xs tabular-nums font-medium text-emerald-600">↑ +{b.y}</span>
+                  <span className="px-1.5 py-0.5 rounded text-xs font-semibold" style={{ background: `${Q_META[2].color}18`, color: Q_META[2].color }}>觀望</span>
+                </div>
+              ))}
+              {dipRanking.length === 0 && <div className="px-4 py-4 text-sm text-gray-400 text-center">目前無觀望象限資料</div>}
             </div>
-          </>
-        )}
-      </div>
+          </div>
+
+        </div>
+      )}
 
     </div>
   );

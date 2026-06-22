@@ -137,9 +137,13 @@ export default function SectorRotationPage() {
   useEffect(() => {
     const svg = svgRef.current; if (!svg) return;
     svg.addEventListener("wheel", handleWheel, { passive: false });
-    svg.addEventListener("touchstart", handleTouchStart, { passive: false });
-    svg.addEventListener("touchmove", handleTouchMove, { passive: false });
-    svg.addEventListener("touchend", handleTouchEnd);
+    // 手機用原生 scroll，只有桌機才綁 touch handler
+    const isDesktop = window.matchMedia("(min-width: 1024px)").matches;
+    if (isDesktop) {
+      svg.addEventListener("touchstart", handleTouchStart, { passive: false });
+      svg.addEventListener("touchmove", handleTouchMove, { passive: false });
+      svg.addEventListener("touchend", handleTouchEnd);
+    }
     return () => {
       svg.removeEventListener("wheel", handleWheel);
       svg.removeEventListener("touchstart", handleTouchStart);
@@ -373,8 +377,8 @@ export default function SectorRotationPage() {
             </div>
           )}
 
-          <div className="flex-1 relative min-w-0">
-            {/* 縮放按鈕：桌機版浮在圖表右上角，手機版移至圖例列 */}
+          <div className="flex-1 overflow-x-auto">
+            {/* 縮放按鈕：桌機版浮在圖表右上角（手機用原生 scroll）*/}
             <div className="absolute top-2.5 right-2.5 z-10 hidden lg:flex items-center gap-1">
               <button onClick={() => setZoom(prev => { const cx = W/2, cy = H/2, ns = Math.min(12, prev.scale*1.4); return { scale: ns, ...clampPan(cx-(cx-prev.tx)*(ns/prev.scale), cy-(cy-prev.ty)*(ns/prev.scale), ns) }; })}
                 className="w-7 h-7 flex items-center justify-center rounded-lg text-base font-bold" style={{ background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.7)" }}>+</button>
@@ -383,7 +387,7 @@ export default function SectorRotationPage() {
               {isZoomed && <button onClick={resetZoom} className="px-2.5 h-7 text-xs font-medium rounded-lg" style={{ background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.7)" }}>重設</button>}
             </div>
 
-            <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ minWidth: 300, cursor: dragging ? "grabbing" : "grab", display: "block", touchAction: "none" }}
+            <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} className="lg:w-full" style={{ minWidth: 700, width: "100%", cursor: dragging ? "grabbing" : "grab", display: "block", touchAction: "pan-x pan-y" }}
               onMouseDown={onSvgMouseDown} onMouseMove={onSvgMouseMove} onMouseLeave={() => { setDragging(false); setHovered(null); }}>
               <defs><clipPath id="chart-clip"><rect x={PAD.left} y={PAD.top} width={CW} height={CH} /></clipPath></defs>
               <rect width={W} height={H} fill={CHART_BG} />
@@ -477,15 +481,7 @@ export default function SectorRotationPage() {
                   <span style={{ color: "rgba(255,255,255,0.6)" }}>{q.label}</span>
                 </span>
               ))}
-              {/* 手機版縮放按鈕（桌機在圖表右上角）*/}
-              <div className="ml-auto flex items-center gap-1 lg:hidden">
-                <button onClick={() => setZoom(prev => { const cx = W/2, cy = H/2, ns = Math.min(12, prev.scale*1.4); return { scale: ns, ...clampPan(cx-(cx-prev.tx)*(ns/prev.scale), cy-(cy-prev.ty)*(ns/prev.scale), ns) }; })}
-                  className="w-7 h-7 flex items-center justify-center rounded-lg text-base font-bold" style={{ background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.2)", color: "rgba(255,255,255,0.8)" }}>+</button>
-                <button onClick={() => setZoom(prev => { const cx = W/2, cy = H/2, ns = Math.max(0.4, prev.scale/1.4); return { scale: ns, ...clampPan(cx-(cx-prev.tx)*(ns/prev.scale), cy-(cy-prev.ty)*(ns/prev.scale), ns) }; })}
-                  className="w-7 h-7 flex items-center justify-center rounded-lg text-base font-bold" style={{ background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.2)", color: "rgba(255,255,255,0.8)" }}>−</button>
-                {isZoomed && <button onClick={resetZoom} className="px-2.5 h-7 text-xs font-medium rounded-lg" style={{ background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.2)", color: "rgba(255,255,255,0.8)" }}>重設</button>}
-              </div>
-              <span className="hidden lg:inline ml-auto">泡泡大小＝成交量　·　單位：億元</span>
+              <span className="ml-auto">泡泡大小＝成交量　·　單位：億元</span>
             </div>
 
             {/* Tooltip */}

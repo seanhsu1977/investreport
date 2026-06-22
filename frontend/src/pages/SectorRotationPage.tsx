@@ -52,7 +52,7 @@ export default function SectorRotationPage() {
   const [drillDown, setDrillDown] = useState<Bubble | null>(null);
   const [search, setSearch] = useState("");
   const [showHelp, setShowHelp] = useState(false);
-  const [viewMode, setViewMode] = useState<"bubble" | "list">("bubble");
+  const [viewMode, setViewMode] = useState<"concepts" | "rankings">("concepts");
 
   // zoom / pan
   const svgRef = useRef<SVGSVGElement>(null);
@@ -262,10 +262,10 @@ export default function SectorRotationPage() {
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>
               怎麼看這張圖
             </button>
-            {/* 視圖切換：手機用（桌機左右並排不需要）*/}
+            {/* 視圖切換：手機用（桌機右側面板已有切換）*/}
             <div className="flex lg:hidden border border-gray-200 rounded-lg overflow-hidden text-sm">
-              <button onClick={() => setViewMode("bubble")} className={`px-3 py-1.5 transition ${viewMode === "bubble" ? "bg-gray-800 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}>泡泡圖</button>
-              <button onClick={() => setViewMode("list")}   className={`px-3 py-1.5 transition ${viewMode === "list"   ? "bg-gray-800 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}>榜單</button>
+              <button onClick={() => setViewMode("concepts")} className={`px-3 py-1.5 transition ${viewMode === "concepts" ? "bg-gray-800 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}>概念股</button>
+              <button onClick={() => setViewMode("rankings")} className={`px-3 py-1.5 transition ${viewMode === "rankings" ? "bg-gray-800 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}>排行榜</button>
             </div>
           </div>
         )}
@@ -471,19 +471,22 @@ export default function SectorRotationPage() {
           {/* 頂列：標題 + 視圖切換 */}
           <div className="flex items-center justify-between px-4 py-2.5 shrink-0" style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
             <span className="text-xs font-semibold" style={{ color: "rgba(255,255,255,0.4)" }}>
-              {drillDown ? `${drillDown.name} 成分股（${drillDown.stocks?.length ?? 0}）` : `概念股（${allConcepts.length}）`}
+              {drillDown
+                ? `${drillDown.name} 成分股（${drillDown.stocks?.length ?? 0}）`
+                : viewMode === "concepts" ? `概念股（${allConcepts.length}）` : "排行榜"
+              }
             </span>
             {!drillDown && (
               <div className="flex rounded-lg overflow-hidden text-xs" style={{ border: "1px solid rgba(255,255,255,0.12)" }}>
-                <button onClick={() => setViewMode("bubble")}
+                <button onClick={() => setViewMode("concepts")}
                   className="px-3 py-1.5 transition"
-                  style={{ background: viewMode === "bubble" ? "rgba(255,255,255,0.12)" : "transparent", color: viewMode === "bubble" ? "white" : "rgba(255,255,255,0.5)" }}>
-                  泡泡圖
+                  style={{ background: viewMode === "concepts" ? "rgba(255,255,255,0.12)" : "transparent", color: viewMode === "concepts" ? "white" : "rgba(255,255,255,0.5)" }}>
+                  概念股
                 </button>
-                <button onClick={() => setViewMode("list")}
+                <button onClick={() => setViewMode("rankings")}
                   className="px-3 py-1.5 transition"
-                  style={{ background: viewMode === "list" ? "rgba(255,255,255,0.12)" : "transparent", color: viewMode === "list" ? "white" : "rgba(255,255,255,0.5)" }}>
-                  榜單
+                  style={{ background: viewMode === "rankings" ? "rgba(255,255,255,0.12)" : "transparent", color: viewMode === "rankings" ? "white" : "rgba(255,255,255,0.5)" }}>
+                  排行榜
                 </button>
               </div>
             )}
@@ -510,7 +513,7 @@ export default function SectorRotationPage() {
                   </div>
                 );
               })
-            ) : (
+            ) : viewMode === "concepts" ? (
               /* 概念股列表 */
               (allConcepts as Bubble[])
                 .filter(b => !sq || b.name.toLowerCase().includes(sq))
@@ -532,6 +535,54 @@ export default function SectorRotationPage() {
                     </div>
                   );
                 })
+            ) : (
+              /* 排行榜：CP值排行 + 抄底偵測 */
+              <>
+                {/* CP 值排行 */}
+                <div className="px-4 pt-3 pb-2">
+                  <div className="flex items-center gap-2 mb-2">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="#fde047"><path d="M12 2l2 6h6l-5 4 2 7-7-4-7 4 2-7-5-4h6z"/></svg>
+                    <span className="text-xs font-semibold" style={{ color: "rgba(255,255,255,0.9)" }}>CP 值排行</span>
+                    <span className="text-[10px]" style={{ color: "rgba(255,255,255,0.3)" }}>· 補漲機會</span>
+                  </div>
+                  {cpRanking.map(({ b }, i) => {
+                    const q = quadrant(b), color = Q_META[q].color;
+                    return (
+                      <div key={b.name}
+                        className="flex items-center gap-2 py-2 cursor-pointer rounded px-1 -mx-1 transition"
+                        style={{ borderBottom: "1px solid rgba(255,255,255,0.05)", background: hovered?.name === b.name ? "rgba(255,255,255,0.05)" : "transparent" }}
+                        onMouseEnter={() => setHovered(b)} onMouseLeave={() => setHovered(null)}
+                        onClick={() => { if (b.stocks?.length) handleBubbleClick(b); }}>
+                        <span className="text-xs tabular-nums w-4 shrink-0" style={{ color: "rgba(255,255,255,0.3)" }}>{i + 1}</span>
+                        <span className="flex-1 text-sm font-medium truncate" style={{ color: hovered?.name === b.name ? "white" : "rgba(255,255,255,0.8)" }}>{b.name}</span>
+                        <span className="text-xs tabular-nums shrink-0" style={{ color: "rgba(255,255,255,0.35)" }}>{(b.amt_20d * 10).toFixed(0)}億</span>
+                        <span className="text-xs font-semibold shrink-0" style={{ color }}>{Q_META[q].label}</span>
+                      </div>
+                    );
+                  })}
+                  {cpRanking.length === 0 && <div className="text-xs py-2" style={{ color: "rgba(255,255,255,0.3)" }}>暫無資料</div>}
+                </div>
+
+                {/* 抄底偵測 */}
+                <div className="px-4 pt-3 pb-2" style={{ borderTop: "1px solid rgba(255,255,255,0.08)" }}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2.5"><path d="M12 22V8M5 12l7-7 7 7"/></svg>
+                    <span className="text-xs font-semibold" style={{ color: "rgba(255,255,255,0.9)" }}>抄底偵測</span>
+                    <span className="text-[10px]" style={{ color: "rgba(255,255,255,0.3)" }}>· 動能回升</span>
+                  </div>
+                  {dipRanking.map(b => (
+                    <div key={b.name}
+                      className="flex items-center gap-2 py-2 cursor-pointer rounded px-1 -mx-1 transition"
+                      style={{ borderBottom: "1px solid rgba(255,255,255,0.05)", background: hovered?.name === b.name ? "rgba(255,255,255,0.05)" : "transparent" }}
+                      onMouseEnter={() => setHovered(b)} onMouseLeave={() => setHovered(null)}
+                      onClick={() => { if (b.stocks?.length) handleBubbleClick(b); }}>
+                      <span className="flex-1 text-sm font-medium truncate" style={{ color: hovered?.name === b.name ? "white" : "rgba(255,255,255,0.8)" }}>{b.name}</span>
+                      <span className="text-xs font-semibold tabular-nums" style={{ color: "#34d399" }}>逆勢買 +{b.y}</span>
+                    </div>
+                  ))}
+                  {dipRanking.length === 0 && <div className="text-xs py-2" style={{ color: "rgba(255,255,255,0.3)" }}>目前無觀望象限資料</div>}
+                </div>
+              </>
             )}
           </div>
         </div>
@@ -539,60 +590,6 @@ export default function SectorRotationPage() {
         </div>{/* /flex row */}
       </div>{/* /主深色卡 */}
 
-      {/* ── 下方：CP值排行 + 抄底偵測 ── */}
-      {!drillDown && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-
-          {/* CP 值排行 */}
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-            <div className="px-4 py-3 flex items-center gap-2" style={{ borderBottom: "1px solid #f3f4f6" }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="#F59E0B"><path d="M12 2l2 6h6l-5 4 2 7-7-4-7 4 2-7-5-4h6z"/></svg>
-              <span className="text-sm font-semibold text-gray-800">CP 值排行</span>
-              <span className="text-xs text-gray-400 ml-auto">資金充裕但尚未加速</span>
-            </div>
-            <div className="divide-y divide-gray-50">
-              {cpRanking.map(({ b }, i) => {
-                const q = quadrant(b), color = Q_META[q].color;
-                return (
-                  <div key={b.name}
-                    className={`px-4 py-2.5 flex items-center gap-3 cursor-pointer transition ${hovered?.name === b.name ? "bg-gray-50" : "hover:bg-gray-50"}`}
-                    onMouseEnter={() => setHovered(b)} onMouseLeave={() => setHovered(null)}
-                    onClick={() => { if (b.stocks?.length) handleBubbleClick(b); }}>
-                    <span className="text-sm font-bold tabular-nums text-gray-400 w-4">{i + 1}</span>
-                    <span className="flex-1 text-sm text-gray-900 font-medium">{b.name}</span>
-                    <span className="text-xs tabular-nums text-gray-500">{(b.amt_20d * 10).toFixed(0)}億</span>
-                    <span className="px-1.5 py-0.5 rounded text-xs font-semibold" style={{ background: `${color}18`, color }}>{Q_META[q].label}</span>
-                  </div>
-                );
-              })}
-              {cpRanking.length === 0 && <div className="px-4 py-4 text-sm text-gray-400 text-center">暫無資料</div>}
-            </div>
-          </div>
-
-          {/* 抄底偵測 */}
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-            <div className="px-4 py-3 flex items-center gap-2" style={{ borderBottom: "1px solid #f3f4f6" }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2"><path d="M12 22V8M5 12l7-7 7 7M5 18h14"/></svg>
-              <span className="text-sm font-semibold text-gray-800">抄底偵測</span>
-              <span className="text-xs text-gray-400 ml-auto">觀望象限・動能回升中</span>
-            </div>
-            <div className="divide-y divide-gray-50">
-              {dipRanking.map(b => (
-                <div key={b.name}
-                  className={`px-4 py-2.5 flex items-center gap-3 cursor-pointer transition ${hovered?.name === b.name ? "bg-gray-50" : "hover:bg-gray-50"}`}
-                  onMouseEnter={() => setHovered(b)} onMouseLeave={() => setHovered(null)}
-                  onClick={() => { if (b.stocks?.length) handleBubbleClick(b); }}>
-                  <span className="flex-1 text-sm text-gray-900 font-medium">{b.name}</span>
-                  <span className="text-xs tabular-nums font-medium text-emerald-600">↑ +{b.y}</span>
-                  <span className="px-1.5 py-0.5 rounded text-xs font-semibold" style={{ background: `${Q_META[2].color}18`, color: Q_META[2].color }}>觀望</span>
-                </div>
-              ))}
-              {dipRanking.length === 0 && <div className="px-4 py-4 text-sm text-gray-400 text-center">目前無觀望象限資料</div>}
-            </div>
-          </div>
-
-        </div>
-      )}
 
     </div>
   );

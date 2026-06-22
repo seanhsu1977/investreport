@@ -262,11 +262,6 @@ export default function SectorRotationPage() {
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>
               怎麼看這張圖
             </button>
-            {/* 視圖切換：手機用（桌機右側面板已有切換）*/}
-            <div className="flex lg:hidden border border-gray-200 rounded-lg overflow-hidden text-sm">
-              <button onClick={() => setViewMode("concepts")} className={`px-3 py-1.5 transition ${viewMode === "concepts" ? "bg-gray-800 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}>概念股</button>
-              <button onClick={() => setViewMode("rankings")} className={`px-3 py-1.5 transition ${viewMode === "rankings" ? "bg-gray-800 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}>排行榜</button>
-            </div>
           </div>
         )}
       </div>
@@ -311,8 +306,8 @@ export default function SectorRotationPage() {
       {true && (
         <div className="flex flex-1 min-w-0">
 
-          {/* 左側象限統計（下鑽時保留寬度，改顯示概念股資訊）*/}
-          <div className="w-[110px] shrink-0 flex flex-col" style={{ borderRight: "1px solid rgba(255,255,255,0.08)" }}>
+          {/* 左側象限統計（桌機顯示，手機隱藏）*/}
+          <div className="hidden lg:flex w-[110px] shrink-0 flex-col" style={{ borderRight: "1px solid rgba(255,255,255,0.08)" }}>
             {drillDown ? (
               /* 下鑽模式：顯示概念股名稱 + 返回按鈕 */
               <div className="flex flex-col items-center justify-center flex-1 gap-3 px-2 text-center">
@@ -350,6 +345,22 @@ export default function SectorRotationPage() {
           </div>
 
           {/* 圖表區 */}
+          <div className="flex-1 min-w-0 flex flex-col">
+
+          {/* 手機版象限計數橫排（桌機由左側 sidebar 顯示）*/}
+          {!drillDown && (
+            <div className="flex lg:hidden shrink-0" style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+              {Q_META.map((q, i) => (
+                <button key={q.label} onClick={() => setFilter(filter === i ? null : i)}
+                  className="flex-1 flex flex-col items-center py-2.5 transition"
+                  style={{ borderBottom: `2px solid ${filter === i ? q.color : "transparent"}`, background: filter === i ? `${q.color}12` : "transparent" }}>
+                  <span className="text-lg font-black leading-none" style={{ color: q.color }}>{counts[i]}</span>
+                  <span className="text-[10px] mt-0.5 font-medium" style={{ color: "rgba(255,255,255,0.6)" }}>{q.label}</span>
+                </button>
+              ))}
+            </div>
+          )}
+
           <div className="flex-1 relative min-w-0">
             <div className="absolute top-2.5 right-2.5 z-10 flex items-center gap-1">
               <button onClick={() => setZoom(prev => { const cx = W/2, cy = H/2, ns = Math.min(12, prev.scale*1.4); return { scale: ns, tx: cx-(cx-prev.tx)*(ns/prev.scale), ty: cy-(cy-prev.ty)*(ns/prev.scale) }; })}
@@ -473,6 +484,7 @@ export default function SectorRotationPage() {
               </div>
             )}
           </div>
+          </div>{/* /圖表區 flex-col wrapper */}
         </div>
       )}
         </div>{/* /左側 flex */}

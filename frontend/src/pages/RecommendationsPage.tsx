@@ -220,14 +220,13 @@ function RestCard({ item, rank, onAskReason }: { item: RecommendationItem; rank:
             {item.upside_pct != null ? `${item.upside_pct >= 0 ? "+" : ""}${item.upside_pct.toFixed(1)}%` : "—"}
           </div>
         </div>
-        {item.gain_since_report != null && (
-          <div className="sm:w-20">
-            <div className="text-[11px] text-[#6B7A99] sm:hidden">報告後</div>
-            <div className={`text-[13px] font-semibold mt-0.5 tabular-nums ${item.gain_since_report >= 0 ? "text-[#E53935]" : "text-[#1E8B4A]"}`}>
-              {item.gain_since_report >= 0 ? "+" : ""}{item.gain_since_report.toFixed(1)}%
-            </div>
+        <div className="hidden sm:block sm:w-20">
+          <div className={`text-[13px] font-semibold mt-0.5 tabular-nums ${item.gain_since_report != null ? (item.gain_since_report >= 0 ? "text-[#E53935]" : "text-[#1E8B4A]") : "text-[#6B7A99]"}`}>
+            {item.gain_since_report != null
+              ? `${item.gain_since_report >= 0 ? "+" : ""}${item.gain_since_report.toFixed(1)}%`
+              : "—"}
           </div>
-        )}
+        </div>
         <div className="sm:w-16">
           <div className="text-[11px] text-[#6B7A99] sm:hidden">報告數</div>
           <div className="text-[13px] font-semibold mt-0.5 tabular-nums">{item.report_count} 篇</div>
@@ -577,6 +576,7 @@ export default function RecommendationsPage() {
               <span className="w-20 text-[11px] font-bold text-[#6B7A99] uppercase tracking-wide">現價</span>
               <span className="w-20 text-[11px] font-bold text-[#6B7A99] uppercase tracking-wide">目標價</span>
               <span className="w-20 text-[11px] font-bold text-[#6B7A99] uppercase tracking-wide">Upside</span>
+              <span className="w-20 text-[11px] font-bold text-[#6B7A99] uppercase tracking-wide">報告後</span>
               <span className="w-16 text-[11px] font-bold text-[#6B7A99] uppercase tracking-wide">報告數</span>
             </div>
             <span className="w-36 shrink-0 text-[11px] font-bold text-[#6B7A99] uppercase tracking-wide">評等</span>

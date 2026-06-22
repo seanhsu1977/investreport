@@ -66,15 +66,22 @@ export default function SectorRotationPage() {
   const resetZoom = () => setZoom({ scale: 1, tx: 0, ty: 0 });
   const isZoomed = zoom.scale !== 1 || zoom.tx !== 0 || zoom.ty !== 0;
 
+  // 防止 pan 超出範圍：始終保留至少 80px 的圖表在視窗內
+  const clampPan = (tx: number, ty: number, s: number) => ({
+    tx: Math.max(-W * s + 80, Math.min(W - 80, tx)),
+    ty: Math.max(-H * s + 80, Math.min(H - 80, ty)),
+  });
+
   const applyZoomAt = useCallback((mx: number, my: number, factor: number) => {
     setZoom(prev => {
       const newScale = Math.min(12, Math.max(0.4, prev.scale * factor));
-      return {
-        scale: newScale,
+      const raw = {
         tx: mx - (mx - prev.tx) * (newScale / prev.scale),
         ty: my - (my - prev.ty) * (newScale / prev.scale),
       };
+      return { scale: newScale, ...clampPan(raw.tx, raw.ty, newScale) };
     });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleWheel = useCallback((e: WheelEvent) => {
@@ -114,12 +121,14 @@ export default function SectorRotationPage() {
       const ref = touchRef.current; if (ref.dist === 0) return;
       const factor = dist / ref.dist;
       const newScale = Math.min(12, Math.max(0.4, ref.scale0 * factor));
-      setZoom({ scale: newScale, tx: ref.mx - (ref.mx - ref.tx0) * (newScale / ref.scale0), ty: ref.my - (ref.my - ref.ty0) * (newScale / ref.scale0) });
+      const rawTx = ref.mx - (ref.mx - ref.tx0) * (newScale / ref.scale0);
+      const rawTy = ref.my - (ref.my - ref.ty0) * (newScale / ref.scale0);
+      setZoom({ scale: newScale, ...clampPan(rawTx, rawTy, newScale) });
     } else if (e.touches.length === 1) {
       const t = e.touches[0];
       const dx = (t.clientX - dragOrigin.current.clientX) * ratio;
       const dy = (t.clientY - dragOrigin.current.clientY) * ratio;
-      setZoom(z => ({ ...z, tx: dragOrigin.current.tx0 + dx, ty: dragOrigin.current.ty0 + dy }));
+      setZoom(z => ({ ...z, ...clampPan(dragOrigin.current.tx0 + dx, dragOrigin.current.ty0 + dy, z.scale) }));
     }
   }, []);
 
@@ -155,7 +164,7 @@ export default function SectorRotationPage() {
     setMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
     if (!dragging) return;
     const ratio = W / rect.width;
-    setZoom(z => ({ ...z, tx: dragOrigin.current.tx0 + (e.clientX - dragOrigin.current.clientX) * ratio, ty: dragOrigin.current.ty0 + (e.clientY - dragOrigin.current.clientY) * ratio }));
+    setZoom(z => { const tx = dragOrigin.current.tx0 + (e.clientX - dragOrigin.current.clientX) * ratio; const ty = dragOrigin.current.ty0 + (e.clientY - dragOrigin.current.clientY) * ratio; return { ...z, ...clampPan(tx, ty, z.scale) }; });
   };
 
   useEffect(() => {
@@ -365,10 +374,11 @@ export default function SectorRotationPage() {
           )}
 
           <div className="flex-1 relative min-w-0">
-            <div className="absolute top-2.5 right-2.5 z-10 flex items-center gap-1">
-              <button onClick={() => setZoom(prev => { const cx = W/2, cy = H/2, ns = Math.min(12, prev.scale*1.4); return { scale: ns, tx: cx-(cx-prev.tx)*(ns/prev.scale), ty: cy-(cy-prev.ty)*(ns/prev.scale) }; })}
+            {/* 縮放按鈕：桌機版浮在圖表右上角，手機版移至圖例列 */}
+            <div className="absolute top-2.5 right-2.5 z-10 hidden lg:flex items-center gap-1">
+              <button onClick={() => setZoom(prev => { const cx = W/2, cy = H/2, ns = Math.min(12, prev.scale*1.4); return { scale: ns, ...clampPan(cx-(cx-prev.tx)*(ns/prev.scale), cy-(cy-prev.ty)*(ns/prev.scale), ns) }; })}
                 className="w-7 h-7 flex items-center justify-center rounded-lg text-base font-bold" style={{ background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.7)" }}>+</button>
-              <button onClick={() => setZoom(prev => { const cx = W/2, cy = H/2, ns = Math.max(0.4, prev.scale/1.4); return { scale: ns, tx: cx-(cx-prev.tx)*(ns/prev.scale), ty: cy-(cy-prev.ty)*(ns/prev.scale) }; })}
+              <button onClick={() => setZoom(prev => { const cx = W/2, cy = H/2, ns = Math.max(0.4, prev.scale/1.4); return { scale: ns, ...clampPan(cx-(cx-prev.tx)*(ns/prev.scale), cy-(cy-prev.ty)*(ns/prev.scale), ns) }; })}
                 className="w-7 h-7 flex items-center justify-center rounded-lg text-base font-bold" style={{ background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.7)" }}>−</button>
               {isZoomed && <button onClick={resetZoom} className="px-2.5 h-7 text-xs font-medium rounded-lg" style={{ background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.7)" }}>重設</button>}
             </div>
@@ -467,7 +477,15 @@ export default function SectorRotationPage() {
                   <span style={{ color: "rgba(255,255,255,0.6)" }}>{q.label}</span>
                 </span>
               ))}
-              <span className="ml-auto">泡泡大小＝成交量　·　單位：億元</span>
+              {/* 手機版縮放按鈕（桌機在圖表右上角）*/}
+              <div className="ml-auto flex items-center gap-1 lg:hidden">
+                <button onClick={() => setZoom(prev => { const cx = W/2, cy = H/2, ns = Math.min(12, prev.scale*1.4); return { scale: ns, ...clampPan(cx-(cx-prev.tx)*(ns/prev.scale), cy-(cy-prev.ty)*(ns/prev.scale), ns) }; })}
+                  className="w-7 h-7 flex items-center justify-center rounded-lg text-base font-bold" style={{ background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.2)", color: "rgba(255,255,255,0.8)" }}>+</button>
+                <button onClick={() => setZoom(prev => { const cx = W/2, cy = H/2, ns = Math.max(0.4, prev.scale/1.4); return { scale: ns, ...clampPan(cx-(cx-prev.tx)*(ns/prev.scale), cy-(cy-prev.ty)*(ns/prev.scale), ns) }; })}
+                  className="w-7 h-7 flex items-center justify-center rounded-lg text-base font-bold" style={{ background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.2)", color: "rgba(255,255,255,0.8)" }}>−</button>
+                {isZoomed && <button onClick={resetZoom} className="px-2.5 h-7 text-xs font-medium rounded-lg" style={{ background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.2)", color: "rgba(255,255,255,0.8)" }}>重設</button>}
+              </div>
+              <span className="hidden lg:inline ml-auto">泡泡大小＝成交量　·　單位：億元</span>
             </div>
 
             {/* Tooltip */}

@@ -622,102 +622,6 @@ function TechAnalysisPanel({ data }: { data: KlineTechnical }) {
   );
 }
 
-/* ============================ 大盤技術指標歷史 ============================ */
-
-type TechHistoryRow = KlineTechnical & { date: string };
-
-function TechHistoryTable({ index }: { index: "taiex" | "twoii" }) {
-  const [rows, setRows]       = useState<TechHistoryRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving]   = useState(false);
-
-  const load = () => {
-    setLoading(true);
-    stocksApi.market_technical_history(index, 30)
-      .then(setRows).catch(() => {}).finally(() => setLoading(false));
-  };
-
-  useEffect(() => { load(); }, [index]);
-
-  const handleSave = () => {
-    setSaving(true);
-    stocksApi.save_market_technical(index)
-      .then(() => load())
-      .catch(() => {})
-      .finally(() => setSaving(false));
-  };
-
-  const towerColor = (t: TechHistoryRow["tower"]) => {
-    if (!t) return "text-gray-400";
-    return t.color === "陽" ? "text-rose-500" : "text-emerald-600";
-  };
-  const maColor = (s: string) =>
-    s === "多頭排列" ? "text-rose-500" : s === "空頭排列" ? "text-emerald-600" : "text-gray-500";
-
-  return (
-    <div className="rounded-xl overflow-hidden border border-[#1e3a5f]">
-      <div className="px-4 py-2.5 bg-[#0B1E3D] flex items-center justify-between">
-        <span className="text-[13px] font-bold text-white">歷史復盤</span>
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="text-[11px] text-white/60 hover:text-white/90 border border-white/20 rounded px-2 py-0.5 disabled:opacity-40"
-        >
-          {saving ? "儲存中…" : "存今日"}
-        </button>
-      </div>
-      {loading ? (
-        <div className="bg-[#0B1E3D] text-white/40 text-xs text-center py-6">載入中…</div>
-      ) : rows.length === 0 ? (
-        <div className="bg-[#0B1E3D] text-white/40 text-xs text-center py-6">
-          尚無歷史紀錄，點「存今日」開始累積
-        </div>
-      ) : (
-        <div className="bg-[#0B1E3D] overflow-x-auto">
-          <table className="w-full text-[12px] text-white/80">
-            <thead>
-              <tr className="border-b border-[#1e3a5f] text-white/40 text-[11px]">
-                <th className="text-left px-3 py-2">日期</th>
-                <th className="text-right px-3 py-2">收盤</th>
-                <th className="text-center px-3 py-2">均線</th>
-                <th className="text-center px-3 py-2">RSI</th>
-                <th className="text-center px-3 py-2">布林</th>
-                <th className="text-center px-3 py-2">寶塔線</th>
-                <th className="text-left px-3 py-2">建議</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r.date} className="border-b border-[#1e3a5f]/50 hover:bg-white/5">
-                  <td className="px-3 py-1.5 font-mono text-white/60">{r.date.slice(5)}</td>
-                  <td className="px-3 py-1.5 text-right tabular-nums">
-                    {r.current.toLocaleString("zh-TW")}
-                  </td>
-                  <td className={`px-3 py-1.5 text-center font-medium ${maColor(r.ma_signal)}`}>
-                    {r.ma_signal}
-                  </td>
-                  <td className="px-3 py-1.5 text-center tabular-nums">
-                    <span className={r.rsi && r.rsi >= 70 ? "text-rose-400" : r.rsi && r.rsi <= 30 ? "text-emerald-400" : ""}>
-                      {r.rsi ?? "—"}
-                    </span>
-                  </td>
-                  <td className="px-3 py-1.5 text-center text-white/60">
-                    {r.bb_signal ?? "—"}
-                  </td>
-                  <td className={`px-3 py-1.5 text-center font-medium ${towerColor(r.tower)}`}>
-                    {r.tower ? `${r.tower.signal}${r.tower.count}根` : "—"}
-                  </td>
-                  <td className="px-3 py-1.5 text-white/70">{r.suggestion}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  );
-}
-
 /* ============================ 技術分析 Card（可共用）============================ */
 
 function MarketTechCard({ title, loader, indexKey = "taiex" }: { title: string; loader: () => Promise<KlineResponse>; indexKey?: string }) {
@@ -856,8 +760,6 @@ function MarketTechCard({ title, loader, indexKey = "taiex" }: { title: string; 
         <div className="rounded-xl border border-gray-200 px-4 py-3 text-sm text-gray-400">技術分析資料暫無法取得</div>
       )}
 
-      {/* 歷史復盤 */}
-      <TechHistoryTable index={indexKey as "taiex" | "twoii"} />
     </div>
   );
 }

@@ -158,7 +158,7 @@ function AppInner() {
       </header>
 
       <RouteScrollToTop />
-      <main>
+      <main className="overflow-x-hidden">
         <Routes>
           <Route path="/"             element={<RequireAuth><RecommendationsPage /></RequireAuth>} />
           <Route path="/watchlist"    element={<WatchlistPage />} />

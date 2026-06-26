@@ -10,9 +10,9 @@ from google import genai
 from google.genai import types as genai_types
 
 from database import get_db
-from models import Report, Watchlist, WatchlistGroup
+from models import Report, Stock, Watchlist, WatchlistGroup
 from routers.auth import get_current_user, User
-from stocks_master import resolve_name
+from stocks_master import invalidate_cache, resolve_name
 
 router = APIRouter(prefix="/watchlist", tags=["watchlist"])
 
@@ -220,9 +220,17 @@ def rename_stock(stock_code: str, body: StockRename, db: Session = Depends(get_d
     item = db.query(Watchlist).filter(Watchlist.user_id == user.id, Watchlist.stock_code == stock_code).first()
     if not item:
         raise HTTPException(404, "Stock not found in watchlist")
-    item.stock_name = body.stock_name.strip()
+    new_name = body.stock_name.strip()
+    item.stock_name = new_name
+    # 同步更新 stocks 主表，讓 resolve_name() 全站生效
+    stock = db.get(Stock, stock_code)
+    if stock:
+        stock.name = new_name
+    else:
+        db.add(Stock(code=stock_code, name=new_name))
     db.commit()
-    return {"stock_code": stock_code, "stock_name": item.stock_name}
+    invalidate_cache()
+    return {"stock_code": stock_code, "stock_name": new_name}
 
 
 @router.delete("/{stock_code}", status_code=204)

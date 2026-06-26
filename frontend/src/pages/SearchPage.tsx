@@ -31,35 +31,35 @@ function Highlight({ text, query }: { text: string; query: string }) {
 function StockReportCard({ r, tab, query }: { r: Report; tab: TabKey; query: string }) {
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-      <div className="flex items-start justify-between mb-2">
-        <div className="flex items-center gap-2 flex-wrap">
-          <Link
-            to={`/stocks/${r.stock_code}`}
-            state={{ from: "/search", label: "搜尋結果", recentTab: tab }}
-            className="font-mono font-bold text-blue-600 hover:underline"
-          >
-            <Highlight text={r.stock_code} query={query} />
-          </Link>
-          {r.stock_name && (
-            <span className="text-gray-600">
-              <Highlight text={r.stock_name} query={query} />
-            </span>
-          )}
-          <RecommendationBadge value={r.recommendation} />
-          {r.target_price && (
-            <span className="text-sm text-gray-500">
-              目標價 <span className="font-semibold">{r.target_price}</span>
-            </span>
-          )}
+      {/* 股票名稱 + 評等（手機：獨立一行） */}
+      <div className="flex items-center gap-2 flex-wrap mb-1">
+        <Link
+          to={`/stocks/${r.stock_code}`}
+          state={{ from: "/search", label: "搜尋結果", recentTab: tab }}
+          className="font-mono font-bold text-blue-600 hover:underline"
+        >
+          <Highlight text={r.stock_code} query={query} />
+        </Link>
+        {r.stock_name && (
+          <span className="text-gray-600">
+            <Highlight text={r.stock_name} query={query} />
+          </span>
+        )}
+        <RecommendationBadge value={r.recommendation} />
+        {r.target_price && (
+          <span className="text-sm text-gray-500">
+            目標價 <span className="font-semibold">{r.target_price}</span>
+          </span>
+        )}
+      </div>
+      {/* 日期 + 分析師 + 分享（手機：單行橫排；桌機：靠右對齊） */}
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <div className="flex items-center gap-2 flex-wrap text-xs text-gray-400">
+          {r.report_date && <span>報告日 {r.report_date.slice(0, 10)}</span>}
+          {r.created_at && <span className="hidden sm:inline">加入 {r.created_at.slice(0, 10)}</span>}
+          {r.analyst && <span><Highlight text={r.analyst} query={query} /></span>}
         </div>
-        <div className="flex flex-col items-end gap-1 shrink-0 ml-2">
-          <div className="text-xs text-gray-400 text-right space-y-0.5">
-            {r.report_date && <div>報告日 {r.report_date.slice(0, 10)}</div>}
-            {r.created_at && <div>加入 {r.created_at.slice(0, 10)}</div>}
-            {r.analyst && (
-              <div><Highlight text={r.analyst} query={query} /></div>
-            )}
-          </div>
+        <div className="shrink-0">
           <ShareButton text={buildShareText(r)} url={buildShareUrl(r)} />
         </div>
       </div>
@@ -92,22 +92,24 @@ function NewsCard({ r, tab, query }: { r: Report & { mentioned_stocks?: string[]
   const linkState = { from: "/search", label: "搜尋結果", recentTab: tab };
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-      <div className="flex items-start justify-between mb-2">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-600 font-medium">
-            市場新聞
+      {/* 標籤 + 分析師 */}
+      <div className="flex items-center gap-2 flex-wrap mb-1">
+        <span className="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-600 font-medium">
+          市場新聞
+        </span>
+        {r.analyst && (
+          <span className="text-sm text-gray-500">
+            <Highlight text={r.analyst} query={query} />
           </span>
-          {r.analyst && (
-            <span className="text-sm text-gray-500">
-              <Highlight text={r.analyst} query={query} />
-            </span>
-          )}
+        )}
+      </div>
+      {/* 日期 + 分享 */}
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <div className="flex items-center gap-2 flex-wrap text-xs text-gray-400">
+          {r.report_date && <span>報告日 {r.report_date.slice(0, 10)}</span>}
+          {r.created_at && <span className="hidden sm:inline">加入 {r.created_at.slice(0, 10)}</span>}
         </div>
-        <div className="flex flex-col items-end gap-1 shrink-0 ml-2">
-          <div className="text-xs text-gray-400 text-right space-y-0.5">
-            {r.report_date && <div>報告日 {r.report_date.slice(0, 10)}</div>}
-            {r.created_at && <div>加入 {r.created_at.slice(0, 10)}</div>}
-          </div>
+        <div className="shrink-0">
           <ShareButton text={buildShareText(r)} url={buildShareUrl(r)} />
         </div>
       </div>

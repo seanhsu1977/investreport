@@ -2,13 +2,22 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { stocksApi, type KdjScreenItem } from "../api/client";
 
-const SIGNAL_COLOR: Record<string, string> = {
+const KD_SIGNAL_COLOR: Record<string, string> = {
   "低位金叉": "bg-red-100 text-red-700",
   "金叉":    "bg-orange-100 text-orange-700",
   "低位死叉": "bg-emerald-100 text-emerald-700",
   "死叉":    "bg-teal-100 text-teal-700",
   "高位死叉": "bg-green-100 text-green-700",
 };
+
+const J_SIGNAL_COLOR: Record<string, string> = {
+  "J回升": "bg-red-100 text-red-700",
+  "J超賣": "bg-orange-100 text-orange-600",
+  "J轉弱": "bg-emerald-100 text-emerald-700",
+  "J超買": "bg-blue-100 text-blue-700",
+};
+
+type FilterType = "j" | "golden" | "dead" | "all";
 
 type CacheResult = {
   items: KdjScreenItem[];
@@ -22,7 +31,7 @@ export default function KdjScreener() {
   const [result, setResult] = useState<CacheResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [filter, setFilter] = useState<"all" | "golden" | "dead">("golden");
+  const [filter, setFilter] = useState<FilterType>("j");
   const [refreshing, setRefreshing] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -68,16 +77,27 @@ export default function KdjScreener() {
   };
 
   const displayed = (result?.items ?? []).filter((it) => {
+    if (filter === "j") return it.j_signal === "J回升" || it.j_signal === "J超賣";
     if (filter === "golden") return it.kdj_signal === "低位金叉" || it.kdj_signal === "金叉";
     if (filter === "dead") return it.kdj_signal?.includes("死叉");
     return true;
   });
 
+  const jCount  = (result?.items ?? []).filter(it => it.j_signal === "J回升" || it.j_signal === "J超賣").length;
+  const kdCount = (result?.items ?? []).filter(it => it.kdj_signal).length;
+
+  const FILTERS: { key: FilterType; label: string; count: number }[] = [
+    { key: "j",      label: "J 訊號", count: jCount },
+    { key: "golden", label: "金叉",   count: (result?.items ?? []).filter(it => it.kdj_signal === "低位金叉" || it.kdj_signal === "金叉").length },
+    { key: "dead",   label: "死叉",   count: (result?.items ?? []).filter(it => it.kdj_signal?.includes("死叉")).length },
+    { key: "all",    label: "全部",   count: result?.total ?? 0 },
+  ];
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between px-1">
         <p className="text-xs text-gray-400">
-          KDJ(89,9,12) 近5天交叉訊號・自選股 + 00981A/00403A 成份股・每日收盤後更新
+          KDJ(89,9,12) J 線 + 交叉訊號・自選股 + 00981A/00403A 成份股・每日收盤後更新
           {result?.data_date && (
             <span className="ml-1.5 text-gray-300">資料日期 {result.data_date}</span>
           )}
@@ -116,15 +136,20 @@ export default function KdjScreener() {
           <div className="px-4 py-2.5 border-b border-gray-100 flex items-center gap-3 flex-wrap">
             <span className="text-xs text-gray-400">掃描 {result.scanned} 檔，命中 {result.total} 檔</span>
             <div className="flex gap-1.5 ml-auto">
-              {(["golden", "dead", "all"] as const).map((f) => (
+              {FILTERS.map(({ key, label, count }) => (
                 <button
-                  key={f}
-                  onClick={() => setFilter(f)}
+                  key={key}
+                  onClick={() => setFilter(key)}
                   className={`text-xs px-2.5 py-1 rounded-full transition ${
-                    filter === f ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                    filter === key ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
                   }`}
                 >
-                  {f === "golden" ? "金叉" : f === "dead" ? "死叉" : "全部"}
+                  {label}
+                  {count > 0 && (
+                    <span className={`ml-1 ${filter === key ? "text-blue-200" : "text-gray-400"}`}>
+                      {count}
+                    </span>
+                  )}
                 </button>
               ))}
             </div>
@@ -133,7 +158,7 @@ export default function KdjScreener() {
           {displayed.length === 0 ? (
             <p className="text-sm text-gray-500 text-center py-8">
               {result.total === 0
-                ? "目前無 KDJ 金叉 / 死叉訊號個股"
+                ? "目前無訊號個股"
                 : "目前所選類型無符合，可切換至「全部」查看"}
             </p>
           ) : (
@@ -145,15 +170,38 @@ export default function KdjScreener() {
                       {it.code}
                     </Link>
                     <span className="text-sm text-gray-600 truncate">{it.name}</span>
-                    {it.kdj_cross_days != null && it.kdj_cross_days > 0 && (
-                      <span className="text-[10px] text-gray-400 shrink-0">{it.kdj_cross_days}天前</span>
-                    )}
                   </div>
-                  <div className="flex items-center gap-2 shrink-0 ml-2">
-                    <span className="text-xs text-gray-400 tabular-nums">K{it.kdj_k} D{it.kdj_d}</span>
-                    <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${SIGNAL_COLOR[it.kdj_signal] ?? "bg-gray-100 text-gray-600"}`}>
-                      {it.kdj_signal}
+                  <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                    {/* J 值 */}
+                    {it.kdj_j != null && (
+                      <span className={`text-xs tabular-nums font-medium ${
+                        it.kdj_j < 0 ? "text-red-500" : it.kdj_j > 100 ? "text-green-600" : "text-gray-400"
+                      }`}>
+                        J{it.kdj_j}
+                      </span>
+                    )}
+                    {/* K/D 值 */}
+                    <span className="text-xs text-gray-400 tabular-nums hidden sm:inline">
+                      K{it.kdj_k} D{it.kdj_d}
                     </span>
+                    {/* J 訊號 badge */}
+                    {it.j_signal && (
+                      <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${J_SIGNAL_COLOR[it.j_signal] ?? "bg-gray-100 text-gray-600"}`}>
+                        {it.j_signal}
+                        {it.j_cross_days != null && it.j_cross_days > 0 && (
+                          <span className="ml-0.5 opacity-60">{it.j_cross_days}天</span>
+                        )}
+                      </span>
+                    )}
+                    {/* K/D 交叉 badge */}
+                    {it.kdj_signal && (
+                      <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${KD_SIGNAL_COLOR[it.kdj_signal] ?? "bg-gray-100 text-gray-600"}`}>
+                        {it.kdj_signal}
+                        {it.kdj_cross_days != null && it.kdj_cross_days > 0 && (
+                          <span className="ml-0.5 opacity-60">{it.kdj_cross_days}天</span>
+                        )}
+                      </span>
+                    )}
                   </div>
                 </div>
               ))}

@@ -80,15 +80,15 @@ def _compute_kdj_series(
 def _kdj_signal_from_series(
     k_vals: list, d_vals: list, j_vals: list, cross_lookback: int = 5
 ) -> tuple:
-    """從 KDJ series 計算最新 K/D/J 值與金叉/死叉訊號。
+    """從 KDJ series 計算最新 K/D/J 值與金叉/死叉訊號，以及 J 線訊號。
 
-    Returns: (kdj_k, kdj_d, kdj_j, signal, cross_days)
+    Returns: (kdj_k, kdj_d, kdj_j, signal, cross_days, j_signal, j_cross_days)
       signal: "低位金叉" | "金叉" | "高位死叉" | "低位死叉" | "死叉" | "多頭" | "空頭"
-      cross_days: 0=今日交叉, 1=昨日, …, None=無近期交叉
+      j_signal: "J回升" | "J超賣" | "J轉弱" | "J超買" | None
     """
     valid = [(k, d, j) for k, d, j in zip(k_vals, d_vals, j_vals) if k is not None]
     if len(valid) < 2:
-        return None, None, None, None, None
+        return None, None, None, None, None, None, None
 
     cur_k, cur_d, cur_j = valid[-1]
     cross_days = cross_type = cross_k = None
@@ -110,7 +110,24 @@ def _kdj_signal_from_series(
     else:
         signal = "多頭" if cur_k >= cur_d else "空頭"
 
-    return round(cur_k, 1), round(cur_d, 1), round(cur_j, 1), signal, cross_days
+    # J 線訊號：J = 3K - 2D，比 K/D 靈敏，常用 0 / 100 為超賣/超買閾值
+    j_signal = j_cross_days = None
+    for i in range(min(8, len(valid) - 1)):
+        _, _, this_j = valid[-(i + 1)]
+        _, _, prev_j = valid[-(i + 2)]
+        if prev_j < 0 and this_j >= 0:
+            j_signal, j_cross_days = "J回升", i
+            break
+        if prev_j > 100 and this_j <= 100:
+            j_signal, j_cross_days = "J轉弱", i
+            break
+    if j_signal is None:
+        if cur_j < 0:
+            j_signal = "J超賣"
+        elif cur_j > 100:
+            j_signal = "J超買"
+
+    return round(cur_k, 1), round(cur_d, 1), round(cur_j, 1), signal, cross_days, j_signal, j_cross_days
 
 
 def _compute_tower(
@@ -609,7 +626,7 @@ def get_signals(code: str) -> dict | None:
             suggestion = _make_suggestion(ma_signal, volume_signal, rsi, price_change_5d, bb_sig)
             levels = _find_levels(closes, highs, lows, current_price, volumes)
             # 寶塔線 + KDJ 用 yfinance 資料（需要 89+ 根），與 K 線圖保持一致
-            kdj_k = kdj_d = kdj_j = kdj_signal = kdj_cross_days = None
+            kdj_k = kdj_d = kdj_j = kdj_signal = kdj_cross_days = j_signal = j_cross_days = None
             try:
                 _yf_hist = _fetch_history(code)
                 if not _yf_hist.empty and len(_yf_hist) >= 10:
@@ -618,7 +635,7 @@ def get_signals(code: str) -> dict | None:
                     tower = _compute_tower(closes, highs, lows)
                 if len(_yf_hist) >= 90:
                     kk, dd, jj = _compute_kdj_series(_yf_hist["Close"], _yf_hist["High"], _yf_hist["Low"])
-                    kdj_k, kdj_d, kdj_j, kdj_signal, kdj_cross_days = _kdj_signal_from_series(kk, dd, jj)
+                    kdj_k, kdj_d, kdj_j, kdj_signal, kdj_cross_days, j_signal, j_cross_days = _kdj_signal_from_series(kk, dd, jj)
             except Exception:
                 tower = _compute_tower(closes, highs, lows)
 
@@ -647,6 +664,8 @@ def get_signals(code: str) -> dict | None:
                 "kdj_j": kdj_j,
                 "kdj_signal": kdj_signal,
                 "kdj_cross_days": kdj_cross_days,
+                "j_signal": j_signal,
+                "j_cross_days": j_cross_days,
                 "updated_at": datetime.utcnow().isoformat(),
             }
             _CACHE[code] = (result, now)
@@ -697,10 +716,10 @@ def get_signals(code: str) -> dict | None:
         levels = _find_levels(closes, highs, lows, current_price, volumes)
         tower  = _compute_tower(closes, highs, lows)
 
-        kdj_k = kdj_d = kdj_j = kdj_signal = kdj_cross_days = None
+        kdj_k = kdj_d = kdj_j = kdj_signal = kdj_cross_days = j_signal = j_cross_days = None
         if len(hist) >= 90:
             kk, dd, jj = _compute_kdj_series(closes, highs, lows)
-            kdj_k, kdj_d, kdj_j, kdj_signal, kdj_cross_days = _kdj_signal_from_series(kk, dd, jj)
+            kdj_k, kdj_d, kdj_j, kdj_signal, kdj_cross_days, j_signal, j_cross_days = _kdj_signal_from_series(kk, dd, jj)
 
         result = {
             "current_price": current_price,
@@ -727,6 +746,8 @@ def get_signals(code: str) -> dict | None:
             "kdj_j": kdj_j,
             "kdj_signal": kdj_signal,
             "kdj_cross_days": kdj_cross_days,
+            "j_signal": j_signal,
+            "j_cross_days": j_cross_days,
             "updated_at": datetime.utcnow().isoformat(),
         }
         _CACHE[code] = (result, now)

@@ -185,8 +185,10 @@ export interface KdjScreenItem {
   kdj_k: number | null;
   kdj_d: number | null;
   kdj_j: number | null;
-  kdj_signal: string;
+  kdj_signal: string | null;
   kdj_cross_days: number | null;
+  j_signal: string | null;
+  j_cross_days: number | null;
   ma_signal: string | null;
   rsi: number | null;
 }

@@ -205,11 +205,17 @@ def _kdj_screen_job():
         results = asyncio.run(run_all())
 
         CROSS_SIGNALS = {"低位金叉", "金叉", "低位死叉", "高位死叉", "死叉"}
+        J_SIGNALS = {"J回升", "J超賣", "J轉弱", "J超買"}
         SIGNAL_ORDER = {"低位金叉": 0, "金叉": 1, "低位死叉": 2, "死叉": 3, "高位死叉": 4}
+        J_SIGNAL_ORDER = {"J回升": 0, "J超賣": 1, "J轉弱": 2, "J超買": 3}
 
         items = []
         for code, sig in results:
-            if not sig or sig.get("kdj_signal") not in CROSS_SIGNALS:
+            if not sig:
+                continue
+            has_kdj = sig.get("kdj_signal") in CROSS_SIGNALS
+            has_j = sig.get("j_signal") in J_SIGNALS
+            if not has_kdj and not has_j:
                 continue
             items.append({
                 "code": code,
@@ -218,14 +224,18 @@ def _kdj_screen_job():
                 "kdj_k": sig.get("kdj_k"),
                 "kdj_d": sig.get("kdj_d"),
                 "kdj_j": sig.get("kdj_j"),
-                "kdj_signal": sig.get("kdj_signal"),
+                "kdj_signal": sig.get("kdj_signal") if has_kdj else None,
                 "kdj_cross_days": sig.get("kdj_cross_days"),
+                "j_signal": sig.get("j_signal"),
+                "j_cross_days": sig.get("j_cross_days"),
                 "ma_signal": sig.get("ma_signal"),
                 "rsi": sig.get("rsi"),
             })
         items.sort(key=lambda x: (
+            J_SIGNAL_ORDER.get(x.get("j_signal"), 9),
             SIGNAL_ORDER.get(x.get("kdj_signal"), 9),
-            x.get("kdj_cross_days") or 99,
+            x.get("j_cross_days") if x.get("j_cross_days") is not None else 99,
+            x.get("kdj_cross_days") if x.get("kdj_cross_days") is not None else 99,
             x.get("kdj_k") or 99,
         ))
 

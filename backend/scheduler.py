@@ -157,29 +157,35 @@ def _recommendations_warmup_job():
     logger.info("Recommendations warmup complete")
 
 
-def _kdj_screen_job():
-    """每週一至五 15:30（收盤後）掃描自選股 + ETF 成份股 KDJ 訊號並寫入快取。"""
+def _kdj_screen_job(quick: bool = False):
+    """KDJ 訊號掃描並寫入快取。
+    quick=True：僅掃自選股（手動觸發用，速度快）；False：含 ETF 成份股（排程用）。
+    """
     import asyncio
     import json as _json
     from datetime import timezone, timedelta
 
-    logger.info("Starting KDJ screen job...")
+    logger.info("Starting KDJ screen job (quick=%s)...", quick)
     db = SessionLocal()
     try:
         from models import WatchlistItem, EtfDailyChange, KdjScreenCache
         from price_analysis import get_signals
 
         wl_codes = {r.stock_code for r in db.query(WatchlistItem.stock_code).all()}
-        etf_rows = (
-            db.query(EtfDailyChange.stock_code, EtfDailyChange.stock_name)
-            .filter(EtfDailyChange.etf_code.in_(["00981A", "00403A"]))
-            .distinct(EtfDailyChange.stock_code).all()
-        )
-        etf_codes = {r.stock_code for r in etf_rows}
-        etf_names = {r.stock_code: r.stock_name for r in etf_rows}
 
-        priority = list(wl_codes) + [c for c in etf_codes if c not in wl_codes]
-        code_list = priority[:350]  # 排程可跑久一點，不受 30s 限制
+        if quick:
+            code_list = sorted(wl_codes)
+            etf_names: dict = {}
+        else:
+            etf_rows = (
+                db.query(EtfDailyChange.stock_code, EtfDailyChange.stock_name)
+                .filter(EtfDailyChange.etf_code.in_(["00981A", "00403A"]))
+                .distinct(EtfDailyChange.stock_code).all()
+            )
+            etf_codes = {r.stock_code for r in etf_rows}
+            etf_names = {r.stock_code: r.stock_name for r in etf_rows}
+            priority = list(wl_codes) + [c for c in etf_codes if c not in wl_codes]
+            code_list = priority[:350]
 
         name_map: dict = {}
         for code in code_list:

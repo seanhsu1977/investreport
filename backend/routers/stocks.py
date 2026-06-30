@@ -1497,9 +1497,9 @@ def kdj_screen(db: Session = Depends(get_db)):
 
 @router.post("/kdj-screen/refresh")
 def kdj_screen_refresh(background_tasks: BackgroundTasks):
-    """手動觸發 KDJ 選股重新掃描（背景執行，完成後快取更新）。"""
+    """手動觸發 KDJ 選股重新掃描（僅掃自選股，背景執行，完成後快取更新）。"""
     from scheduler import _kdj_screen_job
-    background_tasks.add_task(_kdj_screen_job)
+    background_tasks.add_task(_kdj_screen_job, True)
     return {"status": "started"}
 
 

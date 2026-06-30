@@ -7,6 +7,7 @@ import httpx
 from datetime import date, datetime, timedelta
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -22,9 +23,9 @@ _SAFETY_OFF = [
 ]
 
 from database import get_db
-from models import Report, StockRecommendationReason, TxfCandle
+from models import Report, StockRecommendationReason, TxfCandle, User
 from stocks_master import resolve_name
-from routers.auth import require_admin
+from routers.auth import require_admin, get_current_user
 
 router = APIRouter(prefix="/stocks", tags=["stocks"])
 
@@ -1887,3 +1888,68 @@ async def sector_rotation():
         "computing":    True,
         "computed_at":  datetime.utcnow().isoformat(),
     }
+
+
+class SectorAskBody(BaseModel):
+    question: str
+
+@router.post("/sector-rotation/ask")
+async def sector_rotation_ask(
+    body: SectorAskBody,
+    user: User = Depends(get_current_user),
+):
+    question = body.question.strip()
+    if not question:
+        raise HTTPException(400, "question required")
+
+    if "sector_rotation" not in _SECTOR_CHIP_CACHE:
+        raise HTTPException(503, "資料尚未準備好，請稍後再試")
+
+    data, _ = _SECTOR_CHIP_CACHE["sector_rotation"]
+    bubbles = data.get("bubbles", [])
+    latest_date = data.get("latest_date", "")
+
+    Q_MAP = {(True, True): "主力", (False, False): "退潮", (False, True): "觀望", (True, False): "輪動"}
+
+    ctx_lines = [f"資料日期：{latest_date}，共 {len(bubbles)} 個概念股\n"]
+    for b in sorted(bubbles, key=lambda x: x["amt_20d"], reverse=True):
+        ql = Q_MAP[(b["x"] >= 0, b["y"] >= 0)]
+        stocks_str = "、".join(
+            f"{s['code']}{s['name']}(加速{s['y']:+.0f})"
+            for s in (b.get("stocks") or [])[:6]
+        )
+        ctx_lines.append(
+            f"【{b['name']}】{ql} | 20日:{b['amt_20d']}十億 | 今日:{b['rt_amt']}億 | 加速度:{b['y']:+.1f} | 成分:{stocks_str}"
+        )
+    context = "\n".join(ctx_lines)
+
+    system_prompt = (
+        "你是台股概念股輪動分析師。根據下方當日籌碼資料用繁體中文回答問題，150字以內，直接回答不需開場白。"
+        "象限定義：主力=資金多且加速流入；輪動=資金多但動能轉弱；觀望=資金少但開始加速；退潮=資金少且動能衰退。"
+        "加速度為正表示近5日均量高於20日均量。"
+    )
+
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        raise HTTPException(503, "GEMINI_API_KEY not set")
+
+    async def generate():
+        try:
+            client = genai.Client(api_key=api_key)
+            for chunk in client.models.generate_content_stream(
+                model="gemini-2.5-flash",
+                contents=[f"籌碼資料：\n{context}\n\n問題：{question}"],
+                config=genai_types.GenerateContentConfig(
+                    system_instruction=system_prompt,
+                    max_output_tokens=400,
+                    thinking_config=genai_types.ThinkingConfig(thinking_budget=0),
+                    safety_settings=_SAFETY_OFF,
+                ),
+            ):
+                if chunk.text:
+                    yield f"data: {json.dumps({'text': chunk.text}, ensure_ascii=False)}\n\n"
+            yield "data: [DONE]\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'error': str(e)}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")

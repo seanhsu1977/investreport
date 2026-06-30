@@ -55,6 +55,13 @@ export default function SectorRotationPage() {
   const [showHelp, setShowHelp] = useState(false);
   const [viewMode, setViewMode] = useState<"concepts" | "rankings">("concepts");
 
+  // QA
+  const [qaOpen, setQaOpen] = useState(false);
+  const [qaMessages, setQaMessages] = useState<{ role: "user" | "ai"; text: string }[]>([]);
+  const [qaInput, setQaInput] = useState("");
+  const [qaLoading, setQaLoading] = useState(false);
+  const qaBodyRef = useRef<HTMLDivElement>(null);
+
   // zoom / pan
   const svgRef = useRef<SVGSVGElement>(null);
   const [zoom, setZoom] = useState({ scale: 1, tx: 0, ty: 0 });
@@ -224,6 +231,71 @@ export default function SectorRotationPage() {
 
   const fmtDate = (s: string) => s ? `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}` : "—";
   const fmtAmt = (x: number) => `${x >= 0 ? "+" : ""}${(drillDown ? x : x * 10).toFixed(1)}億`;
+
+  const sendQA = async (question?: string) => {
+    const q = (question ?? qaInput).trim();
+    if (!q || qaLoading) return;
+    setQaInput("");
+    setQaLoading(true);
+    setQaMessages(prev => [...prev, { role: "user", text: q }]);
+    setQaMessages(prev => [...prev, { role: "ai", text: "" }]);
+    try {
+      const token = localStorage.getItem("auth_token");
+      const resp = await fetch("/api/stocks/sector-rotation/ask", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ question: q }),
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const reader = resp.body!.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split("\n");
+        buf = lines.pop() ?? "";
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const payload = line.slice(6);
+          if (payload === "[DONE]") continue;
+          try {
+            const obj = JSON.parse(payload);
+            if (obj.text) {
+              setQaMessages(prev => {
+                const msgs = [...prev];
+                msgs[msgs.length - 1] = { role: "ai", text: msgs[msgs.length - 1].text + obj.text };
+                return msgs;
+              });
+            }
+            if (obj.error) {
+              setQaMessages(prev => {
+                const msgs = [...prev];
+                msgs[msgs.length - 1] = { role: "ai", text: `錯誤：${obj.error}` };
+                return msgs;
+              });
+            }
+          } catch {}
+        }
+      }
+    } catch (e: any) {
+      setQaMessages(prev => {
+        const msgs = [...prev];
+        msgs[msgs.length - 1] = { role: "ai", text: `錯誤：${e.message}` };
+        return msgs;
+      });
+    } finally {
+      setQaLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (qaBodyRef.current) qaBodyRef.current.scrollTop = qaBodyRef.current.scrollHeight;
+  }, [qaMessages]);
 
   const handleBubbleClick = (b: Bubble | StockBubble) => {
     if (dragging) return;
@@ -647,6 +719,89 @@ export default function SectorRotationPage() {
         </div>{/* /flex row */}
       </div>{/* /主深色卡 */}
 
+      {/* ── QA 問輪動圖 ── */}
+      <div className="rounded-2xl overflow-hidden" style={{ background: CHART_BG, border: "1px solid rgba(255,255,255,0.08)" }}>
+        <button
+          onClick={() => setQaOpen(v => !v)}
+          className="w-full flex items-center justify-between px-5 py-3.5 text-left transition hover:bg-white/[0.03]"
+          style={{ borderBottom: qaOpen ? "1px solid rgba(255,255,255,0.08)" : "none" }}
+        >
+          <div className="flex items-center gap-2.5">
+            <span style={{ fontSize: 16 }}>💬</span>
+            <span className="text-sm font-semibold" style={{ color: "rgba(255,255,255,0.85)" }}>問輪動圖</span>
+            <span className="text-xs" style={{ color: "rgba(255,255,255,0.3)" }}>· 用 AI 解讀今日籌碼</span>
+          </div>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="2"
+            style={{ transform: qaOpen ? "rotate(180deg)" : "none", transition: "transform .2s" }}>
+            <path d="M6 9l6 6 6-6"/>
+          </svg>
+        </button>
+
+        {qaOpen && (
+          <div>
+            {/* 快速問題 chips */}
+            {qaMessages.length === 0 && (
+              <div className="flex flex-wrap gap-2 px-5 py-3" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+                {["主力資金在哪？", "哪些概念退燒了？", "有沒有剛啟動的？", "今日成交最大的是？"].map(q => (
+                  <button key={q} onClick={() => sendQA(q)}
+                    className="text-xs px-3 py-1.5 rounded-full transition"
+                    style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.6)" }}>
+                    {q}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* 訊息列表 */}
+            {qaMessages.length > 0 && (
+              <div ref={qaBodyRef} className="flex flex-col gap-3 px-5 py-4 overflow-y-auto" style={{ maxHeight: 300 }}>
+                {qaMessages.map((m, i) => (
+                  <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+                    <div className="text-sm leading-relaxed" style={{
+                      maxWidth: "85%",
+                      background: m.role === "user" ? "#1b6fd8" : "rgba(255,255,255,0.07)",
+                      color: m.role === "user" ? "#fff" : "rgba(255,255,255,0.85)",
+                      border: m.role === "ai" ? "1px solid rgba(255,255,255,0.1)" : "none",
+                      borderRadius: m.role === "user" ? "14px 14px 4px 14px" : "14px 14px 14px 4px",
+                      padding: "9px 14px",
+                    }}>
+                      {m.role === "ai" && m.text === "" && qaLoading && i === qaMessages.length - 1
+                        ? <span style={{ color: "rgba(255,255,255,0.3)" }}>思考中…</span>
+                        : m.text}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* 輸入列 */}
+            <div className="flex gap-2 px-4 py-3" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+              <input
+                value={qaInput}
+                onChange={e => setQaInput(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && !e.shiftKey && sendQA()}
+                placeholder="輸入問題，例如：AI伺服器還有行情嗎？"
+                disabled={qaLoading}
+                className="flex-1 min-w-0 text-sm rounded-xl px-3 py-2 outline-none"
+                style={{
+                  background: "rgba(255,255,255,0.07)",
+                  border: "1px solid rgba(255,255,255,0.15)",
+                  color: "rgba(255,255,255,0.88)",
+                  fontFamily: "var(--font-sans)",
+                }}
+              />
+              <button
+                onClick={() => sendQA()}
+                disabled={qaLoading || !qaInput.trim()}
+                className="shrink-0 text-sm font-medium rounded-xl px-4 py-2 transition"
+                style={{ background: "#1b6fd8", color: "#fff", opacity: (qaLoading || !qaInput.trim()) ? 0.5 : 1 }}
+              >
+                送出
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
 
     </div>
   );

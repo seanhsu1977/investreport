@@ -779,7 +779,7 @@ export default function SectorRotationPage() {
               <input
                 value={qaInput}
                 onChange={e => setQaInput(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && !e.shiftKey && sendQA()}
+                onKeyDown={undefined}
                 placeholder="輸入問題，例如：AI伺服器還有行情嗎？"
                 disabled={qaLoading}
                 className="flex-1 min-w-0 text-sm rounded-xl px-3 py-2 outline-none"

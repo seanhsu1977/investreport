@@ -168,10 +168,10 @@ def _kdj_screen_job(quick: bool = False):
     logger.info("Starting KDJ screen job (quick=%s)...", quick)
     db = SessionLocal()
     try:
-        from models import WatchlistItem, EtfDailyChange, KdjScreenCache
+        from models import Watchlist, EtfDailyChange, KdjScreenCache
         from price_analysis import get_signals
 
-        wl_codes = {r.stock_code for r in db.query(WatchlistItem.stock_code).all()}
+        wl_codes = {r.stock_code for r in db.query(Watchlist.stock_code).all()}
 
         if quick:
             code_list = sorted(wl_codes)

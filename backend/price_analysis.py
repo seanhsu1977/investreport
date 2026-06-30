@@ -24,12 +24,12 @@ def _is_tw_stock(code: str) -> bool:
     return bool(re.match(r"^\d{4}", code))
 
 
-def _fetch_history(code: str):
+def _fetch_history(code: str, period: str = "1y"):
     """嘗試 .TW（上市）→ .TWO（上櫃）→ 原始代號"""
     if not _is_tw_stock(code):
-        return yf.Ticker(code).history(period="3mo")
+        return yf.Ticker(code).history(period=period)
     for suffix in (".TW", ".TWO"):
-        hist = yf.Ticker(f"{code}{suffix}").history(period="3mo")
+        hist = yf.Ticker(f"{code}{suffix}").history(period=period)
         if not hist.empty and len(hist) >= 20:
             return hist
     return pd.DataFrame()

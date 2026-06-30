@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { stocksApi } from "../api/client";
 
 // ── types ──────────────────────────────────────────────────────────────────
@@ -558,15 +559,15 @@ export default function SectorRotationPage() {
               (drillDown.stocks ?? []).map(s => {
                 const q = quadrant(s), color = Q_META[q].color;
                 return (
-                  <div key={s.code}
-                    className="flex items-center gap-2 px-4 py-2.5 cursor-default transition"
-                    style={{ borderBottom: "1px solid rgba(255,255,255,0.04)", background: hovered?.name === s.name ? "rgba(255,255,255,0.05)" : "transparent" }}
+                  <Link key={s.code} to={`/stocks/${s.code}`}
+                    className="flex items-center gap-2 px-4 py-2.5 transition hover:bg-white/[0.06]"
+                    style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}
                     onMouseEnter={() => setHovered(s)} onMouseLeave={() => setHovered(null)}>
                     <span className="font-mono text-[10px] shrink-0 w-10" style={{ color: "rgba(255,255,255,0.3)" }}>{s.code}</span>
-                    <span className="flex-1 text-sm font-medium truncate" style={{ color: hovered?.name === s.name ? "white" : "rgba(255,255,255,0.8)" }}>{s.name}</span>
+                    <span className="flex-1 text-sm font-medium truncate" style={{ color: "rgba(255,255,255,0.8)" }}>{s.name}</span>
                     <span className={`text-xs tabular-nums font-medium shrink-0 ${s.y >= 0 ? "text-emerald-400" : "text-orange-400"}`}>{s.y >= 0 ? "+" : ""}{s.y}</span>
                     <span className="text-xs font-semibold shrink-0" style={{ color }}>{Q_META[q].label}</span>
-                  </div>
+                  </Link>
                 );
               })
             ) : viewMode === "concepts" ? (

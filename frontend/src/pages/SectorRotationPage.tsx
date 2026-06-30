@@ -186,6 +186,10 @@ export default function SectorRotationPage() {
     return () => { cancelled = true; };
   }, []);
 
+  useEffect(() => {
+    if (qaBodyRef.current) qaBodyRef.current.scrollTop = qaBodyRef.current.scrollHeight;
+  }, [qaMessages]);
+
   if (loading) return (
     <div className="min-h-screen flex flex-col items-center justify-center gap-2 text-gray-500">
       <div className="text-base">概念股籌碼資料計算中…</div>
@@ -292,10 +296,6 @@ export default function SectorRotationPage() {
       setQaLoading(false);
     }
   };
-
-  useEffect(() => {
-    if (qaBodyRef.current) qaBodyRef.current.scrollTop = qaBodyRef.current.scrollHeight;
-  }, [qaMessages]);
 
   const handleBubbleClick = (b: Bubble | StockBubble) => {
     if (dragging) return;

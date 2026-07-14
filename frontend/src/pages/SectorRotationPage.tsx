@@ -25,7 +25,7 @@ const H = 500;
 const PAD = { top: 44, right: 32, bottom: 52, left: 62 };
 const CW = W - PAD.left - PAD.right;
 const CH = H - PAD.top - PAD.bottom;
-const CHART_BG = "#0C1018";
+const CHART_BG = "#F8FAFC";
 
 const Q_META = [
   { label: "主力", desc: "錢正大力進場",   plain: "資金加速流入，最強勢", color: "#10B981" },
@@ -354,8 +354,7 @@ export default function SectorRotationPage() {
   };
   const handleBackToConcepts = () => { setDrillDown(null); resetZoom(); setHovered(null); };
 
-  const DARK = "rgba(255,255,255,";
-  const gridColor = `${DARK}0.07)`, axisColor = `${DARK}0.22)`, tickColor = `${DARK}0.38)`;
+  const gridColor = "rgba(0,0,0,0.07)", axisColor = "rgba(0,0,0,0.2)", tickColor = "rgba(0,0,0,0.45)";
 
   // ── render ────────────────────────────────────────────────────────────────
 
@@ -402,12 +401,12 @@ export default function SectorRotationPage() {
 
       {/* ── 新手引導 ── */}
       {showHelp && !drillDown && (
-        <div className="rounded-xl px-4 py-3 text-sm" style={{ background: "#0e1e35", border: "1px solid rgba(45,212,191,0.25)", color: "rgba(255,255,255,0.8)" }}>
-          <div className="font-semibold mb-1.5" style={{ color: "#5eead4" }}>怎麼看這張圖</div>
-          <div className="grid gap-1.5 text-xs" style={{ color: "rgba(255,255,255,0.65)" }}>
-            <div><span style={{ color: "#5eead4" }}>橫軸（左右）</span>＝資金流入／流出，越右代表錢越多</div>
-            <div><span style={{ color: "#5eead4" }}>縱軸（上下）</span>＝加速度（近5日均 − 近20日均），越上代表資金在加速流入</div>
-            <div><span style={{ color: "#5eead4" }}>泡泡大小</span>＝成交規模，單位統一為「億元」</div>
+        <div className="rounded-xl px-4 py-3 text-sm" style={{ background: "#EFF6FF", border: "1px solid #BFDBFE", color: "rgba(15,23,42,0.75)" }}>
+          <div className="font-semibold mb-1.5" style={{ color: "#1D4ED8" }}>怎麼看這張圖</div>
+          <div className="grid gap-1.5 text-xs" style={{ color: "rgba(15,23,42,0.6)" }}>
+            <div><span style={{ color: "#1D4ED8" }}>橫軸（左右）</span>＝資金流入／流出，越右代表錢越多</div>
+            <div><span style={{ color: "#1D4ED8" }}>縱軸（上下）</span>＝加速度（近5日均 − 近20日均），越上代表資金在加速流入</div>
+            <div><span style={{ color: "#1D4ED8" }}>泡泡大小</span>＝成交規模，單位統一為「億元」</div>
             <div className="pt-1 flex flex-wrap gap-x-4 gap-y-1">
               {Q_META.map(q => (
                 <span key={q.label}><span style={{ color: q.color }}>● {q.label}</span>：{q.plain}</span>
@@ -432,7 +431,7 @@ export default function SectorRotationPage() {
       )}
 
       {/* ── 主深色卡：左側圖表 + 右側排行面板 ── */}
-      <div className="rounded-2xl overflow-hidden" style={{ background: CHART_BG, border: "1px solid rgba(255,255,255,0.08)" }}>
+      <div className="rounded-2xl overflow-hidden" style={{ background: CHART_BG, border: "1px solid #E2E8F0" }}>
         <div className="flex flex-col lg:flex-row">
 
         {/* 左側：象限 sidebar + 圖表/榜單 */}
@@ -441,16 +440,16 @@ export default function SectorRotationPage() {
         <div className="flex flex-1 min-w-0">
 
           {/* 左側象限統計（桌機顯示，手機隱藏）*/}
-          <div className="hidden lg:flex w-[110px] shrink-0 flex-col" style={{ borderRight: "1px solid rgba(255,255,255,0.08)" }}>
+          <div className="hidden lg:flex w-[110px] shrink-0 flex-col" style={{ borderRight: "1px solid #E2E8F0" }}>
             {drillDown ? (
               /* 下鑽模式：顯示概念股名稱 + 返回按鈕 */
               <div className="flex flex-col items-center justify-center flex-1 gap-3 px-2 text-center">
-                <div className="text-[10px] font-semibold leading-tight" style={{ color: "rgba(255,255,255,0.5)" }}>{drillDown.name}</div>
-                <div className="text-2xl font-black leading-none" style={{ color: "rgba(255,255,255,0.85)" }}>{drillDown.stocks?.length ?? 0}</div>
-                <div className="text-[10px]" style={{ color: "rgba(255,255,255,0.3)" }}>支成分股</div>
+                <div className="text-[10px] font-semibold leading-tight" style={{ color: "rgba(15,23,42,0.45)" }}>{drillDown.name}</div>
+                <div className="text-2xl font-black leading-none" style={{ color: "rgba(15,23,42,0.85)" }}>{drillDown.stocks?.length ?? 0}</div>
+                <div className="text-[10px]" style={{ color: "rgba(15,23,42,0.3)" }}>支成分股</div>
                 <button onClick={handleBackToConcepts}
-                  className="mt-2 text-[10px] px-2 py-1 rounded transition hover:text-white"
-                  style={{ color: "rgba(99,179,237,0.7)", border: "1px solid rgba(99,179,237,0.25)" }}>
+                  className="mt-2 text-[10px] px-2 py-1 rounded transition hover:text-blue-700"
+                  style={{ color: "#3B82F6", border: "1px solid #BFDBFE" }}>
                   ← 返回
                 </button>
               </div>
@@ -465,12 +464,12 @@ export default function SectorRotationPage() {
                     style={{ borderLeft: `3px solid ${filter === i ? q.color : "transparent"}`, background: filter === i ? `${q.color}15` : "transparent" }}
                   >
                     <div className="text-2xl font-black leading-none" style={{ color: q.color }}>{counts[i]}</div>
-                    <div className="text-xs font-semibold mt-1" style={{ color: "rgba(255,255,255,0.8)" }}>{q.label}</div>
-                    <div className="text-[10px] leading-tight mt-0.5" style={{ color: "rgba(255,255,255,0.35)" }}>{q.desc}</div>
+                    <div className="text-xs font-semibold mt-1" style={{ color: "rgba(15,23,42,0.75)" }}>{q.label}</div>
+                    <div className="text-[10px] leading-tight mt-0.5" style={{ color: "rgba(15,23,42,0.35)" }}>{q.desc}</div>
                   </button>
                 ))}
                 {filter !== null && (
-                  <button onClick={() => setFilter(null)} className="py-2 text-[10px] text-center hover:text-white" style={{ color: "rgba(255,255,255,0.3)", borderTop: "1px solid rgba(255,255,255,0.08)" }}>
+                  <button onClick={() => setFilter(null)} className="py-2 text-[10px] text-center hover:text-gray-700" style={{ color: "rgba(15,23,42,0.35)", borderTop: "1px solid #E2E8F0" }}>
                     清除篩選
                   </button>
                 )}
@@ -483,13 +482,13 @@ export default function SectorRotationPage() {
 
           {/* 手機版象限計數橫排（桌機由左側 sidebar 顯示）*/}
           {!drillDown && (
-            <div className="flex lg:hidden shrink-0" style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+            <div className="flex lg:hidden shrink-0" style={{ borderBottom: "1px solid #E2E8F0" }}>
               {Q_META.map((q, i) => (
                 <button key={q.label} onClick={() => setFilter(filter === i ? null : i)}
                   className="flex-1 flex flex-col items-center py-2.5 transition"
                   style={{ borderBottom: `2px solid ${filter === i ? q.color : "transparent"}`, background: filter === i ? `${q.color}12` : "transparent" }}>
                   <span className="text-lg font-black leading-none" style={{ color: q.color }}>{counts[i]}</span>
-                  <span className="text-[10px] mt-0.5 font-medium" style={{ color: "rgba(255,255,255,0.6)" }}>{q.label}</span>
+                  <span className="text-[10px] mt-0.5 font-medium" style={{ color: "rgba(15,23,42,0.55)" }}>{q.label}</span>
                 </button>
               ))}
             </div>
@@ -500,16 +499,16 @@ export default function SectorRotationPage() {
             <div className="absolute top-2.5 right-2.5 z-10 flex items-center gap-1">
               {/* 字級調整 */}
               <button onClick={() => setFontScale(s => Math.max(0.7, +(s - 0.2).toFixed(1)))}
-                className="w-7 h-7 flex items-center justify-center rounded-lg text-xs font-bold" style={{ background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.7)" }}>A−</button>
+                className="w-7 h-7 flex items-center justify-center rounded-lg text-xs font-bold" style={{ background: "rgba(0,0,0,0.05)", border: "1px solid #CBD5E1", color: "rgba(0,0,0,0.6)" }}>A−</button>
               <button onClick={() => setFontScale(s => Math.min(2.2, +(s + 0.2).toFixed(1)))}
-                className="w-7 h-7 flex items-center justify-center rounded-lg text-xs font-bold" style={{ background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.7)" }}>A+</button>
+                className="w-7 h-7 flex items-center justify-center rounded-lg text-xs font-bold" style={{ background: "rgba(0,0,0,0.05)", border: "1px solid #CBD5E1", color: "rgba(0,0,0,0.6)" }}>A+</button>
               <div className="w-px h-4 mx-0.5" style={{ background: "rgba(255,255,255,0.2)" }} />
               {/* 縮放 */}
               <button onClick={() => setZoom(prev => { const cx = W/2, cy = H/2, ns = Math.min(12, prev.scale*1.4); return { scale: ns, ...clampPan(cx-(cx-prev.tx)*(ns/prev.scale), cy-(cy-prev.ty)*(ns/prev.scale), ns) }; })}
-                className="w-7 h-7 flex items-center justify-center rounded-lg text-base font-bold" style={{ background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.7)" }}>+</button>
+                className="w-7 h-7 flex items-center justify-center rounded-lg text-base font-bold" style={{ background: "rgba(0,0,0,0.05)", border: "1px solid #CBD5E1", color: "rgba(0,0,0,0.6)" }}>+</button>
               <button onClick={() => setZoom(prev => { const cx = W/2, cy = H/2, ns = Math.max(0.4, prev.scale/1.4); return { scale: ns, ...clampPan(cx-(cx-prev.tx)*(ns/prev.scale), cy-(cy-prev.ty)*(ns/prev.scale), ns) }; })}
-                className="w-7 h-7 flex items-center justify-center rounded-lg text-base font-bold" style={{ background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.7)" }}>−</button>
-              <button onClick={resetZoom} className="px-2.5 h-7 text-xs font-medium rounded-lg" style={{ background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.7)", visibility: isZoomed ? "visible" : "hidden" }}>重設</button>
+                className="w-7 h-7 flex items-center justify-center rounded-lg text-base font-bold" style={{ background: "rgba(0,0,0,0.05)", border: "1px solid #CBD5E1", color: "rgba(0,0,0,0.6)" }}>−</button>
+              <button onClick={resetZoom} className="px-2.5 h-7 text-xs font-medium rounded-lg" style={{ background: "rgba(0,0,0,0.05)", border: "1px solid #CBD5E1", color: "rgba(0,0,0,0.6)", visibility: isZoomed ? "visible" : "hidden" }}>重設</button>
             </div>
 
             <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ minWidth: 300, cursor: dragging ? "grabbing" : "grab", display: "block", touchAction: "none" }}
@@ -601,12 +600,12 @@ export default function SectorRotationPage() {
             </svg>
 
             {/* 圖例 */}
-            <div className="flex items-center gap-3 px-4 py-2 text-xs flex-wrap" style={{ borderTop: "1px solid rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.4)" }}>
+            <div className="flex items-center gap-3 px-4 py-2 text-xs flex-wrap" style={{ borderTop: "1px solid #EEF0F4", color: "rgba(15,23,42,0.4)" }}>
               <span>圖例：</span>
               {Q_META.map(q => (
                 <span key={q.label} className="flex items-center gap-1">
                   <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ background: q.color }} />
-                  <span style={{ color: "rgba(255,255,255,0.6)" }}>{q.label}</span>
+                  <span style={{ color: "rgba(15,23,42,0.55)" }}>{q.label}</span>
                 </span>
               ))}
               {/* 移動按鈕：拖曳的替代操作 */}
@@ -618,12 +617,12 @@ export default function SectorRotationPage() {
                   return (
                     <button key={arrow}
                       onClick={() => setZoom(z => ({ ...z, ...clampPan(z.tx + dx, z.ty + dy, z.scale) }))}
-                      className="w-7 h-7 flex items-center justify-center rounded-lg text-sm" style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:"rgba(255,255,255,0.8)"}}>
+                      className="w-7 h-7 flex items-center justify-center rounded-lg text-sm" style={{background:"rgba(0,0,0,0.05)",border:"1px solid #CBD5E1",color:"rgba(0,0,0,0.65)"}}>
                       {arrow}
                     </button>
                   );
                 })}
-                <button onClick={resetZoom} className="px-2 h-7 text-xs font-medium rounded-lg ml-1" style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:"rgba(255,255,255,0.8)", visibility: isZoomed ? "visible" : "hidden"}}>重設</button>
+                <button onClick={resetZoom} className="px-2 h-7 text-xs font-medium rounded-lg ml-1" style={{background:"rgba(0,0,0,0.05)",border:"1px solid #CBD5E1",color:"rgba(0,0,0,0.65)", visibility: isZoomed ? "visible" : "hidden"}}>重設</button>
               </div>
             </div>
 
@@ -633,14 +632,14 @@ export default function SectorRotationPage() {
               const tipLeft = mousePos.x + 14 + 210 > cw ? Math.max(4, mousePos.x - 224) : mousePos.x + 14;
               return (
               <div className="absolute pointer-events-none z-10 rounded-xl px-3 py-2.5 text-xs"
-                style={{ left: tipLeft, top: Math.max(4, mousePos.y - 10), maxWidth: 210, background: "rgba(10,14,22,0.95)", border: "1px solid rgba(255,255,255,0.12)", color: "white", backdropFilter: "blur(8px)" }}>
+                style={{ left: tipLeft, top: Math.max(4, mousePos.y - 10), maxWidth: 210, background: "rgba(255,255,255,0.97)", border: "1px solid #E2E8F0", color: "#0F172A", backdropFilter: "blur(8px)", boxShadow: "0 4px 16px rgba(0,0,0,0.1)" }}>
                 <div className="font-bold text-sm mb-1.5">
                   {"code" in hovered ? <><span className="font-mono text-gray-400 text-xs">{(hovered as StockBubble).code} </span>{hovered.name}</> : hovered.name}
                 </div>
-                <div className="flex flex-col gap-1" style={{ color: "rgba(255,255,255,0.65)" }}>
+                <div className="flex flex-col gap-1" style={{ color: "rgba(15,23,42,0.55)" }}>
                   <div className="flex justify-between gap-3"><span>狀態</span><span style={{ color: Q_META[quadrant(hovered)].color }} className="font-semibold">{Q_META[quadrant(hovered)].label} · {Q_META[quadrant(hovered)].desc}</span></div>
-                  <div className="flex justify-between gap-3"><span>今日成交</span><span className="text-white font-medium">{hovered.rt_amt} 億</span></div>
-                  <div className="flex justify-between gap-3"><span>20日累積</span><span className="text-white font-medium">{"code" in hovered ? `${hovered.amt_20d} 億` : `${hovered.amt_20d} 十億`}</span></div>
+                  <div className="flex justify-between gap-3"><span>今日成交</span><span className="font-medium text-gray-900">{hovered.rt_amt} 億</span></div>
+                  <div className="flex justify-between gap-3"><span>20日累積</span><span className="font-medium text-gray-900">{"code" in hovered ? `${hovered.amt_20d} 億` : `${hovered.amt_20d} 十億`}</span></div>
                   <div className="flex justify-between gap-3"><span>加速度</span><span style={{ color: hovered.y >= 0 ? "#10B981" : "#FB923C" }} className="font-semibold">{hovered.y >= 0 ? "+" : ""}{hovered.y}</span></div>
                   {!drillDown && "stocks" in hovered && (hovered.stocks?.length ?? 0) > 0 && <div className="pt-1 text-blue-400 text-[10px]">🔍 點擊查看 {(hovered as Bubble).stocks!.length} 支成分股</div>}
                 </div>
@@ -654,29 +653,29 @@ export default function SectorRotationPage() {
         </div>{/* /左側 flex */}
 
         {/* 右側：概念股列表面板 */}
-        <div className="lg:w-[300px] shrink-0 flex flex-col" style={{ borderTop: "1px solid rgba(255,255,255,0.08)", borderLeft: "none" }}
+        <div className="lg:w-[300px] shrink-0 flex flex-col" style={{ borderTop: "1px solid #E2E8F0", borderLeft: "none" }}
           // eslint-disable-next-line react/no-unknown-property
           {...({ "data-panel": true } as object)}>
-          <style>{`@media (min-width: 1024px) { [data-panel] { border-left: 1px solid rgba(255,255,255,0.08); border-top: none; } }`}</style>
+          <style>{`@media (min-width: 1024px) { [data-panel] { border-left: 1px solid #E2E8F0; border-top: none; } }`}</style>
 
           {/* 頂列：標題 + 視圖切換 */}
-          <div className="flex items-center justify-between px-4 py-2.5 shrink-0" style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-            <span className="text-xs font-semibold" style={{ color: "rgba(255,255,255,0.4)" }}>
+          <div className="flex items-center justify-between px-4 py-2.5 shrink-0" style={{ borderBottom: "1px solid #E2E8F0" }}>
+            <span className="text-xs font-semibold" style={{ color: "rgba(15,23,42,0.4)" }}>
               {drillDown
                 ? `${drillDown.name} 成分股（${drillDown.stocks?.length ?? 0}）`
                 : viewMode === "concepts" ? `概念股（${allConcepts.length}）` : "排行榜"
               }
             </span>
             {!drillDown && (
-              <div className="flex rounded-lg overflow-hidden text-xs" style={{ border: "1px solid rgba(255,255,255,0.12)" }}>
+              <div className="flex rounded-lg overflow-hidden text-xs" style={{ border: "1px solid #CBD5E1" }}>
                 <button onClick={() => setViewMode("concepts")}
                   className="px-3 py-1.5 transition"
-                  style={{ background: viewMode === "concepts" ? "rgba(255,255,255,0.12)" : "transparent", color: viewMode === "concepts" ? "white" : "rgba(255,255,255,0.5)" }}>
+                  style={{ background: viewMode === "concepts" ? "rgba(0,0,0,0.07)" : "transparent", color: viewMode === "concepts" ? "#0F172A" : "rgba(15,23,42,0.4)" }}>
                   概念股
                 </button>
                 <button onClick={() => setViewMode("rankings")}
                   className="px-3 py-1.5 transition"
-                  style={{ background: viewMode === "rankings" ? "rgba(255,255,255,0.12)" : "transparent", color: viewMode === "rankings" ? "white" : "rgba(255,255,255,0.5)" }}>
+                  style={{ background: viewMode === "rankings" ? "rgba(0,0,0,0.07)" : "transparent", color: viewMode === "rankings" ? "#0F172A" : "rgba(15,23,42,0.4)" }}>
                   排行榜
                 </button>
               </div>
@@ -691,11 +690,11 @@ export default function SectorRotationPage() {
                 const q = quadrant(s), color = Q_META[q].color;
                 return (
                   <Link key={s.code} to={`/stocks/${s.code}`}
-                    className="flex items-center gap-2 px-4 py-2.5 transition hover:bg-white/[0.06]"
-                    style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}
+                    className="flex items-center gap-2 px-4 py-2.5 transition hover:bg-black/[0.04]"
+                    style={{ borderBottom: "1px solid #F1F4F9" }}
                     onMouseEnter={() => setHovered(s)} onMouseLeave={() => setHovered(null)}>
-                    <span className="font-mono text-[10px] shrink-0 w-10" style={{ color: "rgba(255,255,255,0.3)" }}>{s.code}</span>
-                    <span className="flex-1 text-sm font-medium truncate" style={{ color: "rgba(255,255,255,0.8)" }}>{s.name}</span>
+                    <span className="font-mono text-[10px] shrink-0 w-10" style={{ color: "rgba(15,23,42,0.3)" }}>{s.code}</span>
+                    <span className="flex-1 text-sm font-medium truncate" style={{ color: "rgba(15,23,42,0.75)" }}>{s.name}</span>
                     <span className={`text-xs tabular-nums font-medium shrink-0 ${s.y >= 0 ? "text-emerald-400" : "text-orange-400"}`}>{s.y >= 0 ? "+" : ""}{s.y}</span>
                     <span className="text-xs font-semibold shrink-0" style={{ color }}>{Q_META[q].label}</span>
                   </Link>
@@ -711,13 +710,13 @@ export default function SectorRotationPage() {
                   return (
                     <div key={b.name}
                       className={`flex items-center gap-2 px-4 py-2.5 transition ${canDrill ? "cursor-pointer" : ""}`}
-                      style={{ borderBottom: "1px solid rgba(255,255,255,0.04)", background: hovered?.name === b.name ? "rgba(255,255,255,0.05)" : "transparent" }}
+                      style={{ borderBottom: "1px solid #F1F4F9", background: hovered?.name === b.name ? "rgba(0,0,0,0.04)" : "transparent" }}
                       onMouseEnter={() => setHovered(b)} onMouseLeave={() => setHovered(null)}
                       onClick={() => canDrill && handleBubbleClick(b)}>
-                      <span className="flex-1 text-sm font-medium truncate" style={{ color: hovered?.name === b.name ? "white" : "rgba(255,255,255,0.8)" }}>
+                      <span className="flex-1 text-sm font-medium truncate" style={{ color: hovered?.name === b.name ? "#0F172A" : "rgba(15,23,42,0.75)" }}>
                         {b.name}{canDrill && <span className="ml-1 text-[10px]" style={{ color: "rgba(255,255,255,0.25)" }}>↗</span>}
                       </span>
-                      <span className="text-xs tabular-nums shrink-0" style={{ color: "rgba(255,255,255,0.3)" }}>{b.rt_amt}</span>
+                      <span className="text-xs tabular-nums shrink-0" style={{ color: "rgba(15,23,42,0.3)" }}>{b.rt_amt}</span>
                       <span className={`text-xs tabular-nums font-medium shrink-0 ${b.y >= 0 ? "text-emerald-400" : "text-orange-400"}`}>{b.y >= 0 ? "+" : ""}{b.y}</span>
                       <span className="text-xs font-semibold shrink-0" style={{ color }}>{Q_META[q].label}</span>
                     </div>
@@ -730,45 +729,45 @@ export default function SectorRotationPage() {
                 <div className="px-4 pt-3 pb-2">
                   <div className="flex items-center gap-2 mb-2">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="#fde047"><path d="M12 2l2 6h6l-5 4 2 7-7-4-7 4 2-7-5-4h6z"/></svg>
-                    <span className="text-xs font-semibold" style={{ color: "rgba(255,255,255,0.9)" }}>CP 值排行</span>
-                    <span className="text-[10px]" style={{ color: "rgba(255,255,255,0.3)" }}>· 補漲機會</span>
+                    <span className="text-xs font-semibold" style={{ color: "rgba(15,23,42,0.85)" }}>CP 值排行</span>
+                    <span className="text-[10px]" style={{ color: "rgba(15,23,42,0.3)" }}>· 補漲機會</span>
                   </div>
                   {cpRanking.map(({ b }, i) => {
                     const q = quadrant(b), color = Q_META[q].color;
                     return (
                       <div key={b.name}
                         className="flex items-center gap-2 py-2 cursor-pointer rounded px-1 -mx-1 transition"
-                        style={{ borderBottom: "1px solid rgba(255,255,255,0.05)", background: hovered?.name === b.name ? "rgba(255,255,255,0.05)" : "transparent" }}
+                        style={{ borderBottom: "1px solid #F1F4F9", background: hovered?.name === b.name ? "rgba(0,0,0,0.04)" : "transparent" }}
                         onMouseEnter={() => setHovered(b)} onMouseLeave={() => setHovered(null)}
                         onClick={() => { if (b.stocks?.length) handleBubbleClick(b); }}>
-                        <span className="text-xs tabular-nums w-4 shrink-0" style={{ color: "rgba(255,255,255,0.3)" }}>{i + 1}</span>
-                        <span className="flex-1 text-sm font-medium truncate" style={{ color: hovered?.name === b.name ? "white" : "rgba(255,255,255,0.8)" }}>{b.name}</span>
-                        <span className="text-xs tabular-nums shrink-0" style={{ color: "rgba(255,255,255,0.35)" }}>{(b.amt_20d * 10).toFixed(0)}億</span>
+                        <span className="text-xs tabular-nums w-4 shrink-0" style={{ color: "rgba(15,23,42,0.3)" }}>{i + 1}</span>
+                        <span className="flex-1 text-sm font-medium truncate" style={{ color: hovered?.name === b.name ? "#0F172A" : "rgba(15,23,42,0.75)" }}>{b.name}</span>
+                        <span className="text-xs tabular-nums shrink-0" style={{ color: "rgba(15,23,42,0.35)" }}>{(b.amt_20d * 10).toFixed(0)}億</span>
                         <span className="text-xs font-semibold shrink-0" style={{ color }}>{Q_META[q].label}</span>
                       </div>
                     );
                   })}
-                  {cpRanking.length === 0 && <div className="text-xs py-2" style={{ color: "rgba(255,255,255,0.3)" }}>暫無資料</div>}
+                  {cpRanking.length === 0 && <div className="text-xs py-2" style={{ color: "rgba(15,23,42,0.3)" }}>暫無資料</div>}
                 </div>
 
                 {/* 抄底偵測 */}
-                <div className="px-4 pt-3 pb-2" style={{ borderTop: "1px solid rgba(255,255,255,0.08)" }}>
+                <div className="px-4 pt-3 pb-2" style={{ borderTop: "1px solid #E2E8F0" }}>
                   <div className="flex items-center gap-2 mb-2">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2.5"><path d="M12 22V8M5 12l7-7 7 7"/></svg>
-                    <span className="text-xs font-semibold" style={{ color: "rgba(255,255,255,0.9)" }}>抄底偵測</span>
-                    <span className="text-[10px]" style={{ color: "rgba(255,255,255,0.3)" }}>· 動能回升</span>
+                    <span className="text-xs font-semibold" style={{ color: "rgba(15,23,42,0.85)" }}>抄底偵測</span>
+                    <span className="text-[10px]" style={{ color: "rgba(15,23,42,0.3)" }}>· 動能回升</span>
                   </div>
                   {dipRanking.map(b => (
                     <div key={b.name}
                       className="flex items-center gap-2 py-2 cursor-pointer rounded px-1 -mx-1 transition"
-                      style={{ borderBottom: "1px solid rgba(255,255,255,0.05)", background: hovered?.name === b.name ? "rgba(255,255,255,0.05)" : "transparent" }}
+                      style={{ borderBottom: "1px solid #F1F4F9", background: hovered?.name === b.name ? "rgba(0,0,0,0.04)" : "transparent" }}
                       onMouseEnter={() => setHovered(b)} onMouseLeave={() => setHovered(null)}
                       onClick={() => { if (b.stocks?.length) handleBubbleClick(b); }}>
-                      <span className="flex-1 text-sm font-medium truncate" style={{ color: hovered?.name === b.name ? "white" : "rgba(255,255,255,0.8)" }}>{b.name}</span>
+                      <span className="flex-1 text-sm font-medium truncate" style={{ color: hovered?.name === b.name ? "#0F172A" : "rgba(15,23,42,0.75)" }}>{b.name}</span>
                       <span className="text-xs font-semibold tabular-nums" style={{ color: "#34d399" }}>逆勢買 +{b.y}</span>
                     </div>
                   ))}
-                  {dipRanking.length === 0 && <div className="text-xs py-2" style={{ color: "rgba(255,255,255,0.3)" }}>目前無觀望象限資料</div>}
+                  {dipRanking.length === 0 && <div className="text-xs py-2" style={{ color: "rgba(15,23,42,0.3)" }}>目前無觀望象限資料</div>}
                 </div>
               </>
             )}
@@ -779,18 +778,18 @@ export default function SectorRotationPage() {
       </div>{/* /主深色卡 */}
 
       {/* ── QA 問輪動圖 ── */}
-      <div className="rounded-2xl overflow-hidden" style={{ background: CHART_BG, border: "1px solid rgba(255,255,255,0.08)" }}>
+      <div className="rounded-2xl overflow-hidden" style={{ background: CHART_BG, border: "1px solid #E2E8F0" }}>
         <button
           onClick={() => setQaOpen(v => !v)}
-          className="w-full flex items-center justify-between px-5 py-3.5 text-left transition hover:bg-white/[0.03]"
-          style={{ borderBottom: qaOpen ? "1px solid rgba(255,255,255,0.08)" : "none" }}
+          className="w-full flex items-center justify-between px-5 py-3.5 text-left transition hover:bg-black/[0.03]"
+          style={{ borderBottom: qaOpen ? "1px solid #E2E8F0" : "none" }}
         >
           <div className="flex items-center gap-2.5">
             <span style={{ fontSize: 16 }}>💬</span>
-            <span className="text-sm font-semibold" style={{ color: "rgba(255,255,255,0.85)" }}>問輪動圖</span>
-            <span className="text-xs" style={{ color: "rgba(255,255,255,0.3)" }}>· 用 AI 解讀今日籌碼</span>
+            <span className="text-sm font-semibold" style={{ color: "rgba(15,23,42,0.85)" }}>問輪動圖</span>
+            <span className="text-xs" style={{ color: "rgba(15,23,42,0.3)" }}>· 用 AI 解讀今日籌碼</span>
           </div>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="2"
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(15,23,42,0.35)" strokeWidth="2"
             style={{ transform: qaOpen ? "rotate(180deg)" : "none", transition: "transform .2s" }}>
             <path d="M6 9l6 6 6-6"/>
           </svg>
@@ -800,11 +799,11 @@ export default function SectorRotationPage() {
           <div>
             {/* 快速問題 chips */}
             {qaMessages.length === 0 && (
-              <div className="flex flex-wrap gap-2 px-5 py-3" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+              <div className="flex flex-wrap gap-2 px-5 py-3" style={{ borderBottom: "1px solid #EEF0F4" }}>
                 {["主力資金在哪？", "哪些概念退燒了？", "有沒有剛啟動的？", "今日成交最大的是？"].map(q => (
                   <button key={q} onClick={() => sendQA(q)}
                     className="text-xs px-3 py-1.5 rounded-full transition"
-                    style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.6)" }}>
+                    style={{ background: "#F1F5F9", border: "1px solid #CBD5E1", color: "rgba(15,23,42,0.6)" }}>
                     {q}
                   </button>
                 ))}
@@ -818,14 +817,14 @@ export default function SectorRotationPage() {
                   <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
                     <div className="text-sm leading-relaxed" style={{
                       maxWidth: "85%",
-                      background: m.role === "user" ? "#1b6fd8" : "rgba(255,255,255,0.07)",
-                      color: m.role === "user" ? "#fff" : "rgba(255,255,255,0.85)",
-                      border: m.role === "ai" ? "1px solid rgba(255,255,255,0.1)" : "none",
+                      background: m.role === "user" ? "#1b6fd8" : "#F1F5F9",
+                      color: m.role === "user" ? "#fff" : "rgba(15,23,42,0.8)",
+                      border: m.role === "ai" ? "1px solid #E2E8F0" : "none",
                       borderRadius: m.role === "user" ? "14px 14px 4px 14px" : "14px 14px 14px 4px",
                       padding: "9px 14px",
                     }}>
                       {m.role === "ai" && m.text === "" && qaLoading && i === qaMessages.length - 1
-                        ? <span style={{ color: "rgba(255,255,255,0.3)" }}>思考中…</span>
+                        ? <span style={{ color: "rgba(15,23,42,0.3)" }}>思考中…</span>
                         : m.text}
                     </div>
                   </div>
@@ -834,7 +833,7 @@ export default function SectorRotationPage() {
             )}
 
             {/* 輸入列 */}
-            <div className="flex gap-2 px-4 py-3" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+            <div className="flex gap-2 px-4 py-3" style={{ borderTop: "1px solid #EEF0F4" }}>
               <input
                 value={qaInput}
                 onChange={e => setQaInput(e.target.value)}
@@ -843,9 +842,9 @@ export default function SectorRotationPage() {
                 disabled={qaLoading}
                 className="flex-1 min-w-0 text-sm rounded-xl px-3 py-2 outline-none"
                 style={{
-                  background: "rgba(255,255,255,0.07)",
-                  border: "1px solid rgba(255,255,255,0.15)",
-                  color: "rgba(255,255,255,0.88)",
+                  background: "#F8FAFC",
+                  border: "1px solid #CBD5E1",
+                  color: "rgba(15,23,42,0.85)",
                   fontFamily: "var(--font-sans)",
                 }}
               />

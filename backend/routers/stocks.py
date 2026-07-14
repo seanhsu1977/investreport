@@ -319,25 +319,25 @@ _REC_SCORE = {
 
 def _compute_score(item: dict) -> tuple[float, dict]:
     """根據各維度算總分 (0–100)。回傳 (score, breakdown)。"""
-    # Upside (cap +50%)：最高 30
+    # Upside (cap +50%)：最高 15
     up = item.get("upside_pct")
-    s_upside = max(0.0, min(30.0, (max(min(up, 50), -20) if up is not None else 0) * 0.6))
+    s_upside = max(0.0, min(15.0, (max(min(up, 50), -20) if up is not None else 0) * 0.3))
 
-    # 投顧共識：報告數 (cap 5) × 3.5  +  rec_avg × 5。最高 ~35
+    # 投顧共識：報告數 (cap 5) × 2  +  rec_avg × 3。最高 ~25
     rep_cnt = min(item.get("report_count", 0), 5)
     rec_avg = item.get("rec_avg") or 0
-    s_consensus = max(0.0, min(35.0, rep_cnt * 3.5 + rec_avg * 5))
+    s_consensus = max(0.0, min(25.0, rep_cnt * 2.0 + rec_avg * 3.0))
 
-    # 籌碼：法人 5 日淨買超（張）正向加分。每千張 1 分，最高 15
+    # 籌碼：法人 5 日淨買超（張）正向加分。每千張 1 分，最高 35
     inst = item.get("inst_5d_net") or 0
-    s_inst = max(0.0, min(15.0, inst / 1000.0))
+    s_inst = max(0.0, min(35.0, inst / 1000.0))
 
-    # 技術：多頭排列 +10、量增 +10
+    # 技術：多頭排列 +12.5、量增 +12.5
     s_tech = 0.0
     if item.get("ma_signal") == "多頭排列":
-        s_tech += 10.0
+        s_tech += 12.5
     if item.get("volume_signal") == "量增":
-        s_tech += 10.0
+        s_tech += 12.5
 
     total = round(min(100.0, s_upside + s_consensus + s_inst + s_tech), 1)
     breakdown = {

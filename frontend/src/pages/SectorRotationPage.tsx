@@ -235,6 +235,13 @@ export default function SectorRotationPage() {
       }
       if (!moved) break;
     }
+    // 邊界夾緊：確保泡泡不超出圖表區域
+    const bndX0 = PAD.left, bndX1 = PAD.left + CW;
+    const bndY0 = PAD.top,  bndY1 = PAD.top  + CH;
+    for (let i = 0; i < n; i++) {
+      pos[i].x = Math.max(bndX0 + baseR[i], Math.min(bndX1 - baseR[i], pos[i].x));
+      pos[i].y = Math.max(bndY0 + baseR[i], Math.min(bndY1 - baseR[i], pos[i].y));
+    }
     return pos;
   }, [data, drillDown, filter]);
 

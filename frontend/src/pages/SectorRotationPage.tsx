@@ -215,7 +215,8 @@ export default function SectorRotationPage() {
   const yMin = -maxAbsY * 1.2, yMax = maxAbsY * 1.2;
 
   const maxSize = Math.max(...allB.map(b => b.size), 1);
-  const r = (b: Bubble | StockBubble) => 8 + (b.size / maxSize) * 38;
+  // 除以 zoom.scale：讓泡泡在螢幕上的視覺大小固定，縮放只拉開位置間距
+  const r = (b: Bubble | StockBubble) => (8 + (b.size / maxSize) * 38) / zoom.scale;
 
   const toSvgX = (v: number) => PAD.left + ((v - xMin) / (xMax - xMin)) * CW;
   const toSvgY = (v: number) => PAD.top  + ((yMax - v) / (yMax - yMin)) * CH;

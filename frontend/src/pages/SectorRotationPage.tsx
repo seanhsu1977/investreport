@@ -62,6 +62,9 @@ export default function SectorRotationPage() {
   const [qaLoading, setQaLoading] = useState(false);
   const qaBodyRef = useRef<HTMLDivElement>(null);
 
+  // font scale (user-adjustable)
+  const [fontScale, setFontScale] = useState(1.3);
+
   // zoom / pan
   const svgRef = useRef<SVGSVGElement>(null);
   const [zoom, setZoom] = useState({ scale: 1, tx: 0, ty: 0 });
@@ -212,7 +215,7 @@ export default function SectorRotationPage() {
   const yMin = -maxAbsY * 1.2, yMax = maxAbsY * 1.2;
 
   const maxSize = Math.max(...allB.map(b => b.size), 1);
-  const r = (b: Bubble | StockBubble) => 5 + (b.size / maxSize) * 21;
+  const r = (b: Bubble | StockBubble) => 8 + (b.size / maxSize) * 38;
 
   const toSvgX = (v: number) => PAD.left + ((v - xMin) / (xMax - xMin)) * CW;
   const toSvgY = (v: number) => PAD.top  + ((yMax - v) / (yMax - yMin)) * CH;
@@ -447,8 +450,15 @@ export default function SectorRotationPage() {
           )}
 
           <div className="flex-1 relative min-w-0">
-            {/* 縮放按鈕：圖表右上角（手機桌機都顯示）*/}
+            {/* 縮放 + 字級按鈕：圖表右上角（手機桌機都顯示）*/}
             <div className="absolute top-2.5 right-2.5 z-10 flex items-center gap-1">
+              {/* 字級調整 */}
+              <button onClick={() => setFontScale(s => Math.max(0.7, +(s - 0.2).toFixed(1)))}
+                className="w-7 h-7 flex items-center justify-center rounded-lg text-xs font-bold" style={{ background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.7)" }}>A−</button>
+              <button onClick={() => setFontScale(s => Math.min(2.2, +(s + 0.2).toFixed(1)))}
+                className="w-7 h-7 flex items-center justify-center rounded-lg text-xs font-bold" style={{ background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.7)" }}>A+</button>
+              <div className="w-px h-4 mx-0.5" style={{ background: "rgba(255,255,255,0.2)" }} />
+              {/* 縮放 */}
               <button onClick={() => setZoom(prev => { const cx = W/2, cy = H/2, ns = Math.min(12, prev.scale*1.4); return { scale: ns, ...clampPan(cx-(cx-prev.tx)*(ns/prev.scale), cy-(cy-prev.ty)*(ns/prev.scale), ns) }; })}
                 className="w-7 h-7 flex items-center justify-center rounded-lg text-base font-bold" style={{ background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.7)" }}>+</button>
               <button onClick={() => setZoom(prev => { const cx = W/2, cy = H/2, ns = Math.max(0.4, prev.scale/1.4); return { scale: ns, ...clampPan(cx-(cx-prev.tx)*(ns/prev.scale), cy-(cy-prev.ty)*(ns/prev.scale), ns) }; })}
@@ -514,8 +524,8 @@ export default function SectorRotationPage() {
                     const isHov = hovered?.name === b.name;
                     const canDrill = !drillDown && "stocks" in b && (b.stocks?.length ?? 0) > 0;
                     const isMatch = !sq || b.name.toLowerCase().includes(sq);
-                    const fs1 = Math.min(rad * 0.42, 11 / zoom.scale);
-                    const fs2 = Math.min(rad * 0.36, 9.5 / zoom.scale);
+                    const fs1 = Math.min(rad * 0.44, 14 / zoom.scale) * fontScale;
+                    const fs2 = Math.min(rad * 0.37, 12 / zoom.scale) * fontScale;
                     return (
                       <g key={b.name} onMouseEnter={() => !dragging && setHovered(b)} onMouseLeave={() => setHovered(null)}
                         onClick={() => handleBubbleClick(b)} style={{ cursor: dragging ? "grabbing" : canDrill ? "zoom-in" : "default" }}>

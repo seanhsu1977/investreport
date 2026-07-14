@@ -260,8 +260,8 @@ export default function SectorRotationPage() {
   const yMin = -maxAbsY * 1.2, yMax = maxAbsY * 1.2;
 
   const maxSize = Math.max(...allB.map(b => b.size), 1);
-  // 除以 zoom.scale：讓泡泡在螢幕上的視覺大小固定，縮放只拉開位置間距
-  const r = (b: Bubble | StockBubble) => (8 + (b.size / maxSize) * 38) / zoom.scale;
+  // 除以 √zoom：放大時泡泡等比成長（視覺 = base×√zoom），但增速慢於間距，不重疊
+  const r = (b: Bubble | StockBubble) => (8 + (b.size / maxSize) * 38) / Math.sqrt(zoom.scale);
 
   const toSvgX = (v: number) => PAD.left + ((v - xMin) / (xMax - xMin)) * CW;
   const toSvgY = (v: number) => PAD.top  + ((yMax - v) / (yMax - yMin)) * CH;
@@ -572,8 +572,9 @@ export default function SectorRotationPage() {
                     const isHov = hovered?.name === b.name;
                     const canDrill = !drillDown && "stocks" in b && (b.stocks?.length ?? 0) > 0;
                     const isMatch = !sq || b.name.toLowerCase().includes(sq);
-                    const fs1 = Math.min(rad * 0.44, 14 / zoom.scale) * fontScale;
-                    const fs2 = Math.min(rad * 0.37, 12 / zoom.scale) * fontScale;
+                    const sqz = Math.sqrt(zoom.scale);
+                    const fs1 = Math.min(rad * 0.44, 14 / sqz) * fontScale;
+                    const fs2 = Math.min(rad * 0.37, 12 / sqz) * fontScale;
                     return (
                       <g key={b.name} onMouseEnter={() => !dragging && setHovered(b)} onMouseLeave={() => setHovered(null)}
                         onClick={() => handleBubbleClick(b)} style={{ cursor: dragging ? "grabbing" : canDrill ? "zoom-in" : "default" }}>

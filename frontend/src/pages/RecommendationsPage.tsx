@@ -70,10 +70,10 @@ function ScoreCard({ item, rank, onAskReason }: { item: RecommendationItem; rank
   const sb = item.score_breakdown;
 
   const bars: [string, number, number, string][] = [
-    ["Upside", sb.upside, 30, "#1B6FD8"],
-    ["共識", sb.consensus, 35, "#7C3AED"],
-    ["籌碼", sb.institutional, 15, "#F59E0B"],
-    ["技術", sb.technical, 20, "#10B981"],
+    ["Upside", sb.upside, 15, "#1B6FD8"],
+    ["共識", sb.consensus, 25, "#7C3AED"],
+    ["籌碼", sb.institutional, 35, "#F59E0B"],
+    ["技術", sb.technical, 25, "#10B981"],
   ];
 
   return (
@@ -647,17 +647,17 @@ export default function RecommendationsPage() {
             <div className="px-5 py-3 border-b border-gray-100 text-xs space-y-1.5">
               <div className="text-gray-500 mb-1">評分分解</div>
               {([
-                ["Upside 空間", reasonOpen.score_breakdown.upside, 30, "bg-blue-400",
+                ["Upside 空間", reasonOpen.score_breakdown.upside, 15, "bg-blue-400",
                   reasonOpen.upside_pct != null ? `${reasonOpen.upside_pct > 0 ? "+" : ""}${reasonOpen.upside_pct}%` : "—"],
-                ["投顧共識", reasonOpen.score_breakdown.consensus, 35, "bg-purple-400",
+                ["投顧共識", reasonOpen.score_breakdown.consensus, 25, "bg-purple-400",
                   `${reasonOpen.report_count} 篇・${reasonOpen.rec_avg?.toFixed(1) ?? "—"}/3`],
-                ["籌碼配合", reasonOpen.score_breakdown.institutional, 15, "bg-amber-400",
+                ["籌碼配合", reasonOpen.score_breakdown.institutional, 35, "bg-amber-400",
                   reasonOpen.inst_5d_net != null
                     ? (reasonOpen.inst_5d_net >= 0
                         ? `買超 +${reasonOpen.inst_5d_net.toLocaleString()}張`
                         : `賣超 ${reasonOpen.inst_5d_net.toLocaleString()}張`)
                     : "無資料"],
-                ["技術面", reasonOpen.score_breakdown.technical, 20, "bg-green-400",
+                ["技術面", reasonOpen.score_breakdown.technical, 25, "bg-green-400",
                   [reasonOpen.ma_signal, reasonOpen.volume_signal].filter(Boolean).join("・") || "無資料"],
               ] as const).map(([label, val, max, color, hint]) => (
                 <div key={label} className="flex items-center gap-2">
@@ -724,10 +724,10 @@ export default function RecommendationsPage() {
       {/* ── Scoring note ── */}
       <section className="bg-white border border-[#DDE2EC] rounded-xl p-4 text-[11px] text-[#6B7A99] flex flex-wrap gap-x-6 gap-y-1">
         <span className="font-semibold text-[#0D1B2A]">評分構成（0–100 分）</span>
-        <span><span className="font-medium text-[#0D1B2A]">Upside 空間</span> 0–30 分，cap +50%</span>
-        <span><span className="font-medium text-[#0D1B2A]">投顧共識</span> 0–35 分，報告數 × 評等平均</span>
-        <span><span className="font-medium text-[#0D1B2A]">籌碼配合</span> 0–15 分，法人 5 日淨買超</span>
-        <span><span className="font-medium text-[#0D1B2A]">技術面</span> 0–20 分，多頭排列 +10、量增 +10</span>
+        <span><span className="font-medium text-[#0D1B2A]">Upside 空間</span> 0–15 分，cap +50%</span>
+        <span><span className="font-medium text-[#0D1B2A]">投顧共識</span> 0–25 分，報告數 × 評等平均</span>
+        <span><span className="font-medium text-[#0D1B2A]">籌碼配合</span> 0–35 分，法人 5 日淨買超</span>
+        <span><span className="font-medium text-[#0D1B2A]">技術面</span> 0–25 分，多頭排列 +12.5、量增 +12.5</span>
       </section>
 
       </>}

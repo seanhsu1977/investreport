@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { stocksApi } from "../api/client";
 
@@ -221,6 +221,43 @@ export default function SectorRotationPage() {
   const toSvgX = (v: number) => PAD.left + ((v - xMin) / (xMax - xMin)) * CW;
   const toSvgY = (v: number) => PAD.top  + ((yMax - v) / (yMax - yMin)) * CH;
   const ox = toSvgX(0), oy = toSvgY(0);
+
+  // 碰撞分離：用 zoom=1 的基礎半徑跑迭代推開，縮放不重算避免抖動
+  const adjustedPositions = useMemo(() => {
+    const n = activeBubbles.length;
+    if (n === 0) return [] as { x: number; y: number }[];
+    const pos = activeBubbles.map(b => ({ x: toSvgX(b.x), y: toSvgY(b.y) }));
+    const baseR = activeBubbles.map(b => 8 + (b.size / maxSize) * 38);
+    const PAD_PX = 5; // 各泡泡邊緣保留的 SVG px 間距
+    for (let iter = 0; iter < 150; iter++) {
+      let moved = false;
+      for (let i = 0; i < n; i++) {
+        for (let j = i + 1; j < n; j++) {
+          const dx = pos[j].x - pos[i].x;
+          const dy = pos[j].y - pos[i].y;
+          const dist2 = dx * dx + dy * dy;
+          const minD = baseR[i] + baseR[j] + PAD_PX;
+          if (dist2 < minD * minD) {
+            const dist = Math.sqrt(dist2) || 0.01;
+            const push = minD - dist;
+            const nx = dx / dist, ny = dy / dist;
+            // 大泡泡（面積大）移動少
+            const ai = baseR[i] * baseR[i], aj = baseR[j] * baseR[j];
+            const wi = aj / (ai + aj), wj = ai / (ai + aj);
+            pos[i].x -= nx * push * wi;
+            pos[i].y -= ny * push * wi;
+            pos[j].x += nx * push * wj;
+            pos[j].y += ny * push * wj;
+            moved = true;
+          }
+        }
+      }
+      if (!moved) break;
+    }
+    return pos;
+  // toSvgX/Y 依賴 xMin/xMax/yMin/yMax，已列入 deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, drillDown, filter, xMin, xMax, yMin, yMax, maxSize]);
 
   const counts = [0, 1, 2, 3].map(q => data.bubbles.filter(b => quadrant(b) === q).length);
 
@@ -518,9 +555,12 @@ export default function SectorRotationPage() {
                     </g>;
                   })}
                   {/* 泡泡 */}
-                  {activeBubbles.map(b => {
+                  {activeBubbles.map((b, idx) => {
                     const q = quadrant(b), color = Q_META[q].color;
-                    const bx = toSvgX(b.x), by = toSvgY(b.y), rad = r(b);
+                    const ap = adjustedPositions[idx];
+                    const bx = ap ? ap.x : toSvgX(b.x);
+                    const by = ap ? ap.y : toSvgY(b.y);
+                    const rad = r(b);
                     const visualR = rad * zoom.scale;
                     const isHov = hovered?.name === b.name;
                     const canDrill = !drillDown && "stocks" in b && (b.stocks?.length ?? 0) > 0;

@@ -546,7 +546,7 @@ async def get_recommendations(
     import time as _time
     from models import RecommendationCache
     _logger = _log.getLogger(__name__)
-    cache_key = f"{days}_{min_reports}_{rec_filter}_{limit}"
+    cache_key = f"v2_{days}_{min_reports}_{rec_filter}_{limit}"
 
     # 1. in-memory cache（最快，10 分鐘 TTL）；force=True 時跳過
     if not force:

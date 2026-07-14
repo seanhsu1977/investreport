@@ -59,6 +59,7 @@ export default function StockPage() {
   const [activeTab, setActiveTab] = useState<StockTabKey>("reports");
   const [kline, setKline] = useState<KlineResponse | null>(null);
   const [klineLoading, setKlineLoading] = useState(true);
+  const [klineError, setKlineError] = useState(false);
   // time-scale sync between K-line chart and KDJ chart
   const klineTs = useRef<ITimeScaleApi<UTCTimestamp> | null>(null);
   const kdjTs   = useRef<ITimeScaleApi<UTCTimestamp> | null>(null);
@@ -98,7 +99,8 @@ export default function StockPage() {
       .catch(() => {})
       .finally(() => setSignalLoading(false));
     setKlineLoading(true);
-    stocksApi.kline(code).then(setKline).catch(() => {}).finally(() => setKlineLoading(false));
+    setKlineError(false);
+    stocksApi.kline(code).then(setKline).catch(() => setKlineError(true)).finally(() => setKlineLoading(false));
     if (user) {
       watchlistApi.get().then((list) => {
         setInWatchlist(list.some((item) => item.stock_code === code));
@@ -775,8 +777,21 @@ export default function StockPage() {
                   }
                 }} />
               ) : (
-                <div className="h-[300px] flex items-center justify-center bg-[#122548] text-white/40 text-sm">
-                  無法載入 K 線資料
+                <div className="h-[300px] flex flex-col items-center justify-center gap-3 bg-[#122548] text-white/40 text-sm">
+                  <span>無法載入 K 線資料</span>
+                  {klineError && (
+                    <button
+                      onClick={() => {
+                        if (!code) return;
+                        setKlineLoading(true);
+                        setKlineError(false);
+                        stocksApi.kline(code).then(setKline).catch(() => setKlineError(true)).finally(() => setKlineLoading(false));
+                      }}
+                      className="px-3 py-1 rounded text-xs bg-white/10 hover:bg-white/20 text-white/60 transition"
+                    >
+                      重試
+                    </button>
+                  )}
                 </div>
               )}
             </div>

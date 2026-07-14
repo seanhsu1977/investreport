@@ -193,6 +193,51 @@ export default function SectorRotationPage() {
     if (qaBodyRef.current) qaBodyRef.current.scrollTop = qaBodyRef.current.scrollHeight;
   }, [qaMessages]);
 
+  // 碰撞分離：必須在 early return 之前（Rules of Hooks）
+  const adjustedPositions = useMemo(() => {
+    if (!data) return [] as { x: number; y: number }[];
+    const allB_ = drillDown ? (drillDown.stocks ?? []) : data.bubbles;
+    const maxAbs_  = Math.max(...allB_.map(b => Math.abs(b.x)), 1);
+    const maxAbsY_ = Math.max(...allB_.map(b => Math.abs(b.y)), 1);
+    const xMin_ = -maxAbs_ * 1.2, xMax_ = maxAbs_ * 1.2;
+    const yMin_ = -maxAbsY_ * 1.2, yMax_ = maxAbsY_ * 1.2;
+    const maxSize_ = Math.max(...allB_.map(b => b.size), 1);
+    const svgX = (v: number) => PAD.left + ((v - xMin_) / (xMax_ - xMin_)) * CW;
+    const svgY = (v: number) => PAD.top  + ((yMax_ - v) / (yMax_ - yMin_)) * CH;
+    const active = drillDown ? (drillDown.stocks ?? []) :
+      (filter === null ? data.bubbles : data.bubbles.filter(b => quadrant(b) === filter));
+    const n = active.length;
+    if (n === 0) return [];
+    const pos = active.map(b => ({ x: svgX(b.x), y: svgY(b.y) }));
+    const baseR = active.map(b => 8 + (b.size / maxSize_) * 38);
+    const GAP = 5;
+    for (let iter = 0; iter < 150; iter++) {
+      let moved = false;
+      for (let i = 0; i < n; i++) {
+        for (let j = i + 1; j < n; j++) {
+          const dx = pos[j].x - pos[i].x;
+          const dy = pos[j].y - pos[i].y;
+          const dist2 = dx * dx + dy * dy;
+          const minD = baseR[i] + baseR[j] + GAP;
+          if (dist2 < minD * minD) {
+            const dist = Math.sqrt(dist2) || 0.01;
+            const push = minD - dist;
+            const nx = dx / dist, ny = dy / dist;
+            const ai = baseR[i] * baseR[i], aj = baseR[j] * baseR[j];
+            const wi = aj / (ai + aj), wj = ai / (ai + aj);
+            pos[i].x -= nx * push * wi;
+            pos[i].y -= ny * push * wi;
+            pos[j].x += nx * push * wj;
+            pos[j].y += ny * push * wj;
+            moved = true;
+          }
+        }
+      }
+      if (!moved) break;
+    }
+    return pos;
+  }, [data, drillDown, filter]);
+
   if (loading) return (
     <div className="min-h-screen flex flex-col items-center justify-center gap-2 text-gray-500">
       <div className="text-base">概念股籌碼資料計算中…</div>
@@ -221,43 +266,6 @@ export default function SectorRotationPage() {
   const toSvgX = (v: number) => PAD.left + ((v - xMin) / (xMax - xMin)) * CW;
   const toSvgY = (v: number) => PAD.top  + ((yMax - v) / (yMax - yMin)) * CH;
   const ox = toSvgX(0), oy = toSvgY(0);
-
-  // 碰撞分離：用 zoom=1 的基礎半徑跑迭代推開，縮放不重算避免抖動
-  const adjustedPositions = useMemo(() => {
-    const n = activeBubbles.length;
-    if (n === 0) return [] as { x: number; y: number }[];
-    const pos = activeBubbles.map(b => ({ x: toSvgX(b.x), y: toSvgY(b.y) }));
-    const baseR = activeBubbles.map(b => 8 + (b.size / maxSize) * 38);
-    const PAD_PX = 5; // 各泡泡邊緣保留的 SVG px 間距
-    for (let iter = 0; iter < 150; iter++) {
-      let moved = false;
-      for (let i = 0; i < n; i++) {
-        for (let j = i + 1; j < n; j++) {
-          const dx = pos[j].x - pos[i].x;
-          const dy = pos[j].y - pos[i].y;
-          const dist2 = dx * dx + dy * dy;
-          const minD = baseR[i] + baseR[j] + PAD_PX;
-          if (dist2 < minD * minD) {
-            const dist = Math.sqrt(dist2) || 0.01;
-            const push = minD - dist;
-            const nx = dx / dist, ny = dy / dist;
-            // 大泡泡（面積大）移動少
-            const ai = baseR[i] * baseR[i], aj = baseR[j] * baseR[j];
-            const wi = aj / (ai + aj), wj = ai / (ai + aj);
-            pos[i].x -= nx * push * wi;
-            pos[i].y -= ny * push * wi;
-            pos[j].x += nx * push * wj;
-            pos[j].y += ny * push * wj;
-            moved = true;
-          }
-        }
-      }
-      if (!moved) break;
-    }
-    return pos;
-  // toSvgX/Y 依賴 xMin/xMax/yMin/yMax，已列入 deps
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, drillDown, filter, xMin, xMax, yMin, yMax, maxSize]);
 
   const counts = [0, 1, 2, 3].map(q => data.bubbles.filter(b => quadrant(b) === q).length);
 

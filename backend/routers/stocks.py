@@ -318,31 +318,52 @@ _REC_SCORE = {
 
 
 def _compute_score(item: dict) -> tuple[float, dict]:
-    """根據各維度算總分 (0–100)。回傳 (score, breakdown)。"""
-    # Upside (cap +50%)：最高 15
+    """分析師訊號評分 (0–100)，用於排行。upside + 共識 + 報告新鮮度。"""
+    # Upside (cap +50%)：最高 40
     up = item.get("upside_pct")
-    s_upside = max(0.0, min(15.0, (max(min(up, 50), -20) if up is not None else 0) * 0.3))
+    s_upside = max(0.0, min(40.0, (min(up, 50) * 0.8) if up is not None else 0.0))
 
-    # 投顧共識：報告數 (cap 5) × 2  +  rec_avg × 3。最高 ~25
+    # 投顧共識：報告數 (cap 5) × 4 + rec_avg × 4。最高 40
     rep_cnt = min(item.get("report_count", 0), 5)
     rec_avg = item.get("rec_avg") or 0
-    s_consensus = max(0.0, min(25.0, rep_cnt * 2.0 + rec_avg * 3.0))
+    s_consensus = max(0.0, min(40.0, rep_cnt * 4.0 + rec_avg * 4.0))
 
-    # 籌碼：法人 5 日淨買超（張）正向加分。每千張 1 分，最高 35
-    inst = item.get("inst_5d_net") or 0
-    s_inst = max(0.0, min(35.0, inst / 1000.0))
+    # 報告新鮮度：最新報告距今天數，180 天歸零。最高 20
+    latest_date = item.get("latest_report_date")
+    s_fresh = 0.0
+    if latest_date:
+        if isinstance(latest_date, str):
+            try:
+                from datetime import date as _date
+                latest_date = _date.fromisoformat(latest_date)
+            except Exception:
+                latest_date = None
+        if latest_date:
+            days_old = (date.today() - latest_date).days
+            s_fresh = max(0.0, 20.0 * (1 - days_old / 180))
 
-    # 技術：多頭排列 +12.5、量增 +12.5
-    s_tech = 0.0
-    if item.get("ma_signal") == "多頭排列":
-        s_tech += 12.5
-    if item.get("volume_signal") == "量增":
-        s_tech += 12.5
-
-    total = round(min(100.0, s_upside + s_consensus + s_inst + s_tech), 1)
+    total = round(min(100.0, s_upside + s_consensus + s_fresh), 1)
     breakdown = {
         "upside": round(s_upside, 1),
         "consensus": round(s_consensus, 1),
+        "freshness": round(s_fresh, 1),
+    }
+    return total, breakdown
+
+
+def _compute_market_score(item: dict) -> tuple[float, dict]:
+    """市場即時訊號評分 (0–100)，僅展示不排序。籌碼 + 技術面。"""
+    inst = item.get("inst_5d_net") or 0
+    s_inst = max(0.0, min(50.0, inst / 1000.0))
+
+    s_tech = 0.0
+    if item.get("ma_signal") == "多頭排列":
+        s_tech += 25.0
+    if item.get("volume_signal") == "量增":
+        s_tech += 25.0
+
+    total = round(s_inst + s_tech, 1)
+    breakdown = {
         "institutional": round(s_inst, 1),
         "technical": round(s_tech, 1),
     }
@@ -477,6 +498,7 @@ def _build_result(candidates: list[dict], price_map: dict, signal_map: dict, ins
         inst_rows = inst_map.get(code) or []
         c["inst_5d_net"] = int(sum((d.get("total") or 0) for d in inst_rows))
         c["score"], c["score_breakdown"] = _compute_score(c)
+        c["market_score"], c["market_breakdown"] = _compute_market_score(c)
         items.append(c)
 
     items.sort(key=lambda x: x["score"], reverse=True)
@@ -546,7 +568,7 @@ async def get_recommendations(
     import time as _time
     from models import RecommendationCache
     _logger = _log.getLogger(__name__)
-    cache_key = f"v2_{days}_{min_reports}_{rec_filter}_{limit}"
+    cache_key = f"v3_{days}_{min_reports}_{rec_filter}_{limit}"
 
     # 1. in-memory cache（最快，10 分鐘 TTL）；force=True 時跳過
     if not force:

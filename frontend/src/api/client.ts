@@ -96,6 +96,10 @@ export interface RecommendationItem {
   score_breakdown: {
     upside: number;
     consensus: number;
+    freshness: number;
+  };
+  market_score: number;
+  market_breakdown: {
     institutional: number;
     technical: number;
   };

@@ -68,12 +68,17 @@ function ScoreCard({ item, rank, onAskReason }: { item: RecommendationItem; rank
       : "before:bg-gradient-to-r before:from-[#B45309] before:to-[#D97706]";
 
   const sb = item.score_breakdown;
+  const mb = item.market_breakdown;
 
-  const bars: [string, number, number, string][] = [
-    ["Upside", sb.upside, 15, "#1B6FD8"],
-    ["共識", sb.consensus, 25, "#7C3AED"],
-    ["籌碼", sb.institutional, 35, "#F59E0B"],
-    ["技術", sb.technical, 25, "#10B981"],
+  const analystBars: [string, number, number, string][] = [
+    ["Upside", sb.upside, 40, "#1B6FD8"],
+    ["共識", sb.consensus, 40, "#7C3AED"],
+    ["新鮮度", sb.freshness, 20, "#06B6D4"],
+  ];
+
+  const marketBars: [string, number, number, string][] = [
+    ["籌碼", mb?.institutional ?? 0, 50, "#F59E0B"],
+    ["技術", mb?.technical ?? 0, 50, "#10B981"],
   ];
 
   return (
@@ -110,21 +115,37 @@ function ScoreCard({ item, rank, onAskReason }: { item: RecommendationItem; rank
         <span className="text-[13px] text-[#6B7A99]">{item.report_count} 篇 · 共識 {item.rec_avg.toFixed(1)}/3</span>
       </div>
 
-      {/* score badge */}
-      <div className="inline-flex items-baseline gap-1 bg-[#EEF3FC] rounded-lg px-2.5 py-1 mt-3">
-        <span className="text-2xl font-extrabold text-[#0B1E3D]">{item.score.toFixed(0)}</span>
-        <span className="text-xs text-[#6B7A99]">/ 100</span>
+      {/* score badges */}
+      <div className="flex items-center gap-2 mt-3 flex-wrap">
+        <div className="inline-flex items-baseline gap-1 bg-[#EEF3FC] rounded-lg px-2.5 py-1">
+          <span className="text-2xl font-extrabold text-[#0B1E3D]">{item.score.toFixed(0)}</span>
+          <span className="text-xs text-[#6B7A99]">/ 100</span>
+        </div>
+        <div className="inline-flex items-center gap-1 bg-[#F5F5F5] rounded-lg px-2 py-1">
+          <span className="text-[10px] text-[#6B7A99]">市場</span>
+          <span className="text-sm font-bold text-[#6B7A99]">{(item.market_score ?? 0).toFixed(0)}</span>
+        </div>
       </div>
 
-      {/* mini score bars */}
+      {/* analyst bars */}
       <div className="mt-3 flex flex-col gap-2">
-        {bars.map(([label, val, max, color]) => (
+        {analystBars.map(([label, val, max, color]) => (
           <div key={label} className="flex items-center gap-2">
             <span className="text-xs text-[#6B7A99] w-[54px] shrink-0">{label}</span>
             <div className="flex-1 h-1.5 bg-[#EEF0F6] rounded">
-              <div className="h-full rounded" style={{ width: `${(val / max) * 100}%`, background: color }} />
+              <div className="h-full rounded" style={{ width: `${Math.min(100, (val / max) * 100)}%`, background: color }} />
             </div>
             <span className="text-xs text-[#6B7A99] w-6 text-right shrink-0">{val.toFixed(0)}</span>
+          </div>
+        ))}
+        <div className="border-t border-[#EEF0F6] my-0.5" />
+        {marketBars.map(([label, val, max, color]) => (
+          <div key={label} className="flex items-center gap-2">
+            <span className="text-xs text-[#9CA3AF] w-[54px] shrink-0">{label}</span>
+            <div className="flex-1 h-1.5 bg-[#EEF0F6] rounded">
+              <div className="h-full rounded" style={{ width: `${Math.min(100, (val / max) * 100)}%`, background: color }} />
+            </div>
+            <span className="text-xs text-[#9CA3AF] w-6 text-right shrink-0">{val.toFixed(0)}</span>
           </div>
         ))}
       </div>
@@ -645,27 +666,41 @@ export default function RecommendationsPage() {
               </div>
             </div>
             <div className="px-5 py-3 border-b border-gray-100 text-xs space-y-1.5">
-              <div className="text-gray-500 mb-1">評分分解</div>
+              <div className="text-gray-500 mb-1">分析師評分（排名依據）</div>
               {([
-                ["Upside 空間", reasonOpen.score_breakdown.upside, 15, "bg-blue-400",
+                ["Upside 空間", reasonOpen.score_breakdown.upside, 40, "bg-blue-400",
                   reasonOpen.upside_pct != null ? `${reasonOpen.upside_pct > 0 ? "+" : ""}${reasonOpen.upside_pct}%` : "—"],
-                ["投顧共識", reasonOpen.score_breakdown.consensus, 25, "bg-purple-400",
+                ["投顧共識", reasonOpen.score_breakdown.consensus, 40, "bg-purple-400",
                   `${reasonOpen.report_count} 篇・${reasonOpen.rec_avg?.toFixed(1) ?? "—"}/3`],
-                ["籌碼配合", reasonOpen.score_breakdown.institutional, 35, "bg-amber-400",
+                ["報告新鮮度", reasonOpen.score_breakdown.freshness, 20, "bg-cyan-400",
+                  reasonOpen.latest_report_date ? `最新 ${reasonOpen.latest_report_date}` : "—"],
+              ] as const).map(([label, val, max, color, hint]) => (
+                <div key={label} className="flex items-center gap-2">
+                  <span className="w-20 shrink-0 text-gray-600">{label}</span>
+                  <div className="flex-1 h-2 bg-gray-100 rounded overflow-hidden">
+                    <div className={`h-full ${color}`} style={{ width: `${Math.min(100, (val / max) * 100)}%` }} />
+                  </div>
+                  <span className="w-14 shrink-0 text-right tabular-nums text-gray-600">{val.toFixed(1)}/{max}</span>
+                  <span className="w-32 shrink-0 text-gray-400 truncate">{hint}</span>
+                </div>
+              ))}
+              <div className="text-gray-400 pt-1">市場訊號（僅參考）</div>
+              {([
+                ["籌碼配合", reasonOpen.market_breakdown?.institutional ?? 0, 50, "bg-amber-400",
                   reasonOpen.inst_5d_net != null
                     ? (reasonOpen.inst_5d_net >= 0
                         ? `買超 +${reasonOpen.inst_5d_net.toLocaleString()}張`
                         : `賣超 ${reasonOpen.inst_5d_net.toLocaleString()}張`)
                     : "無資料"],
-                ["技術面", reasonOpen.score_breakdown.technical, 25, "bg-green-400",
+                ["技術面", reasonOpen.market_breakdown?.technical ?? 0, 50, "bg-green-400",
                   [reasonOpen.ma_signal, reasonOpen.volume_signal].filter(Boolean).join("・") || "無資料"],
               ] as const).map(([label, val, max, color, hint]) => (
                 <div key={label} className="flex items-center gap-2">
-                  <span className="w-20 shrink-0 text-gray-600">{label}</span>
+                  <span className="w-20 shrink-0 text-gray-400">{label}</span>
                   <div className="flex-1 h-2 bg-gray-100 rounded overflow-hidden">
-                    <div className={`h-full ${color}`} style={{ width: `${(val / max) * 100}%` }} />
+                    <div className={`h-full ${color} opacity-60`} style={{ width: `${Math.min(100, (val / max) * 100)}%` }} />
                   </div>
-                  <span className="w-14 shrink-0 text-right tabular-nums text-gray-600">{val.toFixed(1)}/{max}</span>
+                  <span className="w-14 shrink-0 text-right tabular-nums text-gray-400">{val.toFixed(1)}/{max}</span>
                   <span className="w-32 shrink-0 text-gray-400 truncate">{hint}</span>
                 </div>
               ))}
@@ -724,10 +759,10 @@ export default function RecommendationsPage() {
       {/* ── Scoring note ── */}
       <section className="bg-white border border-[#DDE2EC] rounded-xl p-4 text-[11px] text-[#6B7A99] flex flex-wrap gap-x-6 gap-y-1">
         <span className="font-semibold text-[#0D1B2A]">評分構成（0–100 分）</span>
-        <span><span className="font-medium text-[#0D1B2A]">Upside 空間</span> 0–15 分，cap +50%</span>
-        <span><span className="font-medium text-[#0D1B2A]">投顧共識</span> 0–25 分，報告數 × 評等平均</span>
-        <span><span className="font-medium text-[#0D1B2A]">籌碼配合</span> 0–35 分，法人 5 日淨買超</span>
-        <span><span className="font-medium text-[#0D1B2A]">技術面</span> 0–25 分，多頭排列 +12.5、量增 +12.5</span>
+        <span><span className="font-medium text-[#0D1B2A]">Upside 空間</span> 0–40 分，cap +50%</span>
+        <span><span className="font-medium text-[#0D1B2A]">投顧共識</span> 0–40 分，報告數 × 評等平均</span>
+        <span><span className="font-medium text-[#0D1B2A]">報告新鮮度</span> 0–20 分，180 天歸零</span>
+        <span className="text-[#9CA3AF]">市場訊號（參考）：籌碼 0–50、技術面 0–50，不計入排名</span>
       </section>
 
       </>}

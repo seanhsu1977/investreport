@@ -62,8 +62,6 @@ export default function SectorRotationPage() {
   const [qaLoading, setQaLoading] = useState(false);
   const qaBodyRef = useRef<HTMLDivElement>(null);
 
-  // font scale (user-adjustable)
-  const [fontScale, setFontScale] = useState(1.3);
 
   // zoom / pan
   const svgRef = useRef<SVGSVGElement>(null);
@@ -452,14 +450,8 @@ export default function SectorRotationPage() {
           )}
 
           <div className="flex-1 relative min-w-0">
-            {/* 縮放 + 字級按鈕：圖表右上角（手機桌機都顯示）*/}
+            {/* 縮放按鈕：圖表右上角 */}
             <div className="absolute top-2.5 right-2.5 z-10 flex items-center gap-1">
-              {/* 字級調整 */}
-              <button onClick={() => setFontScale(s => Math.max(0.7, +(s - 0.2).toFixed(1)))}
-                className="w-7 h-7 flex items-center justify-center rounded-lg text-xs font-bold" style={{ background: "rgba(0,0,0,0.05)", border: "1px solid #CBD5E1", color: "rgba(0,0,0,0.6)" }}>A−</button>
-              <button onClick={() => setFontScale(s => Math.min(2.2, +(s + 0.2).toFixed(1)))}
-                className="w-7 h-7 flex items-center justify-center rounded-lg text-xs font-bold" style={{ background: "rgba(0,0,0,0.05)", border: "1px solid #CBD5E1", color: "rgba(0,0,0,0.6)" }}>A+</button>
-              <div className="w-px h-4 mx-0.5" style={{ background: "rgba(255,255,255,0.2)" }} />
               {/* 縮放 */}
               <button onClick={() => setZoom(prev => { const cx = W/2, cy = H/2, ns = Math.min(12, prev.scale*1.4); return { scale: ns, ...clampPan(cx-(cx-prev.tx)*(ns/prev.scale), cy-(cy-prev.ty)*(ns/prev.scale), ns) }; })}
                 className="w-7 h-7 flex items-center justify-center rounded-lg text-base font-bold" style={{ background: "rgba(0,0,0,0.05)", border: "1px solid #CBD5E1", color: "rgba(0,0,0,0.6)" }}>+</button>
@@ -528,9 +520,12 @@ export default function SectorRotationPage() {
                     const isHov = hovered?.name === b.name;
                     const canDrill = !drillDown && "stocks" in b && (b.stocks?.length ?? 0) > 0;
                     const isMatch = !sq || b.name.toLowerCase().includes(sq);
-                    const sqz = Math.sqrt(zoom.scale);
-                    const fs1 = Math.min(rad * 0.44, 14 / sqz) * fontScale;
-                    const fs2 = Math.min(rad * 0.37, 12 / sqz) * fontScale;
+                    const displayName = b.name.length > 6 ? b.name.slice(0, 5) + "…" : b.name;
+                    const amtStr = fmtAmt(b.x);
+                    // 依泡泡直徑自動適配：中文字約 1.05em，數字/ASCII 約 0.62em
+                    const maxW = rad * 1.76; // 88% of diameter
+                    const fs1 = Math.min(maxW / (displayName.length * 1.05), rad * 0.52);
+                    const fs2 = Math.min(maxW / (amtStr.length * 0.62), fs1 * 0.82);
                     return (
                       <g key={b.name} onMouseEnter={() => !dragging && setHovered(b)} onMouseLeave={() => setHovered(null)}
                         onClick={() => handleBubbleClick(b)} style={{ cursor: dragging ? "grabbing" : canDrill ? "zoom-in" : "default" }}>
@@ -541,7 +536,7 @@ export default function SectorRotationPage() {
                           <text x={bx} y={by + (visualR > 20 ? -fs1 * 0.6 : fs1 * 0.35)} fontSize={fs1} fill="white"
                             stroke="rgba(0,0,0,0.55)" strokeWidth={1.5 / zoom.scale} paintOrder="stroke"
                             textAnchor="middle" fontWeight={700} pointerEvents="none">
-                            {b.name.length > 6 ? b.name.slice(0, 5) + "…" : b.name}
+                            {displayName}
                           </text>
                         )}
                         {visualR > 20 && isMatch && (

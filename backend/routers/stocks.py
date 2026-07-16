@@ -1767,22 +1767,22 @@ async def _compute_sector_rotation() -> None:
     global _sector_computing
     _sector_computing = True
     try:
-        # Step 1: 取概念股清單
+        # Step 1: 取概念股＋產業清單（掃全部 group，去重後比對自訂清單）
         async with httpx.AsyncClient(timeout=15) as client:
             resp = await client.get(f"{_NSTOCK_STRATEGY}?agent=StockChip")
             resp.raise_for_status()
             raw_groups = resp.json()
 
+        seen_keys: set[str] = set()
         concept_keys: list[tuple[str, str]] = []
         for group in raw_groups:
-            if group.get("groupName") == "概念":
-                for sg in group.get("subGroup", []):
-                    for cond in sg.get("condition", []):
-                        k = cond.get("key", "")
-                        n = cond.get("name", k)
-                        if k:
-                            concept_keys.append((k, n))
-                break
+            for sg in group.get("subGroup", []):
+                for cond in sg.get("condition", []):
+                    k = cond.get("key", "")
+                    n = cond.get("name", k)
+                    if k and k not in seen_keys:
+                        seen_keys.add(k)
+                        concept_keys.append((k, n))
 
         # 依自訂清單排序，過濾掉不在清單中的族群
         concept_keys.sort(key=lambda kn: _sector_match_index(kn[1]))
@@ -1921,6 +1921,50 @@ async def _compute_sector_rotation() -> None:
         pass
     finally:
         _sector_computing = False
+
+
+@router.get("/sector-rotation/debug-concepts")
+async def sector_rotation_debug_concepts():
+    """列出 nstock 所有族群 key/name，以及是否有比對到自訂清單"""
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.get(f"{_NSTOCK_STRATEGY}?agent=StockChip")
+        resp.raise_for_status()
+        raw_groups = resp.json()
+
+    seen_keys: set[str] = set()
+    rows = []
+    for group in raw_groups:
+        g_name = group.get("groupName", "")
+        for sg in group.get("subGroup", []):
+            sg_name = sg.get("name", "")
+            for cond in sg.get("condition", []):
+                k = cond.get("key", "")
+                n = cond.get("name", k)
+                if k and k not in seen_keys:
+                    seen_keys.add(k)
+                    idx = _sector_match_index(n)
+                    matched = idx < len(_CUSTOM_SECTOR_ORDER)
+                    rows.append({
+                        "group": g_name, "subGroup": sg_name,
+                        "key": k, "nstock_name": n,
+                        "matched": matched,
+                        "display_name": _sector_display_name(n) if matched else None,
+                        "order_index": idx if matched else None,
+                    })
+
+    matched   = [r for r in rows if r["matched"]]
+    unmatched = [r for r in rows if not r["matched"]]
+    custom_missing = [
+        c for c in _CUSTOM_SECTOR_ORDER
+        if not any(r["display_name"] == c for r in matched)
+    ]
+    return {
+        "matched_count": len(matched),
+        "unmatched_nstock_count": len(unmatched),
+        "custom_missing": custom_missing,
+        "matched": sorted(matched, key=lambda r: r["order_index"]),
+        "unmatched_nstock": unmatched,
+    }
 
 
 @router.get("/sector-rotation")

@@ -1923,13 +1923,18 @@ async def _compute_sector_rotation() -> None:
         _sector_computing = False
 
 
-@router.get("/sector-rotation/debug-concepts")
+@router.get("/rotation-debug")
 async def sector_rotation_debug_concepts():
     """列出 nstock 所有族群 key/name，以及是否有比對到自訂清單"""
-    async with httpx.AsyncClient(timeout=15) as client:
-        resp = await client.get(f"{_NSTOCK_STRATEGY}?agent=StockChip")
-        resp.raise_for_status()
-        raw_groups = resp.json()
+    raw_groups = []
+    nstock_error = None
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            resp = await client.get(f"{_NSTOCK_STRATEGY}?agent=StockChip")
+            resp.raise_for_status()
+            raw_groups = resp.json()
+    except Exception as e:
+        nstock_error = str(e)
 
     seen_keys: set[str] = set()
     rows = []
@@ -1959,6 +1964,8 @@ async def sector_rotation_debug_concepts():
         if not any(r["display_name"] == c for r in matched)
     ]
     return {
+        "custom_order": _CUSTOM_SECTOR_ORDER,
+        "nstock_error": nstock_error,
         "matched_count": len(matched),
         "unmatched_nstock_count": len(unmatched),
         "custom_missing": custom_missing,

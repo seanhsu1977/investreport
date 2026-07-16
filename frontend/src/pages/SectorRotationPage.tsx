@@ -590,15 +590,15 @@ export default function SectorRotationPage() {
                           stroke={color} strokeWidth={(isHov ? 2 : 1)/zoom.scale} strokeOpacity={isMatch ? (isHov ? 1 : 0.9) : 0.2} />
                         {visualR > 11 && isMatch && (
                           <text x={bx} y={by + (visualR > 20 ? -fs1 * 0.6 : fs1 * 0.35)} fontSize={fs1} fill="white"
-                            textAnchor="middle" fontWeight={700} pointerEvents="none"
-                            style={{ filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.35))" }}>
+                            stroke="rgba(0,0,0,0.55)" strokeWidth={1.5 / zoom.scale} paintOrder="stroke"
+                            textAnchor="middle" fontWeight={700} pointerEvents="none">
                             {b.name.length > 6 ? b.name.slice(0, 5) + "…" : b.name}
                           </text>
                         )}
                         {visualR > 20 && isMatch && (
-                          <text x={bx} y={by + fs1 * 0.85} fontSize={fs2} fill="rgba(255,255,255,0.92)"
-                            textAnchor="middle" fontWeight={600} pointerEvents="none"
-                            style={{ filter: "drop-shadow(0 1px 1px rgba(0,0,0,0.3))" }}>
+                          <text x={bx} y={by + fs1 * 0.85} fontSize={fs2} fill="white"
+                            stroke="rgba(0,0,0,0.4)" strokeWidth={1.2 / zoom.scale} paintOrder="stroke"
+                            textAnchor="middle" fontWeight={600} pointerEvents="none">
                             {fmtAmt(b.x)}
                           </text>
                         )}

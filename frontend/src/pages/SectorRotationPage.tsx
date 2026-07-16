@@ -54,6 +54,8 @@ export default function SectorRotationPage() {
   const [search, setSearch] = useState("");
   const [showHelp, setShowHelp] = useState(false);
   const [viewMode, setViewMode] = useState<"concepts" | "rankings">("concepts");
+  const [viewType, setViewType] = useState<"bubble" | "heatmap" | "bars" | "matrix">("bubble");
+  const [matrixSort, setMatrixSort] = useState<{ col: "x" | "y" | "rt_amt" | "size"; dir: 1 | -1 }>({ col: "x", dir: -1 });
 
   // QA
   const [qaOpen, setQaOpen] = useState(false);
@@ -304,7 +306,7 @@ export default function SectorRotationPage() {
   const handleBubbleClick = (b: Bubble | StockBubble) => {
     if (dragging) return;
     if (!drillDown && "stocks" in b && b.stocks?.length) {
-      setDrillDown(b as Bubble); resetZoom(); setFilter(null); setHovered(null); setSearch("");
+      setDrillDown(b as Bubble); resetZoom(); setFilter(null); setHovered(null); setSearch(""); setViewType("bubble");
     }
   };
   const handleBackToConcepts = () => { setDrillDown(null); resetZoom(); setHovered(null); };
@@ -385,9 +387,25 @@ export default function SectorRotationPage() {
         </div>
       )}
 
-      {/* ── 主深色卡：左側圖表 + 右側排行面板 ── */}
+      {/* ── 視圖切換 ── */}
+      {!drillDown && (
+        <div className="flex items-center gap-1">
+          {(["bubble", "heatmap", "bars", "matrix"] as const).map(v => {
+            const LABELS = { bubble: "泡泡圖", heatmap: "方格熱圖", bars: "排行長條", matrix: "指標矩陣" };
+            return (
+              <button key={v} onClick={() => setViewType(v)}
+                className="px-3 py-1.5 rounded-lg text-sm transition"
+                style={{ background: viewType === v ? "white" : "transparent", border: `1px solid ${viewType === v ? "#CBD5E1" : "transparent"}`, color: viewType === v ? "#0F172A" : "rgba(15,23,42,0.4)", fontWeight: viewType === v ? 500 : 400, boxShadow: viewType === v ? "0 1px 3px rgba(0,0,0,0.08)" : "none" }}>
+                {LABELS[v]}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── 主卡 ── */}
       <div className="rounded-2xl overflow-hidden" style={{ background: CHART_BG, border: "1px solid #E2E8F0" }}>
-        <div className="flex flex-col lg:flex-row">
+        <div className="flex flex-col lg:flex-row" style={{ display: viewType === "bubble" ? "" : "none" }}>
 
         {/* 左側：象限 sidebar + 圖表/榜單 */}
         <div className="flex flex-1 min-w-0">
@@ -729,7 +747,153 @@ export default function SectorRotationPage() {
         </div>
 
         </div>{/* /flex row */}
-      </div>{/* /主深色卡 */}
+
+        {/* ── 方格熱圖 ── */}
+        {viewType === "heatmap" && (
+          <div className="p-5">
+            <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(4, minmax(0, 1fr))" }}>
+              {[0, 1, 2, 3].map(q => (
+                <div key={q}>
+                  <div className="text-xs font-semibold px-2.5 py-1.5 rounded-lg mb-3 flex justify-between items-center"
+                    style={{ background: `${Q_META[q].color}15`, color: Q_META[q].color }}>
+                    <span>{Q_META[q].label}</span>
+                    <span style={{ opacity: 0.6 }}>{data.bubbles.filter(b => quadrant(b) === q).length}</span>
+                  </div>
+                  {data.bubbles
+                    .filter(b => quadrant(b) === q && (!sq || b.name.toLowerCase().includes(sq)))
+                    .sort((a, z) => z.size - a.size)
+                    .map(b => (
+                      <div key={b.name}
+                        className="rounded-lg px-3 py-2 mb-1.5 transition"
+                        style={{ background: hovered?.name === b.name ? `${Q_META[q].color}22` : `${Q_META[q].color}0e`, borderLeft: `2.5px solid ${Q_META[q].color}`, cursor: (b as Bubble).stocks?.length ? "pointer" : "default" }}
+                        onMouseEnter={() => setHovered(b)} onMouseLeave={() => setHovered(null)}
+                        onClick={() => (b as Bubble).stocks?.length && handleBubbleClick(b)}>
+                        <div className="text-sm font-medium leading-tight" style={{ color: "rgba(15,23,42,0.85)" }}>
+                          {b.name}{(b as Bubble).stocks?.length ? <span className="ml-1 text-[10px]" style={{ color: "rgba(15,23,42,0.25)" }}>↗</span> : null}
+                        </div>
+                        <div className="text-xs mt-0.5 flex gap-2" style={{ color: Q_META[q].color, opacity: 0.8 }}>
+                          <span>{fmtAmt(b.x)}</span>
+                          <span className="ml-auto">{b.y >= 0 ? "▲" : "▼"}{Math.abs(b.y)}</span>
+                        </div>
+                      </div>
+                    ))}
+                  {data.bubbles.filter(b => quadrant(b) === q).length === 0 && (
+                    <div className="text-xs text-center py-6" style={{ color: "rgba(15,23,42,0.2)" }}>目前無資料</div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── 排行長條 ── */}
+        {viewType === "bars" && (() => {
+          const sorted = [...data.bubbles]
+            .filter(b => !sq || b.name.toLowerCase().includes(sq))
+            .sort((a, z) => z.x - a.x);
+          const maxAbs = Math.max(...data.bubbles.map(b => Math.abs(b.x)), 1);
+          const rowH = 28, padT = 28, padB = 16;
+          const nameW = 128, barZone = 340, valW = 72;
+          const totalW = nameW + barZone + valW;
+          const totalH = sorted.length * rowH + padT + padB;
+          const zeroX = nameW + barZone / 2;
+          const scale = (barZone / 2) / maxAbs;
+          return (
+            <div style={{ overflowY: "auto", maxHeight: 520, padding: "16px 20px 20px" }}>
+              <svg viewBox={`0 0 ${totalW} ${totalH}`} style={{ width: "100%", height: totalH, display: "block" }}>
+                <text x={zeroX + 4} y={16} fontSize="9" fill="rgba(0,0,0,0.3)">資金流入 →</text>
+                <text x={zeroX - 4} y={16} fontSize="9" fill="rgba(0,0,0,0.3)" textAnchor="end">← 資金流出</text>
+                <line x1={zeroX} y1={padT - 8} x2={zeroX} y2={totalH - padB} stroke="rgba(0,0,0,0.1)" strokeWidth="1"/>
+                {sorted.map((b, i) => {
+                  const q = quadrant(b), color = Q_META[q].color;
+                  const cy = padT + i * rowH + rowH / 2;
+                  const len = Math.max(Math.abs(b.x) * scale, 1);
+                  const bx = b.x >= 0 ? zeroX : zeroX - len;
+                  const isHov = hovered?.name === b.name;
+                  return (
+                    <g key={b.name} style={{ cursor: (b as Bubble).stocks?.length ? "pointer" : "default" }}
+                      onMouseEnter={() => setHovered(b)} onMouseLeave={() => setHovered(null)}
+                      onClick={() => (b as Bubble).stocks?.length && handleBubbleClick(b)}>
+                      {isHov && <rect x={0} y={cy - rowH/2} width={totalW} height={rowH} fill="rgba(0,0,0,0.03)" rx="3"/>}
+                      <text x={nameW - 8} y={cy + 4} fontSize="11" fill={isHov ? "rgba(15,23,42,0.9)" : "rgba(15,23,42,0.65)"} textAnchor="end">{b.name}</text>
+                      <rect x={bx} y={cy - 8} width={len} height={16} fill={color} fillOpacity={isHov ? 0.85 : 0.68} rx="2"/>
+                      <text x={b.x >= 0 ? zeroX + len + 5 : zeroX - len - 5} y={cy + 4} fontSize="10"
+                        fill={color} textAnchor={b.x >= 0 ? "start" : "end"} fontWeight={isHov ? "500" : "normal"}>
+                        {fmtAmt(b.x)}
+                      </text>
+                    </g>
+                  );
+                })}
+              </svg>
+            </div>
+          );
+        })()}
+
+        {/* ── 指標矩陣 ── */}
+        {viewType === "matrix" && (() => {
+          const getVal = (b: Bubble) => {
+            switch (matrixSort.col) {
+              case "x": return b.x;
+              case "y": return b.y;
+              case "rt_amt": return b.rt_amt;
+              case "size": return b.size;
+            }
+          };
+          const sortedM = [...data.bubbles]
+            .filter(b => !sq || b.name.toLowerCase().includes(sq))
+            .sort((a, z) => (getVal(z) - getVal(a)) * matrixSort.dir);
+          const maxAbs = Math.max(...data.bubbles.map(b => Math.abs(b.x)), 1);
+          const SortBtn = ({ col, label }: { col: typeof matrixSort.col; label: string }) => (
+            <button onClick={() => setMatrixSort(prev => prev.col === col ? { col, dir: (prev.dir === 1 ? -1 : 1) as 1 | -1 } : { col, dir: -1 })}
+              className="flex items-center gap-0.5 text-xs transition"
+              style={{ color: matrixSort.col === col ? "rgba(15,23,42,0.75)" : "rgba(15,23,42,0.4)" }}>
+              {label}{matrixSort.col === col ? (matrixSort.dir === -1 ? " ↓" : " ↑") : ""}
+            </button>
+          );
+          return (
+            <div>
+              <div className="flex items-center gap-2 px-4 py-2" style={{ borderBottom: "1px solid #E2E8F0", background: "rgba(0,0,0,0.015)" }}>
+                <span className="flex-1 text-xs font-semibold" style={{ color: "rgba(15,23,42,0.4)" }}>族群</span>
+                <span className="w-14 text-center text-xs font-semibold" style={{ color: "rgba(15,23,42,0.4)" }}>狀態</span>
+                <span className="w-40 flex justify-end pr-2"><SortBtn col="x" label="資金流" /></span>
+                <span className="w-20 flex justify-end pr-2"><SortBtn col="y" label="加速度" /></span>
+                <span className="w-24 flex justify-end"><SortBtn col="rt_amt" label="今日成交" /></span>
+              </div>
+              <div style={{ maxHeight: 480, overflowY: "auto" }}>
+                {sortedM.map((b, i) => {
+                  const q = quadrant(b), color = Q_META[q].color;
+                  const barW = Math.abs(b.x) / maxAbs * 52;
+                  const isHov = hovered?.name === b.name;
+                  return (
+                    <div key={b.name} className="flex items-center gap-2 px-4 py-2.5 transition"
+                      style={{ borderBottom: "1px solid #F1F4F9", background: isHov ? "rgba(0,0,0,0.03)" : i % 2 === 0 ? "rgba(0,0,0,0.01)" : "transparent", cursor: (b as Bubble).stocks?.length ? "pointer" : "default" }}
+                      onMouseEnter={() => setHovered(b)} onMouseLeave={() => setHovered(null)}
+                      onClick={() => (b as Bubble).stocks?.length && handleBubbleClick(b)}>
+                      <span className="flex-1 text-sm font-medium" style={{ color: "rgba(15,23,42,0.8)" }}>
+                        {b.name}{(b as Bubble).stocks?.length ? <span className="ml-1 text-[10px]" style={{ color: "rgba(15,23,42,0.25)" }}>↗</span> : null}
+                      </span>
+                      <span className="w-14 text-center text-xs font-semibold" style={{ color }}>{Q_META[q].label}</span>
+                      <div className="w-40 flex items-center justify-end gap-2 pr-2">
+                        <div className="h-1.5 rounded-full flex-shrink-0" style={{ width: barW, background: b.x >= 0 ? "#10B981" : "#FB923C", minWidth: 2 }} />
+                        <span className="text-xs tabular-nums font-medium flex-shrink-0" style={{ color: b.x >= 0 ? "#10B981" : "#FB923C", minWidth: 56, textAlign: "right" }}>
+                          {fmtAmt(b.x)}
+                        </span>
+                      </div>
+                      <span className="w-20 text-right pr-2 text-xs tabular-nums font-medium" style={{ color: b.y >= 0 ? "#10B981" : "#FB923C" }}>
+                        {b.y >= 0 ? "+" : ""}{b.y}
+                      </span>
+                      <span className="w-24 text-right text-xs tabular-nums" style={{ color: "rgba(15,23,42,0.45)" }}>
+                        {b.rt_amt}億
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
+
+      </div>{/* /主卡 */}
 
       {/* ── QA 問輪動圖 ── */}
       <div className="rounded-2xl overflow-hidden" style={{ background: CHART_BG, border: "1px solid #E2E8F0" }}>

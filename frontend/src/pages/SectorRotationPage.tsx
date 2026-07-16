@@ -309,7 +309,8 @@ export default function SectorRotationPage() {
   };
   const handleBackToConcepts = () => { setDrillDown(null); resetZoom(); setHovered(null); };
 
-  const gridColor = "rgba(0,0,0,0.07)", axisColor = "rgba(0,0,0,0.2)", tickColor = "rgba(0,0,0,0.45)";
+  const gridColor = "rgba(255,255,255,0.06)", axisColor = "rgba(255,255,255,0.15)", tickColor = "rgba(255,255,255,0.38)";
+  const BUBBLE_FILLS = ["url(#bg-green)", "url(#bg-amber)", "url(#bg-purple)", "url(#bg-orange)"];
 
   // ── render ────────────────────────────────────────────────────────────────
 
@@ -462,8 +463,22 @@ export default function SectorRotationPage() {
 
             <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ minWidth: 300, cursor: dragging ? "grabbing" : "grab", display: "block", touchAction: "none" }}
               onMouseDown={onSvgMouseDown} onMouseMove={onSvgMouseMove} onMouseLeave={() => { setDragging(false); setHovered(null); }}>
-              <defs><clipPath id="chart-clip"><rect x={PAD.left} y={PAD.top} width={CW} height={CH} /></clipPath></defs>
-              <rect width={W} height={H} fill={CHART_BG} />
+              <defs>
+                <clipPath id="chart-clip"><rect x={PAD.left} y={PAD.top} width={CW} height={CH} /></clipPath>
+                <radialGradient id="halo-green"  cx="50%" cy="50%" r="70%"><stop offset="0%" stopColor="#10B981" stopOpacity="0.22"/><stop offset="100%" stopColor="#10B981" stopOpacity="0"/></radialGradient>
+                <radialGradient id="halo-amber"  cx="50%" cy="50%" r="70%"><stop offset="0%" stopColor="#F59E0B" stopOpacity="0.18"/><stop offset="100%" stopColor="#F59E0B" stopOpacity="0"/></radialGradient>
+                <radialGradient id="halo-purple" cx="50%" cy="50%" r="70%"><stop offset="0%" stopColor="#818CF8" stopOpacity="0.18"/><stop offset="100%" stopColor="#818CF8" stopOpacity="0"/></radialGradient>
+                <radialGradient id="halo-orange" cx="50%" cy="50%" r="70%"><stop offset="0%" stopColor="#FB923C" stopOpacity="0.18"/><stop offset="100%" stopColor="#FB923C" stopOpacity="0"/></radialGradient>
+                <radialGradient id="bg-green"  cx="35%" cy="30%" r="65%"><stop offset="0%" stopColor="#4ade80"/><stop offset="100%" stopColor="#059669"/></radialGradient>
+                <radialGradient id="bg-amber"  cx="35%" cy="30%" r="65%"><stop offset="0%" stopColor="#fcd34d"/><stop offset="100%" stopColor="#d97706"/></radialGradient>
+                <radialGradient id="bg-purple" cx="35%" cy="30%" r="65%"><stop offset="0%" stopColor="#c4b5fd"/><stop offset="100%" stopColor="#7c3aed"/></radialGradient>
+                <radialGradient id="bg-orange" cx="35%" cy="30%" r="65%"><stop offset="0%" stopColor="#fdba74"/><stop offset="100%" stopColor="#c2410c"/></radialGradient>
+              </defs>
+              <rect width={W} height={H} fill="#0D1117" />
+              <rect x={ox}       y={PAD.top} width={W - PAD.right - ox} height={oy - PAD.top}         fill="url(#halo-green)" />
+              <rect x={ox}       y={oy}      width={W - PAD.right - ox} height={H - PAD.bottom - oy}  fill="url(#halo-amber)" />
+              <rect x={PAD.left} y={PAD.top} width={ox - PAD.left}      height={oy - PAD.top}         fill="url(#halo-purple)" />
+              <rect x={PAD.left} y={oy}      width={ox - PAD.left}      height={H - PAD.bottom - oy}  fill="url(#halo-orange)" />
 
               {/* 固定象限標籤 + 白話說明 */}
               <text x={PAD.left + 6} y={PAD.top + 14} fontSize={10} fill={Q_META[2].color} fontWeight={700}>觀望</text>
@@ -529,9 +544,9 @@ export default function SectorRotationPage() {
                     return (
                       <g key={b.name} onMouseEnter={() => !dragging && setHovered(b)} onMouseLeave={() => setHovered(null)}
                         onClick={() => handleBubbleClick(b)} style={{ cursor: dragging ? "grabbing" : canDrill ? "zoom-in" : "default" }}>
-                        <circle cx={bx} cy={by} r={rad * 1.18} fill={color} fillOpacity={(isHov ? 0.18 : 0.09) * (isMatch ? 1 : 0.3)} />
-                        <circle cx={bx} cy={by} r={rad} fill={color} fillOpacity={(isHov ? 0.95 : 0.85) * (isMatch ? 1 : 0.15)}
-                          stroke={color} strokeWidth={(isHov ? 2 : 1)/zoom.scale} strokeOpacity={isMatch ? (isHov ? 1 : 0.9) : 0.2} />
+                        <circle cx={bx} cy={by} r={rad * 1.28} fill={color} fillOpacity={(isHov ? 0.28 : 0.13) * (isMatch ? 1 : 0.3)} />
+                        <circle cx={bx} cy={by} r={rad} fill={isMatch ? BUBBLE_FILLS[q] : color} fillOpacity={isMatch ? (isHov ? 1 : 0.92) : 0.12}
+                          stroke={color} strokeWidth={(isHov ? 2 : 1)/zoom.scale} strokeOpacity={isMatch ? (isHov ? 0.8 : 0.45) : 0.15} />
                         {visualR > 11 && isMatch && (
                           <text x={bx} y={by + (visualR > 20 ? -fs1 * 0.6 : fs1 * 0.35)} fontSize={fs1} fill="white"
                             stroke="rgba(0,0,0,0.55)" strokeWidth={1.5 / zoom.scale} paintOrder="stroke"
@@ -668,7 +683,7 @@ export default function SectorRotationPage() {
                       onMouseEnter={() => setHovered(b)} onMouseLeave={() => setHovered(null)}
                       onClick={() => canDrill && handleBubbleClick(b)}>
                       <span className="flex-1 text-sm font-medium truncate" style={{ color: hovered?.name === b.name ? "#0F172A" : "rgba(15,23,42,0.75)" }}>
-                        {b.name}{canDrill && <span className="ml-1 text-[10px]" style={{ color: "rgba(255,255,255,0.25)" }}>↗</span>}
+                        {b.name}{canDrill && <span className="ml-1 text-[10px]" style={{ color: "rgba(15,23,42,0.25)" }}>↗</span>}
                       </span>
                       <span className="text-xs tabular-nums shrink-0" style={{ color: "rgba(15,23,42,0.3)" }}>{b.rt_amt}</span>
                       <span className={`text-xs tabular-nums font-medium shrink-0 ${b.y >= 0 ? "text-emerald-400" : "text-orange-400"}`}>{b.y >= 0 ? "+" : ""}{b.y}</span>

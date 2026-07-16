@@ -1722,9 +1722,44 @@ async def fill_all_prices(
 
 
 _CONCEPT_MAX_STOCKS  = 30   # 排除股票數超過此值的 ETF 型概念
-_CONCEPT_LIMIT       = 25   # 概念股清單最多取幾個
 _CONCEPT_STOCKS_CAP  = 6    # 每個概念最多取幾支代表股
 _sector_computing    = False # 防止重複觸發背景計算
+
+# 自訂族群清單：決定顯示順序與名稱，nstock 名稱做正規化比對
+_CUSTOM_SECTOR_ORDER: list[str] = [
+    # 核心科技與 AI
+    "AI 伺服器", "AI 電力散熱", "高速傳輸晶片", "高速 PCB/CCL", "ASIC/IP",
+    "矽光子/CPO", "AI PC/邊緣運算", "機器人", "AI 穿戴", "車用電子",
+    # 半導體與材料
+    "先進製程", "先進封裝", "半導體材料", "半導體先進材料", "IC 測試",
+    "記憶體", "矽晶圓", "成熟製程",
+    # 網通與太空
+    "太空衛星", "5G/6G 網通", "光通訊", "被動元件", "車載鏡頭",
+    # 綠能與政策
+    "重電電網", "AI電力", "綠能儲能", "國防軍工", "無人機", "資安安控",
+    # 傳產與基建
+    "貨櫃航運", "散裝航運", "航空旅遊", "塑化", "鋼鐵建材", "汽車 AM", "營建資產",
+    # 生技金融與修復題材
+    "新藥 CDMO", "醫材醫美", "金控金融", "戰後重建",
+]
+
+def _sector_match_index(nstock_name: str) -> int:
+    """回傳 nstock 名稱在自訂清單中的 index；無匹配回傳 len（排到最後）"""
+    n = nstock_name.replace(" ", "").lower()
+    for i, custom in enumerate(_CUSTOM_SECTOR_ORDER):
+        c = custom.replace(" ", "").lower()
+        if n == c or n in c or c in n:
+            return i
+    return len(_CUSTOM_SECTOR_ORDER)
+
+def _sector_display_name(nstock_name: str) -> str:
+    """用自訂名稱取代 nstock 原始名稱；無匹配則保留原名"""
+    n = nstock_name.replace(" ", "").lower()
+    for custom in _CUSTOM_SECTOR_ORDER:
+        c = custom.replace(" ", "").lower()
+        if n == c or n in c or c in n:
+            return custom
+    return nstock_name
 
 
 async def _compute_sector_rotation() -> None:
@@ -1749,7 +1784,9 @@ async def _compute_sector_rotation() -> None:
                             concept_keys.append((k, n))
                 break
 
-        concept_keys = concept_keys[:_CONCEPT_LIMIT]
+        # 依自訂清單排序，過濾掉不在清單中的族群
+        concept_keys.sort(key=lambda kn: _sector_match_index(kn[1]))
+        concept_keys = [kn for kn in concept_keys if _sector_match_index(kn[1]) < len(_CUSTOM_SECTOR_ORDER)]
         if not concept_keys:
             return
 
@@ -1772,8 +1809,8 @@ async def _compute_sector_rotation() -> None:
                 continue
             _k, name, ids = item
             if 2 <= len(ids) <= _CONCEPT_MAX_STOCKS:
-                # 只取前幾支代表股，避免 OOM
-                concept_map[name] = ids[:_CONCEPT_STOCKS_CAP]
+                display = _sector_display_name(name)
+                concept_map[display] = ids[:_CONCEPT_STOCKS_CAP]
 
         if not concept_map:
             return

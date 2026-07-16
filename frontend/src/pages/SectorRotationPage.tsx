@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { stocksApi } from "../api/client";
 
@@ -194,56 +194,6 @@ export default function SectorRotationPage() {
   }, [qaMessages]);
 
   // 碰撞分離：必須在 early return 之前（Rules of Hooks）
-  const adjustedPositions = useMemo(() => {
-    if (!data) return [] as { x: number; y: number }[];
-    const allB_ = drillDown ? (drillDown.stocks ?? []) : data.bubbles;
-    const maxAbs_  = Math.max(...allB_.map(b => Math.abs(b.x)), 1);
-    const maxAbsY_ = Math.max(...allB_.map(b => Math.abs(b.y)), 1);
-    const xMin_ = -maxAbs_ * 1.2, xMax_ = maxAbs_ * 1.2;
-    const yMin_ = -maxAbsY_ * 1.2, yMax_ = maxAbsY_ * 1.2;
-    const maxSize_ = Math.max(...allB_.map(b => b.size), 1);
-    const svgX = (v: number) => PAD.left + ((v - xMin_) / (xMax_ - xMin_)) * CW;
-    const svgY = (v: number) => PAD.top  + ((yMax_ - v) / (yMax_ - yMin_)) * CH;
-    const active = drillDown ? (drillDown.stocks ?? []) :
-      (filter === null ? data.bubbles : data.bubbles.filter(b => quadrant(b) === filter));
-    const n = active.length;
-    if (n === 0) return [];
-    const pos = active.map(b => ({ x: svgX(b.x), y: svgY(b.y) }));
-    const baseR = active.map(b => 8 + (b.size / maxSize_) * 38);
-    const GAP = 5;
-    for (let iter = 0; iter < 150; iter++) {
-      let moved = false;
-      for (let i = 0; i < n; i++) {
-        for (let j = i + 1; j < n; j++) {
-          const dx = pos[j].x - pos[i].x;
-          const dy = pos[j].y - pos[i].y;
-          const dist2 = dx * dx + dy * dy;
-          const minD = baseR[i] + baseR[j] + GAP;
-          if (dist2 < minD * minD) {
-            const dist = Math.sqrt(dist2) || 0.01;
-            const push = minD - dist;
-            const nx = dx / dist, ny = dy / dist;
-            const ai = baseR[i] * baseR[i], aj = baseR[j] * baseR[j];
-            const wi = aj / (ai + aj), wj = ai / (ai + aj);
-            pos[i].x -= nx * push * wi;
-            pos[i].y -= ny * push * wi;
-            pos[j].x += nx * push * wj;
-            pos[j].y += ny * push * wj;
-            moved = true;
-          }
-        }
-      }
-      if (!moved) break;
-    }
-    // 邊界夾緊：確保泡泡不超出圖表區域
-    const bndX0 = PAD.left, bndX1 = PAD.left + CW;
-    const bndY0 = PAD.top,  bndY1 = PAD.top  + CH;
-    for (let i = 0; i < n; i++) {
-      pos[i].x = Math.max(bndX0 + baseR[i], Math.min(bndX1 - baseR[i], pos[i].x));
-      pos[i].y = Math.max(bndY0 + baseR[i], Math.min(bndY1 - baseR[i], pos[i].y));
-    }
-    return pos;
-  }, [data, drillDown, filter]);
 
   if (loading) return (
     <div className="min-h-screen flex flex-col items-center justify-center gap-2 text-gray-500">
@@ -569,11 +519,10 @@ export default function SectorRotationPage() {
                     </g>;
                   })}
                   {/* 泡泡 */}
-                  {activeBubbles.map((b, idx) => {
+                  {activeBubbles.map((b) => {
                     const q = quadrant(b), color = Q_META[q].color;
-                    const ap = adjustedPositions[idx];
-                    const bx = ap ? ap.x : toSvgX(b.x);
-                    const by = ap ? ap.y : toSvgY(b.y);
+                    const bx = toSvgX(b.x);
+                    const by = toSvgY(b.y);
                     const rad = r(b);
                     const visualR = rad * zoom.scale;
                     const isHov = hovered?.name === b.name;

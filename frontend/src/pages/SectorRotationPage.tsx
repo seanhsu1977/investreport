@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { stocksApi } from "../api/client";
 
 // ── types ──────────────────────────────────────────────────────────────────
@@ -56,6 +56,7 @@ export default function SectorRotationPage() {
   const [viewMode, setViewMode] = useState<"concepts" | "rankings">("concepts");
   const [viewType, setViewType] = useState<"bubble" | "heatmap" | "bars" | "matrix">("bubble");
   const [matrixSort, setMatrixSort] = useState<{ col: "x" | "y" | "rt_amt" | "size"; dir: 1 | -1 }>({ col: "x", dir: -1 });
+  const navigate = useNavigate();
 
   // QA
   const [qaOpen, setQaOpen] = useState(false);
@@ -306,7 +307,7 @@ export default function SectorRotationPage() {
   const handleBubbleClick = (b: Bubble | StockBubble) => {
     if (dragging) return;
     if (!drillDown && "stocks" in b && b.stocks?.length) {
-      setDrillDown(b as Bubble); resetZoom(); setFilter(null); setHovered(null); setSearch(""); setViewType("bubble");
+      setDrillDown(b as Bubble); resetZoom(); setFilter(null); setHovered(null); setSearch("");
     }
   };
   const handleBackToConcepts = () => { setDrillDown(null); resetZoom(); setHovered(null); };
@@ -749,89 +750,134 @@ export default function SectorRotationPage() {
         </div>{/* /flex row */}
 
         {/* ── 方格熱圖 ── */}
-        {viewType === "heatmap" && (
-          <div className="p-5">
-            <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(4, minmax(0, 1fr))" }}>
-              {[0, 1, 2, 3].map(q => (
-                <div key={q}>
-                  <div className="text-xs font-semibold px-2.5 py-1.5 rounded-lg mb-3 flex justify-between items-center"
-                    style={{ background: `${Q_META[q].color}15`, color: Q_META[q].color }}>
-                    <span>{Q_META[q].label}</span>
-                    <span style={{ opacity: 0.6 }}>{data.bubbles.filter(b => quadrant(b) === q).length}</span>
-                  </div>
-                  {data.bubbles
-                    .filter(b => quadrant(b) === q && (!sq || b.name.toLowerCase().includes(sq)))
-                    .sort((a, z) => z.size - a.size)
-                    .map(b => (
-                      <div key={b.name}
-                        className="rounded-lg px-3 py-2 mb-1.5 transition"
-                        style={{ background: hovered?.name === b.name ? `${Q_META[q].color}22` : `${Q_META[q].color}0e`, borderLeft: `2.5px solid ${Q_META[q].color}`, cursor: (b as Bubble).stocks?.length ? "pointer" : "default" }}
-                        onMouseEnter={() => setHovered(b)} onMouseLeave={() => setHovered(null)}
-                        onClick={() => (b as Bubble).stocks?.length && handleBubbleClick(b)}>
-                        <div className="text-sm font-medium leading-tight" style={{ color: "rgba(15,23,42,0.85)" }}>
-                          {b.name}{(b as Bubble).stocks?.length ? <span className="ml-1 text-[10px]" style={{ color: "rgba(15,23,42,0.25)" }}>↗</span> : null}
-                        </div>
-                        <div className="text-xs mt-0.5 flex gap-2" style={{ color: Q_META[q].color, opacity: 0.8 }}>
-                          <span>{fmtAmt(b.x)}</span>
-                          <span className="ml-auto">{b.y >= 0 ? "▲" : "▼"}{Math.abs(b.y)}</span>
-                        </div>
-                      </div>
-                    ))}
-                  {data.bubbles.filter(b => quadrant(b) === q).length === 0 && (
-                    <div className="text-xs text-center py-6" style={{ color: "rgba(15,23,42,0.2)" }}>目前無資料</div>
-                  )}
+        {viewType === "heatmap" && (() => {
+          const isDD = drillDown !== null;
+          const rawItems = isDD ? (drillDown.stocks ?? []) : data.bubbles;
+          const items = rawItems.filter(b => !sq || b.name.toLowerCase().includes(sq));
+          return (
+            <div>
+              {isDD && (
+                <div className="flex items-center gap-2 px-5 py-3" style={{ borderBottom: "1px solid #E2E8F0" }}>
+                  <button onClick={handleBackToConcepts} className="text-sm text-blue-500 hover:underline">← 概念股</button>
+                  <span style={{ color: "rgba(15,23,42,0.25)" }}>/</span>
+                  <span className="text-sm font-semibold" style={{ color: "rgba(15,23,42,0.85)" }}>{drillDown.name}</span>
+                  <span className="text-xs" style={{ color: "rgba(15,23,42,0.4)" }}>· {drillDown.stocks?.length ?? 0} 支成分股</span>
                 </div>
-              ))}
+              )}
+              <div className="p-5">
+                <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(4, minmax(0, 1fr))" }}>
+                  {[0, 1, 2, 3].map(q => {
+                    const qItems = items.filter(b => quadrant(b) === q).sort((a, z) => z.size - a.size);
+                    return (
+                      <div key={q}>
+                        <div className="text-xs font-semibold px-2.5 py-1.5 rounded-lg mb-3 flex justify-between items-center"
+                          style={{ background: `${Q_META[q].color}15`, color: Q_META[q].color }}>
+                          <span>{Q_META[q].label}</span>
+                          <span style={{ opacity: 0.6 }}>{qItems.length}</span>
+                        </div>
+                        {qItems.map(b => {
+                          const code = "code" in b ? (b as StockBubble).code : null;
+                          const hasChildren = !code && !!(b as Bubble).stocks?.length;
+                          const tile = (
+                            <div className="rounded-lg px-3 py-2 mb-1.5 transition"
+                              style={{ background: hovered?.name === b.name ? `${Q_META[q].color}22` : `${Q_META[q].color}0e`, borderLeft: `2.5px solid ${Q_META[q].color}`, cursor: (code || hasChildren) ? "pointer" : "default" }}
+                              onMouseEnter={() => setHovered(b)} onMouseLeave={() => setHovered(null)}
+                              onClick={() => { if (!code && hasChildren) handleBubbleClick(b); }}>
+                              <div className="text-sm font-medium leading-tight" style={{ color: "rgba(15,23,42,0.85)" }}>
+                                {code && <span className="font-mono text-[10px] mr-1" style={{ color: "rgba(15,23,42,0.35)" }}>{code}</span>}
+                                {b.name}
+                                {hasChildren && <span className="ml-1 text-[10px]" style={{ color: "rgba(15,23,42,0.25)" }}>↗</span>}
+                              </div>
+                              <div className="text-xs mt-0.5 flex gap-2" style={{ color: Q_META[q].color, opacity: 0.8 }}>
+                                <span>{fmtAmt(b.x)}</span>
+                                <span className="ml-auto">{b.y >= 0 ? "▲" : "▼"}{Math.abs(b.y)}</span>
+                              </div>
+                            </div>
+                          );
+                          return code ? (
+                            <Link key={b.name} to={`/stocks/${code}`} style={{ textDecoration: "none", display: "block" }}>{tile}</Link>
+                          ) : (
+                            <div key={b.name}>{tile}</div>
+                          );
+                        })}
+                        {qItems.length === 0 && (
+                          <div className="text-xs text-center py-6" style={{ color: "rgba(15,23,42,0.2)" }}>目前無資料</div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* ── 排行長條 ── */}
         {viewType === "bars" && (() => {
-          const sorted = [...data.bubbles]
-            .filter(b => !sq || b.name.toLowerCase().includes(sq))
-            .sort((a, z) => z.x - a.x);
-          const maxAbs = Math.max(...data.bubbles.map(b => Math.abs(b.x)), 1);
+          const isDD = drillDown !== null;
+          const rawItems = isDD ? (drillDown.stocks ?? []) : data.bubbles;
+          const items = rawItems.filter(b => !sq || b.name.toLowerCase().includes(sq));
+          const sorted = [...items].sort((a, z) => z.x - a.x);
+          const maxAbs = Math.max(...rawItems.map(b => Math.abs(b.x)), 1);
           const rowH = 28, padT = 28, padB = 16;
-          const nameW = 128, barZone = 340, valW = 72;
+          const nameW = isDD ? 152 : 128, barZone = 340, valW = 72;
           const totalW = nameW + barZone + valW;
           const totalH = sorted.length * rowH + padT + padB;
           const zeroX = nameW + barZone / 2;
           const scale = (barZone / 2) / maxAbs;
           return (
-            <div style={{ overflowY: "auto", maxHeight: 520, padding: "16px 20px 20px" }}>
-              <svg viewBox={`0 0 ${totalW} ${totalH}`} style={{ width: "100%", height: totalH, display: "block" }}>
-                <text x={zeroX + 4} y={16} fontSize="9" fill="rgba(0,0,0,0.3)">資金流入 →</text>
-                <text x={zeroX - 4} y={16} fontSize="9" fill="rgba(0,0,0,0.3)" textAnchor="end">← 資金流出</text>
-                <line x1={zeroX} y1={padT - 8} x2={zeroX} y2={totalH - padB} stroke="rgba(0,0,0,0.1)" strokeWidth="1"/>
-                {sorted.map((b, i) => {
-                  const q = quadrant(b), color = Q_META[q].color;
-                  const cy = padT + i * rowH + rowH / 2;
-                  const len = Math.max(Math.abs(b.x) * scale, 1);
-                  const bx = b.x >= 0 ? zeroX : zeroX - len;
-                  const isHov = hovered?.name === b.name;
-                  return (
-                    <g key={b.name} style={{ cursor: (b as Bubble).stocks?.length ? "pointer" : "default" }}
-                      onMouseEnter={() => setHovered(b)} onMouseLeave={() => setHovered(null)}
-                      onClick={() => (b as Bubble).stocks?.length && handleBubbleClick(b)}>
-                      {isHov && <rect x={0} y={cy - rowH/2} width={totalW} height={rowH} fill="rgba(0,0,0,0.03)" rx="3"/>}
-                      <text x={nameW - 8} y={cy + 4} fontSize="11" fill={isHov ? "rgba(15,23,42,0.9)" : "rgba(15,23,42,0.65)"} textAnchor="end">{b.name}</text>
-                      <rect x={bx} y={cy - 8} width={len} height={16} fill={color} fillOpacity={isHov ? 0.85 : 0.68} rx="2"/>
-                      <text x={b.x >= 0 ? zeroX + len + 5 : zeroX - len - 5} y={cy + 4} fontSize="10"
-                        fill={color} textAnchor={b.x >= 0 ? "start" : "end"} fontWeight={isHov ? "500" : "normal"}>
-                        {fmtAmt(b.x)}
-                      </text>
-                    </g>
-                  );
-                })}
-              </svg>
+            <div>
+              {isDD && (
+                <div className="flex items-center gap-2 px-5 py-3" style={{ borderBottom: "1px solid #E2E8F0" }}>
+                  <button onClick={handleBackToConcepts} className="text-sm text-blue-500 hover:underline">← 概念股</button>
+                  <span style={{ color: "rgba(15,23,42,0.25)" }}>/</span>
+                  <span className="text-sm font-semibold" style={{ color: "rgba(15,23,42,0.85)" }}>{drillDown.name}</span>
+                  <span className="text-xs" style={{ color: "rgba(15,23,42,0.4)" }}>· {drillDown.stocks?.length ?? 0} 支成分股</span>
+                </div>
+              )}
+              <div style={{ overflowY: "auto", maxHeight: 520, padding: "16px 20px 20px" }}>
+                <svg viewBox={`0 0 ${totalW} ${totalH}`} style={{ width: "100%", height: totalH, display: "block" }}>
+                  <text x={zeroX + 4} y={16} fontSize="9" fill="rgba(0,0,0,0.3)">資金流入 →</text>
+                  <text x={zeroX - 4} y={16} fontSize="9" fill="rgba(0,0,0,0.3)" textAnchor="end">← 資金流出</text>
+                  <line x1={zeroX} y1={padT - 8} x2={zeroX} y2={totalH - padB} stroke="rgba(0,0,0,0.1)" strokeWidth="1"/>
+                  {sorted.map((b, i) => {
+                    const q = quadrant(b), color = Q_META[q].color;
+                    const cy = padT + i * rowH + rowH / 2;
+                    const len = Math.max(Math.abs(b.x) * scale, 1);
+                    const bx = b.x >= 0 ? zeroX : zeroX - len;
+                    const isHov = hovered?.name === b.name;
+                    const code = "code" in b ? (b as StockBubble).code : null;
+                    const hasChildren = !code && !!(b as Bubble).stocks?.length;
+                    return (
+                      <g key={b.name} style={{ cursor: (code || hasChildren) ? "pointer" : "default" }}
+                        onMouseEnter={() => setHovered(b)} onMouseLeave={() => setHovered(null)}
+                        onClick={() => {
+                          if (code) navigate(`/stocks/${code}`);
+                          else if (hasChildren) handleBubbleClick(b);
+                        }}>
+                        {isHov && <rect x={0} y={cy - rowH/2} width={totalW} height={rowH} fill="rgba(0,0,0,0.03)" rx="3"/>}
+                        <text x={nameW - 8} y={cy + 4} fontSize="11" fill={isHov ? "rgba(15,23,42,0.9)" : "rgba(15,23,42,0.65)"} textAnchor="end">
+                          {code ? `${code} ${b.name}` : b.name}
+                        </text>
+                        <rect x={bx} y={cy - 8} width={len} height={16} fill={color} fillOpacity={isHov ? 0.85 : 0.68} rx="2"/>
+                        <text x={b.x >= 0 ? zeroX + len + 5 : zeroX - len - 5} y={cy + 4} fontSize="10"
+                          fill={color} textAnchor={b.x >= 0 ? "start" : "end"} fontWeight={isHov ? "500" : "normal"}>
+                          {fmtAmt(b.x)}
+                        </text>
+                      </g>
+                    );
+                  })}
+                </svg>
+              </div>
             </div>
           );
         })()}
 
         {/* ── 指標矩陣 ── */}
         {viewType === "matrix" && (() => {
-          const getVal = (b: Bubble) => {
+          const isDD = drillDown !== null;
+          const rawItems = isDD ? (drillDown.stocks ?? []) : data.bubbles;
+          const getVal = (b: Bubble | StockBubble) => {
             switch (matrixSort.col) {
               case "x": return b.x;
               case "y": return b.y;
@@ -839,10 +885,10 @@ export default function SectorRotationPage() {
               case "size": return b.size;
             }
           };
-          const sortedM = [...data.bubbles]
+          const sortedM = [...rawItems]
             .filter(b => !sq || b.name.toLowerCase().includes(sq))
             .sort((a, z) => (getVal(z) - getVal(a)) * matrixSort.dir);
-          const maxAbs = Math.max(...data.bubbles.map(b => Math.abs(b.x)), 1);
+          const maxAbs = Math.max(...rawItems.map(b => Math.abs(b.x)), 1);
           const SortBtn = ({ col, label }: { col: typeof matrixSort.col; label: string }) => (
             <button onClick={() => setMatrixSort(prev => prev.col === col ? { col, dir: (prev.dir === 1 ? -1 : 1) as 1 | -1 } : { col, dir: -1 })}
               className="flex items-center gap-0.5 text-xs transition"
@@ -852,8 +898,16 @@ export default function SectorRotationPage() {
           );
           return (
             <div>
+              {isDD && (
+                <div className="flex items-center gap-2 px-5 py-3" style={{ borderBottom: "1px solid #E2E8F0" }}>
+                  <button onClick={handleBackToConcepts} className="text-sm text-blue-500 hover:underline">← 概念股</button>
+                  <span style={{ color: "rgba(15,23,42,0.25)" }}>/</span>
+                  <span className="text-sm font-semibold" style={{ color: "rgba(15,23,42,0.85)" }}>{drillDown.name}</span>
+                  <span className="text-xs" style={{ color: "rgba(15,23,42,0.4)" }}>· {drillDown.stocks?.length ?? 0} 支成分股</span>
+                </div>
+              )}
               <div className="flex items-center gap-2 px-4 py-2" style={{ borderBottom: "1px solid #E2E8F0", background: "rgba(0,0,0,0.015)" }}>
-                <span className="flex-1 text-xs font-semibold" style={{ color: "rgba(15,23,42,0.4)" }}>族群</span>
+                <span className="flex-1 text-xs font-semibold" style={{ color: "rgba(15,23,42,0.4)" }}>{isDD ? "個股" : "族群"}</span>
                 <span className="w-14 text-center text-xs font-semibold" style={{ color: "rgba(15,23,42,0.4)" }}>狀態</span>
                 <span className="w-40 flex justify-end pr-2"><SortBtn col="x" label="資金流" /></span>
                 <span className="w-20 flex justify-end pr-2"><SortBtn col="y" label="加速度" /></span>
@@ -864,27 +918,42 @@ export default function SectorRotationPage() {
                   const q = quadrant(b), color = Q_META[q].color;
                   const barW = Math.abs(b.x) / maxAbs * 52;
                   const isHov = hovered?.name === b.name;
-                  return (
-                    <div key={b.name} className="flex items-center gap-2 px-4 py-2.5 transition"
-                      style={{ borderBottom: "1px solid #F1F4F9", background: isHov ? "rgba(0,0,0,0.03)" : i % 2 === 0 ? "rgba(0,0,0,0.01)" : "transparent", cursor: (b as Bubble).stocks?.length ? "pointer" : "default" }}
-                      onMouseEnter={() => setHovered(b)} onMouseLeave={() => setHovered(null)}
-                      onClick={() => (b as Bubble).stocks?.length && handleBubbleClick(b)}>
+                  const code = "code" in b ? (b as StockBubble).code : null;
+                  const hasChildren = !code && !!(b as Bubble).stocks?.length;
+                  const rowStyle: React.CSSProperties = { borderBottom: "1px solid #F1F4F9", background: isHov ? "rgba(0,0,0,0.03)" : i % 2 === 0 ? "rgba(0,0,0,0.01)" : "transparent" };
+                  const rowContent = (
+                    <>
                       <span className="flex-1 text-sm font-medium" style={{ color: "rgba(15,23,42,0.8)" }}>
-                        {b.name}{(b as Bubble).stocks?.length ? <span className="ml-1 text-[10px]" style={{ color: "rgba(15,23,42,0.25)" }}>↗</span> : null}
+                        {code && <span className="font-mono text-[10px] mr-1" style={{ color: "rgba(15,23,42,0.35)" }}>{code}</span>}
+                        {b.name}
+                        {hasChildren && <span className="ml-1 text-[10px]" style={{ color: "rgba(15,23,42,0.25)" }}>↗</span>}
                       </span>
-                      <span className="w-14 text-center text-xs font-semibold" style={{ color }}>{Q_META[q].label}</span>
-                      <div className="w-40 flex items-center justify-end gap-2 pr-2">
+                      <span className="w-14 text-center text-xs font-semibold flex-shrink-0" style={{ color }}>{Q_META[q].label}</span>
+                      <div className="w-40 flex items-center justify-end gap-2 pr-2 flex-shrink-0">
                         <div className="h-1.5 rounded-full flex-shrink-0" style={{ width: barW, background: b.x >= 0 ? "#10B981" : "#FB923C", minWidth: 2 }} />
                         <span className="text-xs tabular-nums font-medium flex-shrink-0" style={{ color: b.x >= 0 ? "#10B981" : "#FB923C", minWidth: 56, textAlign: "right" }}>
                           {fmtAmt(b.x)}
                         </span>
                       </div>
-                      <span className="w-20 text-right pr-2 text-xs tabular-nums font-medium" style={{ color: b.y >= 0 ? "#10B981" : "#FB923C" }}>
+                      <span className="w-20 text-right pr-2 text-xs tabular-nums font-medium flex-shrink-0" style={{ color: b.y >= 0 ? "#10B981" : "#FB923C" }}>
                         {b.y >= 0 ? "+" : ""}{b.y}
                       </span>
-                      <span className="w-24 text-right text-xs tabular-nums" style={{ color: "rgba(15,23,42,0.45)" }}>
+                      <span className="w-24 text-right text-xs tabular-nums flex-shrink-0" style={{ color: "rgba(15,23,42,0.45)" }}>
                         {b.rt_amt}億
                       </span>
+                    </>
+                  );
+                  return code ? (
+                    <Link key={b.name} to={`/stocks/${code}`} style={{ textDecoration: "none", display: "block" }}
+                      onMouseEnter={() => setHovered(b)} onMouseLeave={() => setHovered(null)}>
+                      <div className="flex items-center gap-2 px-4 py-2.5" style={rowStyle}>{rowContent}</div>
+                    </Link>
+                  ) : (
+                    <div key={b.name} className="flex items-center gap-2 px-4 py-2.5 transition"
+                      style={{ ...rowStyle, cursor: hasChildren ? "pointer" : "default" }}
+                      onMouseEnter={() => setHovered(b)} onMouseLeave={() => setHovered(null)}
+                      onClick={() => hasChildren && handleBubbleClick(b)}>
+                      {rowContent}
                     </div>
                   );
                 })}

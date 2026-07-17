@@ -849,8 +849,8 @@ export default function SectorRotationPage() {
               )}
               <div style={{ overflowY: "auto", maxHeight: 520, padding: "16px 20px 20px" }}>
                 <svg viewBox={`0 0 ${totalW} ${totalH}`} style={{ width: "100%", height: "auto", display: "block" }}>
-                  <text x={zeroX + 4} y={16} fontSize={isMobile ? 8 : 9} fill="rgba(0,0,0,0.3)">資金流入 →</text>
-                  <text x={zeroX - 4} y={16} fontSize={isMobile ? 8 : 9} fill="rgba(0,0,0,0.3)" textAnchor="end">← 資金流出</text>
+                  <text x={zeroX + 4} y={16} fontSize={9} fill="rgba(0,0,0,0.3)">資金流入 →</text>
+                  <text x={zeroX - 4} y={16} fontSize={9} fill="rgba(0,0,0,0.3)" textAnchor="end">← 資金流出</text>
                   <line x1={zeroX} y1={padT - 8} x2={zeroX} y2={totalH - padB} stroke="rgba(0,0,0,0.1)" strokeWidth="1"/>
                   {sorted.map((b, i) => {
                     const q = quadrant(b), color = Q_META[q].color;
@@ -868,11 +868,11 @@ export default function SectorRotationPage() {
                           else if (hasChildren) handleBubbleClick(b);
                         }}>
                         {isHov && <rect x={0} y={cy - rowH/2} width={totalW} height={rowH} fill="rgba(0,0,0,0.03)" rx="3"/>}
-                        <text x={nameW - 6} y={cy + 4} fontSize={isMobile ? 9 : 11} fill={isHov ? "rgba(15,23,42,0.9)" : "rgba(15,23,42,0.65)"} textAnchor="end">
+                        <text x={nameW - 6} y={cy + 4} fontSize={11} fill={isHov ? "rgba(15,23,42,0.9)" : "rgba(15,23,42,0.65)"} textAnchor="end">
                           {code ? `${code} ${b.name}` : b.name}
                         </text>
-                        <rect x={bx} y={cy - (isMobile ? 6 : 8)} width={len} height={isMobile ? 12 : 16} fill={color} fillOpacity={isHov ? 0.85 : 0.68} rx="2"/>
-                        <text x={b.x >= 0 ? zeroX + len + 4 : zeroX - len - 4} y={cy + 4} fontSize={isMobile ? 8.5 : 10}
+                        <rect x={bx} y={cy - 8} width={len} height={16} fill={color} fillOpacity={isHov ? 0.85 : 0.68} rx="2"/>
+                        <text x={b.x >= 0 ? zeroX + len + 4 : zeroX - len - 4} y={cy + 4} fontSize={10}
                           fill={color} textAnchor={b.x >= 0 ? "start" : "end"} fontWeight={isHov ? "500" : "normal"}>
                           {fmtAmt(b.x)}
                         </text>

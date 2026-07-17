@@ -25,13 +25,13 @@ const H = 500;
 const PAD = { top: 44, right: 32, bottom: 52, left: 62 };
 const CW = W - PAD.left - PAD.right;
 const CH = H - PAD.top - PAD.bottom;
-const CHART_BG = "#F8FAFC";
+const CHART_BG = "#F1F5F9";
 
 const Q_META = [
-  { label: "主力", desc: "錢正大力進場",   plain: "資金加速流入，最強勢", color: "#10B981" },
-  { label: "輪動", desc: "熱度開始轉移",   plain: "資金持續流入但放緩",   color: "#F59E0B" },
-  { label: "觀望", desc: "資金來但沒人接", plain: "動能回升，留意轉強",   color: "#818CF8" },
-  { label: "退潮", desc: "資金流出，別追", plain: "資金持續流出，避開",   color: "#FB923C" },
+  { label: "主力", desc: "錢正大力進場",   plain: "資金加速流入，最強勢", color: "#059669" },
+  { label: "輪動", desc: "熱度開始轉移",   plain: "資金持續流入但放緩",   color: "#D97706" },
+  { label: "觀望", desc: "資金來但沒人接", plain: "動能回升，留意轉強",   color: "#6366F1" },
+  { label: "退潮", desc: "資金流出，別追", plain: "資金持續流出，避開",   color: "#EA580C" },
 ];
 
 function quadrant(b: { x: number; y: number }) {
@@ -57,6 +57,12 @@ export default function SectorRotationPage() {
   const [viewType, setViewType] = useState<"bubble" | "heatmap" | "bars" | "matrix">("bubble");
   const [matrixSort, setMatrixSort] = useState<{ col: "x" | "y" | "rt_amt" | "size"; dir: 1 | -1 }>({ col: "x", dir: -1 });
   const navigate = useNavigate();
+  const [isMobile, setIsMobile] = useState(() => typeof window !== "undefined" && window.innerWidth < 640);
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < 640);
+    window.addEventListener("resize", handler);
+    return () => window.removeEventListener("resize", handler);
+  }, []);
 
   // QA
   const [qaOpen, setQaOpen] = useState(false);
@@ -312,7 +318,7 @@ export default function SectorRotationPage() {
   };
   const handleBackToConcepts = () => { setDrillDown(null); resetZoom(); setHovered(null); };
 
-  const gridColor = "rgba(0,0,0,0.07)", axisColor = "rgba(0,0,0,0.2)", tickColor = "rgba(0,0,0,0.45)";
+  const gridColor = "rgba(0,0,0,0.11)", axisColor = "rgba(0,0,0,0.35)", tickColor = "rgba(0,0,0,0.6)";
 
   // ── render ────────────────────────────────────────────────────────────────
 
@@ -396,7 +402,7 @@ export default function SectorRotationPage() {
             return (
               <button key={v} onClick={() => setViewType(v)}
                 className="px-3 py-1.5 rounded-lg text-sm transition"
-                style={{ background: viewType === v ? "white" : "transparent", border: `1px solid ${viewType === v ? "#CBD5E1" : "transparent"}`, color: viewType === v ? "#0F172A" : "rgba(15,23,42,0.4)", fontWeight: viewType === v ? 500 : 400, boxShadow: viewType === v ? "0 1px 3px rgba(0,0,0,0.08)" : "none" }}>
+                style={{ background: viewType === v ? "white" : "transparent", border: `1.5px solid ${viewType === v ? "#64748B" : "transparent"}`, color: viewType === v ? "#0F172A" : "rgba(15,23,42,0.52)", fontWeight: viewType === v ? 600 : 400, boxShadow: viewType === v ? "0 2px 6px rgba(0,0,0,0.12)" : "none" }}>
                 {LABELS[v]}
               </button>
             );
@@ -405,7 +411,7 @@ export default function SectorRotationPage() {
       )}
 
       {/* ── 主卡 ── */}
-      <div className="rounded-2xl overflow-hidden" style={{ background: CHART_BG, border: "1px solid #E2E8F0" }}>
+      <div className="rounded-2xl overflow-hidden" style={{ background: CHART_BG, border: "1.5px solid #94A3B8", boxShadow: "0 2px 12px rgba(0,0,0,0.08)" }}>
         <div className="flex flex-col lg:flex-row" style={{ display: viewType === "bubble" ? "" : "none" }}>
 
         {/* 左側：象限 sidebar + 圖表/榜單 */}
@@ -414,7 +420,7 @@ export default function SectorRotationPage() {
         <div className="flex flex-1 min-w-0">
 
           {/* 左側象限統計（桌機顯示，手機隱藏）*/}
-          <div className="hidden lg:flex w-[110px] shrink-0 flex-col" style={{ borderRight: "1px solid #E2E8F0" }}>
+          <div className="hidden lg:flex w-[110px] shrink-0 flex-col" style={{ borderRight: "1px solid #CBD5E1" }}>
             {drillDown ? (
               /* 下鑽模式：顯示概念股名稱 + 返回按鈕 */
               <div className="flex flex-col items-center justify-center flex-1 gap-3 px-2 text-center">
@@ -485,20 +491,25 @@ export default function SectorRotationPage() {
               <rect width={W} height={H} fill={CHART_BG} />
 
               {/* 固定象限標籤 + 白話說明 */}
-              <text x={PAD.left + 6} y={PAD.top + 14} fontSize={10} fill={Q_META[2].color} fontWeight={700}>觀望</text>
-              <text x={PAD.left + 6} y={PAD.top + 26} fontSize={8.5} fill={Q_META[2].color} fillOpacity={0.55}>{Q_META[2].desc}</text>
-              <text x={W - PAD.right - 6} y={PAD.top + 14} fontSize={10} fill={Q_META[0].color} fontWeight={700} textAnchor="end">主力加速流入 ★</text>
-              <text x={W - PAD.right - 6} y={PAD.top + 26} fontSize={8.5} fill={Q_META[0].color} fillOpacity={0.55} textAnchor="end">{Q_META[0].desc}</text>
-              <text x={PAD.left + 6} y={H - PAD.bottom - 14} fontSize={10} fill={Q_META[3].color} fontWeight={700}>退潮</text>
-              <text x={PAD.left + 6} y={H - PAD.bottom - 3} fontSize={8.5} fill={Q_META[3].color} fillOpacity={0.55}>{Q_META[3].desc}</text>
-              <text x={W - PAD.right - 6} y={H - PAD.bottom - 14} fontSize={10} fill={Q_META[1].color} fontWeight={700} textAnchor="end">輪動</text>
-              <text x={W - PAD.right - 6} y={H - PAD.bottom - 3} fontSize={8.5} fill={Q_META[1].color} fillOpacity={0.55} textAnchor="end">{Q_META[1].desc}</text>
+              <text x={PAD.left + 6} y={PAD.top + 15} fontSize={11} fill={Q_META[2].color} fontWeight={800}>觀望</text>
+              <text x={PAD.left + 6} y={PAD.top + 28} fontSize={9} fill={Q_META[2].color} fillOpacity={0.75}>{Q_META[2].desc}</text>
+              <text x={W - PAD.right - 6} y={PAD.top + 15} fontSize={11} fill={Q_META[0].color} fontWeight={800} textAnchor="end">主力加速流入 ★</text>
+              <text x={W - PAD.right - 6} y={PAD.top + 28} fontSize={9} fill={Q_META[0].color} fillOpacity={0.75} textAnchor="end">{Q_META[0].desc}</text>
+              <text x={PAD.left + 6} y={H - PAD.bottom - 14} fontSize={11} fill={Q_META[3].color} fontWeight={800}>退潮</text>
+              <text x={PAD.left + 6} y={H - PAD.bottom - 2} fontSize={9} fill={Q_META[3].color} fillOpacity={0.75}>{Q_META[3].desc}</text>
+              <text x={W - PAD.right - 6} y={H - PAD.bottom - 14} fontSize={11} fill={Q_META[1].color} fontWeight={800} textAnchor="end">輪動</text>
+              <text x={W - PAD.right - 6} y={H - PAD.bottom - 2} fontSize={9} fill={Q_META[1].color} fillOpacity={0.75} textAnchor="end">{Q_META[1].desc}</text>
 
               {/* 軸方向 */}
               <text x={W - PAD.right} y={H - PAD.bottom + 38} fontSize={8.5} fill={tickColor} textAnchor="end">資金流入（億）→</text>
               <text x={PAD.left} y={H - PAD.bottom + 38} fontSize={8.5} fill={tickColor}>← 資金流出（億）</text>
 
               <g clipPath="url(#chart-clip)">
+                {/* 象限底色（固定不跟 zoom 走）*/}
+                <rect x={ox} y={PAD.top} width={W - PAD.right - ox} height={oy - PAD.top} fill={Q_META[0].color} fillOpacity={0.06} />
+                <rect x={ox} y={oy} width={W - PAD.right - ox} height={H - PAD.bottom - oy} fill={Q_META[1].color} fillOpacity={0.06} />
+                <rect x={PAD.left} y={PAD.top} width={ox - PAD.left} height={oy - PAD.top} fill={Q_META[2].color} fillOpacity={0.06} />
+                <rect x={PAD.left} y={oy} width={ox - PAD.left} height={H - PAD.bottom - oy} fill={Q_META[3].color} fillOpacity={0.06} />
                 <g transform={`translate(${zoom.tx},${zoom.ty}) scale(${zoom.scale})`}>
                   {/* 格線 */}
                   {[-0.75, -0.5, -0.25, 0.25, 0.5, 0.75].map(f => {
@@ -548,19 +559,19 @@ export default function SectorRotationPage() {
                     return (
                       <g key={b.name} onMouseEnter={() => !dragging && setHovered(b)} onMouseLeave={() => setHovered(null)}
                         onClick={() => handleBubbleClick(b)} style={{ cursor: dragging ? "grabbing" : canDrill ? "zoom-in" : "default" }}>
-                        <circle cx={bx} cy={by} r={rad * 1.18} fill={color} fillOpacity={(isHov ? 0.18 : 0.09) * (isMatch ? 1 : 0.3)} />
-                        <circle cx={bx} cy={by} r={rad} fill={color} fillOpacity={(isHov ? 0.95 : 0.85) * (isMatch ? 1 : 0.15)}
-                          stroke={color} strokeWidth={(isHov ? 2 : 1)/zoom.scale} strokeOpacity={isMatch ? (isHov ? 1 : 0.9) : 0.2} />
+                        <circle cx={bx} cy={by} r={rad * 1.22} fill={color} fillOpacity={(isHov ? 0.25 : 0.14) * (isMatch ? 1 : 0.25)} />
+                        <circle cx={bx} cy={by} r={rad} fill={color} fillOpacity={(isHov ? 0.97 : 0.90) * (isMatch ? 1 : 0.12)}
+                          stroke={color} strokeWidth={(isHov ? 2.5 : 1.5)/zoom.scale} strokeOpacity={isMatch ? 1 : 0.15} />
                         {visualR > 11 && isMatch && (
                           <text x={bx} y={by + (visualR > 20 ? -fs1 * 0.6 : fs1 * 0.35)} fontSize={fs1} fill="white"
-                            stroke="rgba(0,0,0,0.55)" strokeWidth={1.5 / zoom.scale} paintOrder="stroke"
+                            stroke="rgba(0,0,0,0.7)" strokeWidth={2 / zoom.scale} paintOrder="stroke"
                             textAnchor="middle" fontWeight={700} pointerEvents="none">
                             {displayName}
                           </text>
                         )}
                         {visualR > 20 && isMatch && (
                           <text x={bx} y={by + fs1 * 0.85} fontSize={fs2} fill="white"
-                            stroke="rgba(0,0,0,0.4)" strokeWidth={1.2 / zoom.scale} paintOrder="stroke"
+                            stroke="rgba(0,0,0,0.6)" strokeWidth={1.5 / zoom.scale} paintOrder="stroke"
                             textAnchor="middle" fontWeight={600} pointerEvents="none">
                             {fmtAmt(b.x)}
                           </text>
@@ -573,7 +584,7 @@ export default function SectorRotationPage() {
             </svg>
 
             {/* 圖例 */}
-            <div className="flex items-center gap-3 px-4 py-2 text-xs flex-wrap" style={{ borderTop: "1px solid #EEF0F4", color: "rgba(15,23,42,0.4)" }}>
+            <div className="flex items-center gap-3 px-4 py-2 text-xs flex-wrap" style={{ borderTop: "1px solid #CBD5E1", color: "rgba(15,23,42,0.6)" }}>
               <span>圖例：</span>
               {Q_META.map(q => (
                 <span key={q.label} className="flex items-center gap-1">
@@ -605,7 +616,7 @@ export default function SectorRotationPage() {
               const tipLeft = mousePos.x + 14 + 210 > cw ? Math.max(4, mousePos.x - 224) : mousePos.x + 14;
               return (
               <div className="absolute pointer-events-none z-10 rounded-xl px-3 py-2.5 text-xs"
-                style={{ left: tipLeft, top: Math.max(4, mousePos.y - 10), maxWidth: 210, background: "rgba(255,255,255,0.97)", border: "1px solid #E2E8F0", color: "#0F172A", backdropFilter: "blur(8px)", boxShadow: "0 4px 16px rgba(0,0,0,0.1)" }}>
+                style={{ left: tipLeft, top: Math.max(4, mousePos.y - 10), maxWidth: 210, background: "rgba(255,255,255,0.98)", border: "1px solid #94A3B8", color: "#0F172A", backdropFilter: "blur(8px)", boxShadow: "0 6px 20px rgba(0,0,0,0.14)" }}>
                 <div className="font-bold text-sm mb-1.5">
                   {"code" in hovered ? <><span className="font-mono text-gray-400 text-xs">{(hovered as StockBubble).code} </span>{hovered.name}</> : hovered.name}
                 </div>
@@ -626,14 +637,14 @@ export default function SectorRotationPage() {
         </div>{/* /左側 flex */}
 
         {/* 右側：概念股列表面板 */}
-        <div className="lg:w-[300px] shrink-0 flex flex-col" style={{ borderTop: "1px solid #E2E8F0", borderLeft: "none" }}
+        <div className="lg:w-[300px] shrink-0 flex flex-col" style={{ borderTop: "1px solid #CBD5E1", borderLeft: "none" }}
           // eslint-disable-next-line react/no-unknown-property
           {...({ "data-panel": true } as object)}>
-          <style>{`@media (min-width: 1024px) { [data-panel] { border-left: 1px solid #E2E8F0; border-top: none; } }`}</style>
+          <style>{`@media (min-width: 1024px) { [data-panel] { border-left: 1.5px solid #94A3B8; border-top: none; } }`}</style>
 
           {/* 頂列：標題 + 視圖切換 */}
-          <div className="flex items-center justify-between px-4 py-2.5 shrink-0" style={{ borderBottom: "1px solid #E2E8F0" }}>
-            <span className="text-xs font-semibold" style={{ color: "rgba(15,23,42,0.4)" }}>
+          <div className="flex items-center justify-between px-4 py-2.5 shrink-0" style={{ borderBottom: "1px solid #CBD5E1" }}>
+            <span className="text-xs font-semibold" style={{ color: "rgba(15,23,42,0.6)" }}>
               {drillDown
                 ? `${drillDown.name} 成分股（${drillDown.stocks?.length ?? 0}）`
                 : viewMode === "concepts" ? `概念股（${allConcepts.length}）` : "排行榜"
@@ -683,7 +694,7 @@ export default function SectorRotationPage() {
                   return (
                     <div key={b.name}
                       className={`flex items-center gap-2 px-4 py-2.5 transition ${canDrill ? "cursor-pointer" : ""}`}
-                      style={{ borderBottom: "1px solid #F1F4F9", background: hovered?.name === b.name ? "rgba(0,0,0,0.04)" : "transparent" }}
+                      style={{ borderBottom: "1px solid #E2E8F0", background: hovered?.name === b.name ? "rgba(0,0,0,0.055)" : "transparent" }}
                       onMouseEnter={() => setHovered(b)} onMouseLeave={() => setHovered(null)}
                       onClick={() => canDrill && handleBubbleClick(b)}>
                       <span className="flex-1 text-sm font-medium truncate" style={{ color: hovered?.name === b.name ? "#0F172A" : "rgba(15,23,42,0.75)" }}>
@@ -710,7 +721,7 @@ export default function SectorRotationPage() {
                     return (
                       <div key={b.name}
                         className="flex items-center gap-2 py-2 cursor-pointer rounded px-1 -mx-1 transition"
-                        style={{ borderBottom: "1px solid #F1F4F9", background: hovered?.name === b.name ? "rgba(0,0,0,0.04)" : "transparent" }}
+                        style={{ borderBottom: "1px solid #E2E8F0", background: hovered?.name === b.name ? "rgba(0,0,0,0.055)" : "transparent" }}
                         onMouseEnter={() => setHovered(b)} onMouseLeave={() => setHovered(null)}
                         onClick={() => { if (b.stocks?.length) handleBubbleClick(b); }}>
                         <span className="text-xs tabular-nums w-4 shrink-0" style={{ color: "rgba(15,23,42,0.3)" }}>{i + 1}</span>
@@ -733,7 +744,7 @@ export default function SectorRotationPage() {
                   {dipRanking.map(b => (
                     <div key={b.name}
                       className="flex items-center gap-2 py-2 cursor-pointer rounded px-1 -mx-1 transition"
-                      style={{ borderBottom: "1px solid #F1F4F9", background: hovered?.name === b.name ? "rgba(0,0,0,0.04)" : "transparent" }}
+                      style={{ borderBottom: "1px solid #E2E8F0", background: hovered?.name === b.name ? "rgba(0,0,0,0.055)" : "transparent" }}
                       onMouseEnter={() => setHovered(b)} onMouseLeave={() => setHovered(null)}
                       onClick={() => { if (b.stocks?.length) handleBubbleClick(b); }}>
                       <span className="flex-1 text-sm font-medium truncate" style={{ color: hovered?.name === b.name ? "#0F172A" : "rgba(15,23,42,0.75)" }}>{b.name}</span>
@@ -765,7 +776,7 @@ export default function SectorRotationPage() {
                 </div>
               )}
               <div className="p-5">
-                <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(4, minmax(0, 1fr))" }}>
+                <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
                   {[0, 1, 2, 3].map(q => {
                     const qItems = items.filter(b => quadrant(b) === q).sort((a, z) => z.size - a.size);
                     return (
@@ -779,18 +790,18 @@ export default function SectorRotationPage() {
                           const code = "code" in b ? (b as StockBubble).code : null;
                           const hasChildren = !code && !!(b as Bubble).stocks?.length;
                           const tile = (
-                            <div className="rounded-lg px-3 py-2 mb-1.5 transition"
+                            <div className="rounded-lg px-2 sm:px-3 py-1.5 sm:py-2 mb-1.5 transition"
                               style={{ background: hovered?.name === b.name ? `${Q_META[q].color}22` : `${Q_META[q].color}0e`, borderLeft: `2.5px solid ${Q_META[q].color}`, cursor: (code || hasChildren) ? "pointer" : "default" }}
                               onMouseEnter={() => setHovered(b)} onMouseLeave={() => setHovered(null)}
                               onClick={() => { if (!code && hasChildren) handleBubbleClick(b); }}>
-                              <div className="text-sm font-medium leading-tight" style={{ color: "rgba(15,23,42,0.85)" }}>
-                                {code && <span className="font-mono text-[10px] mr-1" style={{ color: "rgba(15,23,42,0.35)" }}>{code}</span>}
+                              <div className="text-xs sm:text-sm font-medium leading-snug line-clamp-2" style={{ color: "rgba(15,23,42,0.85)" }}>
+                                {code && <span className="font-mono text-[9px] mr-0.5" style={{ color: "rgba(15,23,42,0.35)" }}>{code}</span>}
                                 {b.name}
-                                {hasChildren && <span className="ml-1 text-[10px]" style={{ color: "rgba(15,23,42,0.25)" }}>↗</span>}
+                                {hasChildren && <span className="ml-0.5 text-[9px]" style={{ color: "rgba(15,23,42,0.25)" }}>↗</span>}
                               </div>
-                              <div className="text-xs mt-0.5 flex gap-2" style={{ color: Q_META[q].color, opacity: 0.8 }}>
-                                <span>{fmtAmt(b.x)}</span>
-                                <span className="ml-auto">{b.y >= 0 ? "▲" : "▼"}{Math.abs(b.y)}</span>
+                              <div className="text-[10px] sm:text-xs mt-0.5 flex gap-1" style={{ color: Q_META[q].color, opacity: 0.9 }}>
+                                <span className="truncate">{fmtAmt(b.x)}</span>
+                                <span className="ml-auto flex-shrink-0">{b.y >= 0 ? "▲" : "▼"}{Math.abs(b.y)}</span>
                               </div>
                             </div>
                           );
@@ -819,8 +830,9 @@ export default function SectorRotationPage() {
           const items = rawItems.filter(b => !sq || b.name.toLowerCase().includes(sq));
           const sorted = [...items].sort((a, z) => z.x - a.x);
           const maxAbs = Math.max(...rawItems.map(b => Math.abs(b.x)), 1);
-          const rowH = 28, padT = 28, padB = 16;
-          const nameW = isDD ? 152 : 128, barZone = 340, valW = 72;
+          const rowH = isMobile ? 26 : 28, padT = 28, padB = 16;
+          const nameW = isMobile ? (isDD ? 100 : 86) : (isDD ? 152 : 128);
+          const barZone = isMobile ? 180 : 340, valW = isMobile ? 58 : 72;
           const totalW = nameW + barZone + valW;
           const totalH = sorted.length * rowH + padT + padB;
           const zeroX = nameW + barZone / 2;
@@ -836,9 +848,9 @@ export default function SectorRotationPage() {
                 </div>
               )}
               <div style={{ overflowY: "auto", maxHeight: 520, padding: "16px 20px 20px" }}>
-                <svg viewBox={`0 0 ${totalW} ${totalH}`} style={{ width: "100%", height: totalH, display: "block" }}>
-                  <text x={zeroX + 4} y={16} fontSize="9" fill="rgba(0,0,0,0.3)">資金流入 →</text>
-                  <text x={zeroX - 4} y={16} fontSize="9" fill="rgba(0,0,0,0.3)" textAnchor="end">← 資金流出</text>
+                <svg viewBox={`0 0 ${totalW} ${totalH}`} style={{ width: "100%", height: "auto", display: "block" }}>
+                  <text x={zeroX + 4} y={16} fontSize={isMobile ? 8 : 9} fill="rgba(0,0,0,0.3)">資金流入 →</text>
+                  <text x={zeroX - 4} y={16} fontSize={isMobile ? 8 : 9} fill="rgba(0,0,0,0.3)" textAnchor="end">← 資金流出</text>
                   <line x1={zeroX} y1={padT - 8} x2={zeroX} y2={totalH - padB} stroke="rgba(0,0,0,0.1)" strokeWidth="1"/>
                   {sorted.map((b, i) => {
                     const q = quadrant(b), color = Q_META[q].color;
@@ -856,11 +868,11 @@ export default function SectorRotationPage() {
                           else if (hasChildren) handleBubbleClick(b);
                         }}>
                         {isHov && <rect x={0} y={cy - rowH/2} width={totalW} height={rowH} fill="rgba(0,0,0,0.03)" rx="3"/>}
-                        <text x={nameW - 8} y={cy + 4} fontSize="11" fill={isHov ? "rgba(15,23,42,0.9)" : "rgba(15,23,42,0.65)"} textAnchor="end">
+                        <text x={nameW - 6} y={cy + 4} fontSize={isMobile ? 9 : 11} fill={isHov ? "rgba(15,23,42,0.9)" : "rgba(15,23,42,0.65)"} textAnchor="end">
                           {code ? `${code} ${b.name}` : b.name}
                         </text>
-                        <rect x={bx} y={cy - 8} width={len} height={16} fill={color} fillOpacity={isHov ? 0.85 : 0.68} rx="2"/>
-                        <text x={b.x >= 0 ? zeroX + len + 5 : zeroX - len - 5} y={cy + 4} fontSize="10"
+                        <rect x={bx} y={cy - (isMobile ? 6 : 8)} width={len} height={isMobile ? 12 : 16} fill={color} fillOpacity={isHov ? 0.85 : 0.68} rx="2"/>
+                        <text x={b.x >= 0 ? zeroX + len + 4 : zeroX - len - 4} y={cy + 4} fontSize={isMobile ? 8.5 : 10}
                           fill={color} textAnchor={b.x >= 0 ? "start" : "end"} fontWeight={isHov ? "500" : "normal"}>
                           {fmtAmt(b.x)}
                         </text>
@@ -908,37 +920,42 @@ export default function SectorRotationPage() {
               )}
               <div className="flex items-center gap-2 px-4 py-2" style={{ borderBottom: "1px solid #E2E8F0", background: "rgba(0,0,0,0.015)" }}>
                 <span className="flex-1 text-xs font-semibold" style={{ color: "rgba(15,23,42,0.4)" }}>{isDD ? "個股" : "族群"}</span>
-                <span className="w-14 text-center text-xs font-semibold" style={{ color: "rgba(15,23,42,0.4)" }}>狀態</span>
-                <span className="w-40 flex justify-end pr-2"><SortBtn col="x" label="資金流" /></span>
-                <span className="w-20 flex justify-end pr-2"><SortBtn col="y" label="加速度" /></span>
-                <span className="w-24 flex justify-end"><SortBtn col="rt_amt" label="今日成交" /></span>
+                <span className="w-12 text-center text-xs font-semibold" style={{ color: "rgba(15,23,42,0.4)" }}>狀態</span>
+                <span className="flex justify-end pr-1 sm:w-40 w-24"><SortBtn col="x" label="資金流" /></span>
+                <span className="hidden sm:flex justify-end pr-2 w-20"><SortBtn col="y" label="加速度" /></span>
+                <span className="hidden sm:flex justify-end w-24"><SortBtn col="rt_amt" label="今日成交" /></span>
               </div>
               <div style={{ maxHeight: 480, overflowY: "auto" }}>
                 {sortedM.map((b, i) => {
                   const q = quadrant(b), color = Q_META[q].color;
-                  const barW = Math.abs(b.x) / maxAbs * 52;
+                  const barW = Math.abs(b.x) / maxAbs * 48;
                   const isHov = hovered?.name === b.name;
                   const code = "code" in b ? (b as StockBubble).code : null;
                   const hasChildren = !code && !!(b as Bubble).stocks?.length;
-                  const rowStyle: React.CSSProperties = { borderBottom: "1px solid #F1F4F9", background: isHov ? "rgba(0,0,0,0.03)" : i % 2 === 0 ? "rgba(0,0,0,0.01)" : "transparent" };
+                  const rowStyle: React.CSSProperties = { borderBottom: "1px solid #E2E8F0", background: isHov ? "rgba(0,0,0,0.05)" : i % 2 === 0 ? "rgba(0,0,0,0.02)" : "transparent" };
                   const rowContent = (
                     <>
-                      <span className="flex-1 text-sm font-medium" style={{ color: "rgba(15,23,42,0.8)" }}>
+                      <span className="flex-1 min-w-0 text-sm font-medium truncate" style={{ color: "rgba(15,23,42,0.8)" }}>
                         {code && <span className="font-mono text-[10px] mr-1" style={{ color: "rgba(15,23,42,0.35)" }}>{code}</span>}
                         {b.name}
                         {hasChildren && <span className="ml-1 text-[10px]" style={{ color: "rgba(15,23,42,0.25)" }}>↗</span>}
                       </span>
-                      <span className="w-14 text-center text-xs font-semibold flex-shrink-0" style={{ color }}>{Q_META[q].label}</span>
-                      <div className="w-40 flex items-center justify-end gap-2 pr-2 flex-shrink-0">
-                        <div className="h-1.5 rounded-full flex-shrink-0" style={{ width: barW, background: b.x >= 0 ? "#10B981" : "#FB923C", minWidth: 2 }} />
-                        <span className="text-xs tabular-nums font-medium flex-shrink-0" style={{ color: b.x >= 0 ? "#10B981" : "#FB923C", minWidth: 56, textAlign: "right" }}>
+                      <span className="w-12 text-center text-xs font-semibold flex-shrink-0" style={{ color }}>{Q_META[q].label}</span>
+                      {/* 桌機：mini bar + 數字 */}
+                      <div className="hidden sm:flex w-40 items-center justify-end gap-2 pr-2 flex-shrink-0">
+                        <div className="h-1.5 rounded-full flex-shrink-0" style={{ width: barW, background: b.x >= 0 ? Q_META[0].color : Q_META[3].color, minWidth: 2 }} />
+                        <span className="text-xs tabular-nums font-medium flex-shrink-0" style={{ color: b.x >= 0 ? Q_META[0].color : Q_META[3].color, minWidth: 56, textAlign: "right" }}>
                           {fmtAmt(b.x)}
                         </span>
                       </div>
-                      <span className="w-20 text-right pr-2 text-xs tabular-nums font-medium flex-shrink-0" style={{ color: b.y >= 0 ? "#10B981" : "#FB923C" }}>
+                      {/* 手機：只顯示數字 */}
+                      <span className="sm:hidden w-24 text-right text-xs tabular-nums font-semibold flex-shrink-0" style={{ color: b.x >= 0 ? Q_META[0].color : Q_META[3].color }}>
+                        {fmtAmt(b.x)}
+                      </span>
+                      <span className="hidden sm:block w-20 text-right pr-2 text-xs tabular-nums font-medium flex-shrink-0" style={{ color: b.y >= 0 ? Q_META[0].color : Q_META[3].color }}>
                         {b.y >= 0 ? "+" : ""}{b.y}
                       </span>
-                      <span className="w-24 text-right text-xs tabular-nums flex-shrink-0" style={{ color: "rgba(15,23,42,0.45)" }}>
+                      <span className="hidden sm:block w-24 text-right text-xs tabular-nums flex-shrink-0" style={{ color: "rgba(15,23,42,0.45)" }}>
                         {b.rt_amt}億
                       </span>
                     </>
@@ -965,7 +982,7 @@ export default function SectorRotationPage() {
       </div>{/* /主卡 */}
 
       {/* ── QA 問輪動圖 ── */}
-      <div className="rounded-2xl overflow-hidden" style={{ background: CHART_BG, border: "1px solid #E2E8F0" }}>
+      <div className="rounded-2xl overflow-hidden" style={{ background: CHART_BG, border: "1.5px solid #94A3B8", boxShadow: "0 2px 12px rgba(0,0,0,0.08)" }}>
         <button
           onClick={() => setQaOpen(v => !v)}
           className="w-full flex items-center justify-between px-5 py-3.5 text-left transition hover:bg-black/[0.03]"

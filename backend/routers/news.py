@@ -116,7 +116,7 @@ async def market_analysis(refresh: bool = False):
                 model="gemini-2.5-flash",
                 contents=[genai_types.Content(role="user", parts=[genai_types.Part(text=prompt)])],
                 config=genai_types.GenerateContentConfig(
-                    max_output_tokens=1024,
+                    max_output_tokens=2048,
                     safety_settings=_SAFETY_OFF,
                 ),
             ):

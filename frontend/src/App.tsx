@@ -11,6 +11,7 @@ import RecommendationsPage from "./pages/RecommendationsPage";
 import ChipsPage from "./pages/ChipsPage";
 import EtfTrackerPage from "./pages/EtfTrackerPage";
 import SectorRotationPage from "./pages/SectorRotationPage";
+import NewsPage from "./pages/NewsPage";
 import LoginButton from "./components/LoginButton";
 import PostMaterialsBar from "./components/PostMaterialsBar";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
@@ -53,6 +54,7 @@ const NAV_ITEMS = [
   { to: "/recent",    label: "近期消息", end: false, auth: true  },
   { to: "/ranking",   label: "排行",     end: false, auth: true  },
   { to: "/chips",            label: "大盤",     end: false, auth: true  },
+  { to: "/news",            label: "快訊",     end: false, auth: true  },
   { to: "/sector-rotation", label: "輪動圖",   end: false, auth: true  },
   { to: "/etf-tracker",     label: "ETF追蹤",  end: false, auth: true  },
   { to: "/search",      label: "搜尋",     end: false, auth: true  },
@@ -168,6 +170,7 @@ function AppInner() {
           <Route path="/ranking"      element={<RequireAuth><RankingPage /></RequireAuth>} />
           <Route path="/chips"        element={<RequireAuth><ChipsPage /></RequireAuth>} />
           <Route path="/etf-tracker"      element={<RequireAuth><EtfTrackerPage /></RequireAuth>} />
+          <Route path="/news"            element={<RequireAuth><NewsPage /></RequireAuth>} />
           <Route path="/sector-rotation" element={<RequireAuth><SectorRotationPage /></RequireAuth>} />
           <Route path="/admin"        element={<RequireAuth><AdminPage /></RequireAuth>} />
         </Routes>

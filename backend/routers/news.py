@@ -82,31 +82,44 @@ async def market_analysis(refresh: bool = False):
         return StreamingResponse(_err(), media_type="text/event-stream",
                                  headers={"Cache-Control": "no-cache"})
 
+    # 所有新聞的標題+摘要（作為基礎素材）
+    all_titles = "\n".join(
+        f"[{n['category']}] {n['title']}。{n.get('summary', '')}"
+        for n in news[:20]
+    )
+
+    # 嘗試抓前 6 篇 article_c 的完整內文
     articles = [n for n in news if "article_c" in n.get("link", "")][:6]
     texts = await asyncio.gather(*[_get_article_text(n["link"]) for n in articles])
 
     parts = []
     for n, t in zip(articles, texts):
-        parts.append(f"【{n['category']}】{n['title']}\n{t or '（內文無法取得）'}")
-    combined = "\n\n---\n\n".join(parts)
+        # 內文優先，失敗則用 summary
+        body = t or n.get("summary", "") or "（無內文）"
+        parts.append(f"【{n['category']}】{n['title']}\n{body}")
+    full_articles = "\n\n---\n\n".join(parts)
 
-    prompt = f"""以下是今日台股財經新聞的內文，請根據這些資料產生一份精簡的盤勢分析。
+    prompt = f"""以下是今日台股財經新聞，請根據這些資料產生一份盤勢分析。
 
-{combined}
+=== 今日新聞標題總覽（共 {len(news[:20])} 則）===
+{all_titles}
 
-請用繁體中文輸出，格式如下：
+=== 重點新聞詳細內文 ===
+{full_articles}
+
+請用繁體中文輸出，格式如下（每個段落都要有實質內容，不要省略）：
 
 ## 今日盤勢重點
-- （3-4 條要點，每條 1-2 句，聚焦最重要的市場訊號）
+- （列出 4-5 條要點，每條 1-2 句，涵蓋大盤走勢、產業動態、法人動向等重要訊號）
 
 ## 強弱族群
-強勢：（2-3 個偏強族群，一句說明原因）
-弱勢：（2-3 個偏弱族群，一句說明原因）
+強勢：（列出 3-4 個偏強族群，各附一句說明原因，包含個股舉例）
+弱勢：（列出 2-3 個偏弱族群，各附一句說明原因）
 
 ## 明日觀察
-- （2-3 個明天值得追蹤的事件或指標）
+- （列出 3-4 個明天值得追蹤的事件、數據或個股）
 
-根據新聞事實分析，不加入投資建議。輸出簡潔。"""
+根據新聞事實分析，語言精準，不加入投資建議。"""
 
     def stream():
         try:

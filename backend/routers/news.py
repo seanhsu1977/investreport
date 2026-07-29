@@ -1,11 +1,12 @@
 from __future__ import annotations
-import asyncio
+import html
 import json
 import os
+import re
 import time
+from datetime import datetime, timezone
 
 import httpx
-from bs4 import BeautifulSoup
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse, StreamingResponse
 from google import genai
@@ -13,9 +14,11 @@ from google.genai import types as genai_types
 
 router = APIRouter(prefix="/news", tags=["news"])
 
-NSTOCK_API = "https://www.nstock.tw/api/cnyes-news/?limit=20&categoryAll=true"
+CNYES_API = "https://api.cnyes.com/media/api/v1/newslist/category/tw_stock?limit=30"
 _cache: dict = {"ts": 0.0, "text": ""}
+_news_cache: dict = {"ts": 0.0, "data": []}
 CACHE_TTL = 1800  # 30 min
+NEWS_TTL = 300    # 5 min
 
 _SAFETY_OFF = [
     genai_types.SafetySetting(category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="BLOCK_NONE"),
@@ -27,25 +30,52 @@ _SAFETY_OFF = [
 _UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
 
 
+def _parse_content(raw: str) -> str:
+    """HTML-encoded content → plain text, max 2000 chars."""
+    text = html.unescape(raw or "")
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text[:2000]
+
+
+def _to_newsitem(n: dict) -> dict:
+    """Map cnyes API item → our NewsItem format."""
+    ts = n.get("publishAt", 0)
+    date_str = datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+    stocks = n.get("stock") or []
+    stocks_str = ",".join(f"{s}(TW)" for s in stocks if s) or None
+
+    cover = n.get("coverSrc") or {}
+    img = (cover.get("s") or cover.get("m") or {}).get("src", "")
+
+    return {
+        "id": str(n.get("newsId", "")),
+        "category": n.get("categoryName", ""),
+        "title": n.get("title", ""),
+        "summary": n.get("summary", ""),
+        "content": _parse_content(n.get("content", "")),
+        "link": f"https://news.cnyes.com/news/id/{n.get('newsId', '')}",
+        "source": n.get("source", "鉅亨網"),
+        "date": date_str,
+        "stocks": stocks_str,
+        "img": img,
+        "click": 0,
+    }
+
+
 async def _get_news() -> list[dict]:
-    async with httpx.AsyncClient(timeout=10) as c:
-        r = await c.get(NSTOCK_API)
+    now = time.time()
+    if now - _news_cache["ts"] < NEWS_TTL and _news_cache["data"]:
+        return _news_cache["data"]
+    async with httpx.AsyncClient(timeout=10, headers={"User-Agent": _UA}) as c:
+        r = await c.get(CNYES_API)
         r.raise_for_status()
-        return r.json().get("data", [])
-
-
-async def _get_article_text(url: str) -> str:
-    try:
-        async with httpx.AsyncClient(timeout=10, follow_redirects=True) as c:
-            r = await c.get(url, headers={"User-Agent": _UA})
-            soup = BeautifulSoup(r.text, "html.parser")
-            for tag in soup(["script", "style", "nav", "header", "footer", "aside", "button"]):
-                tag.decompose()
-            paras = [p.get_text(" ", strip=True) for p in soup.find_all("p")]
-            text = "\n".join(p for p in paras if len(p) > 30)
-            return text[:3000]
-    except Exception:
-        return ""
+        items = r.json()["items"]["data"]
+        mapped = [_to_newsitem(n) for n in items]
+        _news_cache["ts"] = now
+        _news_cache["data"] = mapped
+        return mapped
 
 
 @router.get("/list")
@@ -72,7 +102,6 @@ async def market_analysis(refresh: bool = False):
             headers={"Cache-Control": "no-cache"},
         )
 
-    # Fetch news and article content upfront (async)
     try:
         news = await _get_news()
     except Exception as e:
@@ -82,30 +111,17 @@ async def market_analysis(refresh: bool = False):
         return StreamingResponse(_err(), media_type="text/event-stream",
                                  headers={"Cache-Control": "no-cache"})
 
-    # 所有新聞的標題+摘要（作為基礎素材）
-    all_titles = "\n".join(
-        f"[{n['category']}] {n['title']}。{n.get('summary', '')}"
-        for n in news[:20]
-    )
-
-    # 嘗試抓前 6 篇 article_c 的完整內文
-    articles = [n for n in news if "article_c" in n.get("link", "")][:6]
-    texts = await asyncio.gather(*[_get_article_text(n["link"]) for n in articles])
-
+    # 用完整內文（content）拼湊 prompt
     parts = []
-    for n, t in zip(articles, texts):
-        # 內文優先，失敗則用 summary
-        body = t or n.get("summary", "") or "（無內文）"
-        parts.append(f"【{n['category']}】{n['title']}\n{body}")
-    full_articles = "\n\n---\n\n".join(parts)
+    for n in news[:15]:
+        body = n["content"] or n["summary"] or "（無內文）"
+        stocks_tag = f"  相關個股：{n['stocks']}" if n["stocks"] else ""
+        parts.append(f"【{n['category']}】{n['title']}{stocks_tag}\n{body}")
+    combined = "\n\n---\n\n".join(parts)
 
-    prompt = f"""以下是今日台股財經新聞，請根據這些資料產生一份盤勢分析。
+    prompt = f"""以下是今日台股財經新聞（鉅亨網），請根據這些資料產生一份盤勢分析。
 
-=== 今日新聞標題總覽（共 {len(news[:20])} 則）===
-{all_titles}
-
-=== 重點新聞詳細內文 ===
-{full_articles}
+{combined}
 
 請用繁體中文輸出，格式如下（每個段落都要有實質內容，不要省略）：
 

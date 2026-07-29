@@ -6,6 +6,7 @@ interface NewsItem {
   category: string;
   title: string;
   summary: string;
+  content?: string;
   link: string;
   source: string;
   date: string;
@@ -30,14 +31,10 @@ function parseCodes(stocks: string | null): string[] {
 }
 
 const CAT_STYLE: Record<string, { bg: string; color: string }> = {
-  "股市":     { bg: "#EFF6FF", color: "#1D4ED8" },
-  "股市評論": { bg: "#EFF6FF", color: "#1D4ED8" },
-  "公司動態": { bg: "#ECFDF5", color: "#065F46" },
-  "財經評論": { bg: "#F1F5F9", color: "#475569" },
-  "國際新聞": { bg: "#FFF7ED", color: "#C2410C" },
-  "大陸新聞": { bg: "#FFF7ED", color: "#C2410C" },
-  "貿易":     { bg: "#F1F5F9", color: "#475569" },
-  "Ptt股市":  { bg: "#F5F3FF", color: "#6D28D9" },
+  "台股新聞": { bg: "#EFF6FF", color: "#1D4ED8" },
+  "台股":     { bg: "#ECFDF5", color: "#065F46" },
+  "台股盤勢": { bg: "#FFF7ED", color: "#C2410C" },
+  "專家觀點": { bg: "#F5F3FF", color: "#6D28D9" },
 };
 function catStyle(cat: string) {
   return CAT_STYLE[cat] ?? { bg: "#F1F5F9", color: "#475569" };
@@ -71,7 +68,7 @@ function AnalysisText({ text }: { text: string }) {
   );
 }
 
-const ALL_CATS = ["全部", "股市評論", "股市", "公司動態", "國際新聞", "Ptt股市", "財經評論"];
+const ALL_CATS = ["全部", "台股新聞", "台股", "台股盤勢", "專家觀點"];
 
 export default function NewsPage() {
   const [news, setNews] = useState<NewsItem[]>([]);

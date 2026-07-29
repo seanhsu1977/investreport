@@ -135,7 +135,7 @@ export default function NewsPage() {
       <div className="flex items-end justify-between">
         <div>
           <h1 className="text-xl font-bold text-gray-900">市場快訊</h1>
-          <p className="text-sm mt-0.5" style={{ color: "rgba(15,23,42,0.4)" }}>nstock 即時財經新聞 · AI 盤勢分析</p>
+          <p className="text-sm mt-0.5" style={{ color: "rgba(15,23,42,0.4)" }}>鉅亨網即時財經新聞 · AI 盤勢分析</p>
         </div>
       </div>
 

@@ -14,7 +14,7 @@ from google.genai import types as genai_types
 
 router = APIRouter(prefix="/news", tags=["news"])
 
-CNYES_API = "https://api.cnyes.com/media/api/v1/newslist/category/tw_stock?limit=30"
+CNYES_API = "https://api.cnyes.com/media/api/v1/newslist/category/tw_stock?limit=50"
 _cache: dict = {"ts": 0.0, "text": ""}
 _news_cache: dict = {"ts": 0.0, "data": []}
 CACHE_TTL = 1800  # 30 min
@@ -30,12 +30,12 @@ _SAFETY_OFF = [
 _UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
 
 
-def _parse_content(raw: str) -> str:
-    """HTML-encoded content → plain text, max 2000 chars."""
+def _parse_content(raw: str, limit: int = 2000) -> str:
+    """HTML-encoded content → plain text."""
     text = html.unescape(raw or "")
     text = re.sub(r"<[^>]+>", " ", text)
     text = re.sub(r"\s+", " ", text).strip()
-    return text[:2000]
+    return text[:limit]
 
 
 def _to_newsitem(n: dict) -> dict:
@@ -111,10 +111,12 @@ async def market_analysis(refresh: bool = False):
         return StreamingResponse(_err(), media_type="text/event-stream",
                                  headers={"Cache-Control": "no-cache"})
 
-    # 用完整內文（content）拼湊 prompt
+    # 用完整內文（content）拼湊 prompt，每篇限 800 字避免 prompt 過長
     parts = []
-    for n in news[:15]:
-        body = n["content"] or n["summary"] or "（無內文）"
+    for n in news[:20]:
+        body = _parse_content(n.get("content") or n.get("summary") or "", limit=800)
+        if not body:
+            continue
         stocks_tag = f"  相關個股：{n['stocks']}" if n["stocks"] else ""
         parts.append(f"【{n['category']}】{n['title']}{stocks_tag}\n{body}")
     combined = "\n\n---\n\n".join(parts)
@@ -145,7 +147,7 @@ async def market_analysis(refresh: bool = False):
                 model="gemini-2.5-flash",
                 contents=[genai_types.Content(role="user", parts=[genai_types.Part(text=prompt)])],
                 config=genai_types.GenerateContentConfig(
-                    max_output_tokens=2048,
+                    max_output_tokens=4096,
                     safety_settings=_SAFETY_OFF,
                 ),
             ):

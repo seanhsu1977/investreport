@@ -1862,12 +1862,14 @@ async def _compute_sector_rotation() -> None:
             return x20, x5, rt, y
 
         # Step 4: 各概念股成交金額加總 → 動能；同時計算每支個股指標
+        # x 軸代表「相對平均的資金強弱」而非絕對成交金額，需減去平均值才會有正有負，
+        # 四象限（主力/輪動/觀望/退潮）才有意義（否則 x 恆為正，觀望/退潮兩象限永遠不會有泡泡）。
         bubbles = []
         for name, ids in concept_map.items():
             x20_total = 0.0
             x5_total  = 0.0
             rt_total  = 0.0
-            stock_items = []
+            stock_raw = []
 
             for code in ids:
                 if code not in stock_daily:
@@ -1879,25 +1881,28 @@ async def _compute_sector_rotation() -> None:
                 x20_total += x20
                 x5_total  += x5
                 rt_total  += rt
-                stock_items.append({
-                    "code":    code,
-                    "name":    info["name"],
-                    "x":       round(x20 / 1e8, 1),   # 億元
-                    "y":       round(y   / 1e7, 1),   # 千萬元/日
-                    "size":    round(x20 / 1e8, 1),
-                    "amt_5d":  round(x5  / 1e8, 1),
-                    "amt_20d": round(x20 / 1e8, 1),
-                    "rt_amt":  round(rt  / 1e8, 1),
-                })
+                stock_raw.append((code, info["name"], x20, x5, rt, y))
 
-            if not stock_items or x20_total <= 0:
+            if not stock_raw or x20_total <= 0:
                 continue
+
+            x20_avg_in_concept = x20_total / len(stock_raw)
+            stock_items = [{
+                "code":    code,
+                "name":    s_name,
+                "x":       round((x20 - x20_avg_in_concept) / 1e8, 1),   # 相對族群內平均之偏離（億元）
+                "y":       round(y / 1e7, 1),   # 千萬元/日
+                "size":    round(x20 / 1e8, 1),
+                "amt_5d":  round(x5  / 1e8, 1),
+                "amt_20d": round(x20 / 1e8, 1),
+                "rt_amt":  round(rt  / 1e8, 1),
+            } for code, s_name, x20, x5, rt, y in stock_raw]
 
             y_concept = x5_total / 5 - x20_total / 20
 
             bubbles.append({
                 "name":    name,
-                "x":       round(x20_total / 1e9, 1),
+                "x20_total": x20_total,   # 暫存，計算全族群平均後轉為相對值
                 "y":       round(y_concept  / 1e8, 1),
                 "size":    round(x20_total / 1e9, 1),
                 "amt_5d":  round(x5_total  / 1e9, 1),
@@ -1905,6 +1910,13 @@ async def _compute_sector_rotation() -> None:
                 "rt_amt":  round(rt_total  / 1e8, 1),
                 "stocks":  sorted(stock_items, key=lambda s: s["size"], reverse=True),
             })
+
+        if not bubbles:
+            return
+
+        x20_total_avg = sum(b["x20_total"] for b in bubbles) / len(bubbles)
+        for b in bubbles:
+            b["x"] = round((b.pop("x20_total") - x20_total_avg) / 1e9, 1)   # 相對全族群平均之偏離（十億元）
 
         bubbles.sort(key=lambda b: b["size"], reverse=True)
 

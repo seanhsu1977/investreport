@@ -218,9 +218,12 @@ export default function SectorRotationPage() {
   const activeBubbles: (Bubble | StockBubble)[] = drillDown ? (drillDown.stocks ?? []) : allConcepts;
 
   const allB = drillDown ? (drillDown.stocks ?? []) : data.bubbles;
-  const maxAbs  = Math.max(...allB.map(b => Math.abs(b.x)), 1);
+  // x 是 log2 比例偏離：下緣可趨近 -∞（成交量趨近 0），上緣受市場份額限制而有限，
+  // 兩側幅度天生不對稱，故左右分開取極值，避免其中一側被另一側的極端值拖到失真。
+  const maxPosX = Math.max(...allB.map(b => Math.max(b.x, 0)), 0.1);
+  const maxNegX = Math.max(...allB.map(b => Math.max(-b.x, 0)), 0.1);
   const maxAbsY = Math.max(...allB.map(b => Math.abs(b.y)), 1);
-  const xMin = -maxAbs * 1.2, xMax = maxAbs * 1.2;
+  const xMin = -maxNegX * 1.2, xMax = maxPosX * 1.2;
   const yMin = -maxAbsY * 1.2, yMax = maxAbsY * 1.2;
 
   const maxSize = Math.max(...allB.map(b => b.size), 1);
@@ -247,7 +250,11 @@ export default function SectorRotationPage() {
     .slice(0, 4);
 
   const fmtDate = (s: string) => s ? `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}` : "—";
-  const fmtAmt = (x: number) => `${x >= 0 ? "+" : ""}${(drillDown ? x : x * 10).toFixed(1)}億`;
+  // x 是相對平均值的 log2 比例偏離，換算回「比平均多／少幾 % 」較直觀
+  const fmtAmt = (x: number) => {
+    const pct = (Math.pow(2, x) - 1) * 100;
+    return `${pct >= 0 ? "+" : ""}${pct.toFixed(0)}%`;
+  };
 
   const sendQA = async (question?: string) => {
     const q = (question ?? qaInput).trim();
@@ -368,7 +375,7 @@ export default function SectorRotationPage() {
         <div className="rounded-xl px-4 py-3 text-sm" style={{ background: "#EFF6FF", border: "1px solid #BFDBFE", color: "rgba(15,23,42,0.75)" }}>
           <div className="font-semibold mb-1.5" style={{ color: "#1D4ED8" }}>怎麼看這張圖</div>
           <div className="grid gap-1.5 text-xs" style={{ color: "rgba(15,23,42,0.6)" }}>
-            <div><span style={{ color: "#1D4ED8" }}>橫軸（左右）</span>＝資金流入／流出，越右代表錢越多</div>
+            <div><span style={{ color: "#1D4ED8" }}>橫軸（左右）</span>＝相對所有族群平均成交金額的偏離，越右代表資金比平均更集中流入</div>
             <div><span style={{ color: "#1D4ED8" }}>縱軸（上下）</span>＝加速度（近5日均 − 近20日均），越上代表資金在加速流入</div>
             <div><span style={{ color: "#1D4ED8" }}>泡泡大小</span>＝成交規模，單位統一為「億元」</div>
             <div className="pt-1 flex flex-wrap gap-x-4 gap-y-1">
@@ -501,8 +508,8 @@ export default function SectorRotationPage() {
               <text x={W - PAD.right - 6} y={H - PAD.bottom - 2} fontSize={9} fill={Q_META[1].color} fillOpacity={0.75} textAnchor="end">{Q_META[1].desc}</text>
 
               {/* 軸方向 */}
-              <text x={W - PAD.right} y={H - PAD.bottom + 38} fontSize={8.5} fill={tickColor} textAnchor="end">資金流入（億）→</text>
-              <text x={PAD.left} y={H - PAD.bottom + 38} fontSize={8.5} fill={tickColor}>← 資金流出（億）</text>
+              <text x={W - PAD.right} y={H - PAD.bottom + 38} fontSize={8.5} fill={tickColor} textAnchor="end">資金流入（相對平均）→</text>
+              <text x={PAD.left} y={H - PAD.bottom + 38} fontSize={8.5} fill={tickColor}>← 資金流出（相對平均）</text>
 
               <g clipPath="url(#chart-clip)">
                 {/* 象限底色（固定不跟 zoom 走）*/}
@@ -525,8 +532,8 @@ export default function SectorRotationPage() {
                   <line x1={ox} y1={PAD.top} x2={ox} y2={H - PAD.bottom} stroke={axisColor} strokeWidth={1.5 / zoom.scale} />
                   {/* X 軸刻度 */}
                   {[-1, -0.5, 0.5, 1].map(f => {
-                    const val = f * maxAbs, sx = toSvgX(val);
-                    const lbl = drillDown ? `${val>=0?"+":""}${val.toFixed(0)}億` : `${val>=0?"+":""}${(val*10).toFixed(0)}億`;
+                    const val = f * (f < 0 ? maxNegX : maxPosX), sx = toSvgX(val);
+                    const lbl = fmtAmt(val);
                     return <g key={f}>
                       <line x1={sx} y1={oy - 4/zoom.scale} x2={sx} y2={oy + 4/zoom.scale} stroke={axisColor} strokeWidth={1/zoom.scale} />
                       <text x={sx} y={oy + 14/zoom.scale} fontSize={8/zoom.scale} fill={tickColor} textAnchor="middle">{lbl}</text>

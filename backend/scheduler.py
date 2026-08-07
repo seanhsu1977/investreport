@@ -36,11 +36,16 @@ def _save_sync_log(db, log: SyncLog, result: dict | None, error: str | None = No
         log.status = "error"
         log.error_message = error
     else:
-        log.status = "done"
         log.processed = result.get("processed", 0)
         log.skipped = result.get("skipped", 0)
         log.errors = result.get("errors", 0)
         log.no_report = result.get("no_report", 0)
+        warning = result.get("warning")
+        if warning:
+            log.status = "error"
+            log.error_message = warning
+        else:
+            log.status = "done"
     db.commit()
 
 

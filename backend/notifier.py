@@ -43,14 +43,18 @@ def send_message(text: str) -> bool:
 def notify_sync_done(result: dict, new_reports: list[dict]) -> None:
     """同步完成後發送通知。"""
     processed = result.get("processed", 0)
-    if processed == 0:
+    warning = result.get("warning")
+    if processed == 0 and not warning:
         return
 
     stock_reports = [r for r in new_reports if r["stock_code"] != "MARKET"]
     market_news   = [r for r in new_reports if r["stock_code"] == "MARKET"]
 
-    lines = ["📊 <b>投顧報告同步完成</b>"]
-    lines.append(f"共新增 <b>{processed}</b> 篇報告\n")
+    if processed:
+        lines = ["📊 <b>投顧報告同步完成</b>"]
+        lines.append(f"共新增 <b>{processed}</b> 篇報告\n")
+    else:
+        lines = ["🚨 <b>投顧報告同步失敗</b>"]
 
     if stock_reports:
         lines.append("📌 <b>個股報告</b>")
@@ -72,7 +76,6 @@ def notify_sync_done(result: dict, new_reports: list[dict]) -> None:
             if title:
                 lines.append(f"  · {title}…")
 
-    warning = result.get("warning")
     if warning:
         lines.append(f"\n⚠️ {warning}")
 

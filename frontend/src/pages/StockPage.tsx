@@ -60,6 +60,13 @@ export default function StockPage() {
   const [kline, setKline] = useState<KlineResponse | null>(null);
   const [klineLoading, setKlineLoading] = useState(true);
   const [klineError, setKlineError] = useState(false);
+  const [expandedReports, setExpandedReports] = useState<Set<number>>(new Set());
+  const toggleReportExpanded = (id: number) =>
+    setExpandedReports((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
   // time-scale sync between K-line chart and KDJ chart
   const klineTs = useRef<ITimeScaleApi<UTCTimestamp> | null>(null);
   const kdjTs   = useRef<ITimeScaleApi<UTCTimestamp> | null>(null);
@@ -511,17 +518,18 @@ export default function StockPage() {
                   const gain20d = r.price_20d_before && r.price_at_report
                     ? ((r.price_at_report / r.price_20d_before - 1) * 100) : null;
                   const hasPreStats = gain5d != null || gain10d != null || gain20d != null;
+                  const isExpanded = expandedReports.has(r.id);
+                  const isTruncatable = (r.summary?.length ?? 0) > 80;
                   return (
                     <div key={r.id} className="px-4 py-3.5 border-b border-[#F5F7FC] last:border-b-0">
                       {/* top row */}
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex-1 min-w-0">
-                          {r.analyst && (
-                            <div className="text-[11px] font-bold text-[#1B6FD8]">{r.analyst}</div>
-                          )}
                           {r.summary && (
-                            <div className="text-[13px] font-medium text-[#0D1B2A] mt-1 leading-snug line-clamp-2">
-                              {r.summary.slice(0, 80)}{r.summary.length > 80 ? "…" : ""}
+                            <div
+                              className={`text-[13px] font-medium text-[#0D1B2A] leading-snug ${isExpanded ? "" : "line-clamp-2"}`}
+                            >
+                              {isExpanded ? r.summary : `${r.summary.slice(0, 80)}${isTruncatable ? "…" : ""}`}
                             </div>
                           )}
                         </div>
@@ -585,11 +593,19 @@ export default function StockPage() {
                       {r.key_points.length > 0 && (
                         <div className="mt-2 bg-[#F8F9FE] rounded-lg p-2.5 border-l-2 border-[#1B6FD8]">
                           <div className="text-[11px] text-[#6B7A99] leading-relaxed space-y-0.5">
-                            {r.key_points.slice(0, 2).map((pt, j) => (
+                            {(isExpanded ? r.key_points : r.key_points.slice(0, 2)).map((pt, j) => (
                               <div key={j}>▸ {pt}</div>
                             ))}
                           </div>
                         </div>
+                      )}
+                      {(isTruncatable || r.key_points.length > 2) && (
+                        <button
+                          onClick={() => toggleReportExpanded(r.id)}
+                          className="mt-1.5 text-[11px] font-medium text-[#1B6FD8] hover:underline"
+                        >
+                          {isExpanded ? "收合" : "看全文"}
+                        </button>
                       )}
                       {/* admin select */}
                       {user?.is_admin && (

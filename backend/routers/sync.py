@@ -195,6 +195,7 @@ async def _do_reanalyze_async(file_ids: list[tuple[str, str]]):
 
 
 def _do_reanalyze(file_ids: list[tuple[str, str]]):
+    import gc
     import json
     import logging
     from datetime import date
@@ -208,7 +209,7 @@ def _do_reanalyze(file_ids: list[tuple[str, str]]):
     reanalyzed = 0
     try:
         service = get_drive_service()
-        for file_id, filename in file_ids:
+        for i, (file_id, filename) in enumerate(file_ids, start=1):
             try:
                 file_bytes = download_file(service, file_id)
                 mime_type = "application/pdf"
@@ -256,6 +257,9 @@ def _do_reanalyze(file_ids: list[tuple[str, str]]):
             except Exception as e:
                 db.rollback()
                 logger.error("Reanalyze error for %s: %s", filename, e)
+
+            if i % 10 == 0:
+                gc.collect()
     finally:
         db.close()
     logger.info("Reanalyze done: %d/%d reports created", reanalyzed, len(file_ids))

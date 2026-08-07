@@ -1,4 +1,5 @@
 from __future__ import annotations
+import gc
 import json
 import logging
 import os
@@ -276,6 +277,7 @@ def sync_drive(db: Session, progress: dict | None = None, cancelled=None, since:
             processed += 1
             if progress is not None:
                 progress["processed"] = processed
+            del file_bytes, result
 
         except Exception as e:
             err_str = str(e)
@@ -294,6 +296,11 @@ def sync_drive(db: Session, progress: dict | None = None, cancelled=None, since:
                     "synced_at": datetime.utcnow().isoformat(),
                     "warning": "Anthropic API 餘額不足，請至 console.anthropic.com 充值後再同步。",
                 }
+
+        # 大量檔案（補歷史缺漏）時，PDF 文字/圖片轉換物件會逐筆累積，
+        # 每 10 筆主動 GC 一次，避免長時間批次跑到後段記憶體越疊越高
+        if (processed + errors) % 10 == 0:
+            gc.collect()
 
     return {
         "processed": processed,

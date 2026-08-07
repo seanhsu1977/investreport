@@ -3,6 +3,7 @@ import json
 import logging
 from datetime import date, datetime, timedelta, timezone
 from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.executors.pool import ThreadPoolExecutor
 from database import SessionLocal
 from drive_sync import sync_drive
 from models import Report, FuturesChip, SyncLog, MarketTechnicalSnapshot
@@ -13,7 +14,9 @@ logger = logging.getLogger(__name__)
 _last_sync_result: dict | None = None
 _sync_progress: dict = {"running": False}
 _sync_cancelled: bool = False
-scheduler = BackgroundScheduler()
+# max_workers=1：排程工作一律序列執行，避免同一時段多個工作（如 drive_sync 與
+# etf_tracker_sync 都排在 20:00）同時佔用記憶體，在 512MB 的 Starter 主機上疊加 OOM。
+scheduler = BackgroundScheduler(executors={"default": ThreadPoolExecutor(1)})
 
 
 def _fetch_new_reports(db, since: datetime) -> list[dict]:

@@ -289,7 +289,7 @@ async def get_upside_ranking(
             upside_pct = (r.target_price / current_price - 1) * 100
             ranking.append({
                 "stock_code": r.stock_code,
-                "stock_name": r.stock_name,
+                "stock_name": resolve_name(r.stock_code, r.stock_name),
                 "target_price": r.target_price,
                 "current_price": current_price,
                 "volume": info.get("volume"),

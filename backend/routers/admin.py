@@ -222,3 +222,105 @@ def import_data(payload: ImportPayload, db: Session = Depends(get_db), _=Depends
         "drive_files_skipped": len(payload.drive_files) - df_added,
         "reports_skipped": len(payload.reports) - rpt_added,
     }
+
+
+# ── 報告管理（修正 AI 解析錯誤的股名/摘要，或刪除壞資料）────────────
+
+@router.get("/reports/search")
+def search_reports(
+    q: Optional[str] = None,
+    stock_code: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0,
+    db: Session = Depends(get_db),
+    _=Depends(require_admin),
+):
+    """依股號 / 股名 / 分析師搜尋報告，供後台修正單筆資料"""
+    query = db.query(Report)
+    if stock_code:
+        query = query.filter(Report.stock_code == stock_code)
+    if q:
+        pattern = f"%{q}%"
+        query = query.filter(
+            func.coalesce(Report.stock_code, "").like(pattern)
+            | func.coalesce(Report.stock_name, "").like(pattern)
+            | func.coalesce(Report.analyst, "").like(pattern)
+        )
+    total = query.count()
+    rows = (
+        query.order_by(Report.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    return {
+        "total": total,
+        "reports": [
+            {
+                "id": r.id,
+                "stock_code": r.stock_code,
+                "stock_name": r.stock_name,
+                "recommendation": r.recommendation,
+                "target_price": r.target_price,
+                "analyst": r.analyst,
+                "report_date": str(r.report_date) if r.report_date else None,
+                "summary": r.summary,
+                "source_filename": r.source_filename,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            }
+            for r in rows
+        ],
+    }
+
+
+class ReportUpdate(BaseModel):
+    stock_code: Optional[str] = None
+    stock_name: Optional[str] = None
+    recommendation: Optional[str] = None
+    target_price: Optional[float] = None
+    analyst: Optional[str] = None
+    report_date: Optional[str] = None
+    summary: Optional[str] = None
+
+
+@router.patch("/reports/{report_id}")
+def update_report(
+    report_id: int,
+    body: ReportUpdate,
+    db: Session = Depends(get_db),
+    _=Depends(require_admin),
+):
+    """修正單筆報告的股名/摘要等欄位（用於修正 AI 解析錯誤，如簡體字、公司名誤判）"""
+    r = db.query(Report).filter(Report.id == report_id).first()
+    if not r:
+        raise HTTPException(status_code=404, detail="報告不存在")
+
+    data = body.dict(exclude_unset=True)
+    if "report_date" in data:
+        rd = data.pop("report_date")
+        r.report_date = date.fromisoformat(rd[:10]) if rd else None
+    for field, value in data.items():
+        setattr(r, field, value)
+    db.commit()
+    db.refresh(r)
+    return {
+        "id": r.id,
+        "stock_code": r.stock_code,
+        "stock_name": r.stock_name,
+        "recommendation": r.recommendation,
+        "target_price": r.target_price,
+        "analyst": r.analyst,
+        "report_date": str(r.report_date) if r.report_date else None,
+        "summary": r.summary,
+    }
+
+
+@router.delete("/reports/{report_id}")
+def delete_report(report_id: int, db: Session = Depends(get_db), _=Depends(require_admin)):
+    """刪除單筆壞資料報告"""
+    r = db.query(Report).filter(Report.id == report_id).first()
+    if not r:
+        raise HTTPException(status_code=404, detail="報告不存在")
+    db.delete(r)
+    db.commit()
+    return {"ok": True}

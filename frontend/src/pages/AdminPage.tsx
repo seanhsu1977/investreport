@@ -1499,11 +1499,248 @@ function ChipsBackfillSection() {
   );
 }
 
+// ── 報告修正（修正 AI 解析錯誤的股名/摘要，或刪除壞資料） ──────────
+interface ReportDetail {
+  id: number;
+  stock_code: string;
+  stock_name: string | null;
+  recommendation: string | null;
+  target_price: number | null;
+  analyst: string | null;
+  report_date: string | null;
+  summary: string | null;
+  source_filename: string | null;
+  created_at: string | null;
+}
+
+function ReportsSection({ token }: { token: string }) {
+  const headers = { Authorization: `Bearer ${token}` };
+  const [q, setQ] = useState("");
+  const [results, setResults] = useState<ReportDetail[]>([]);
+  const [total, setTotal] = useState(0);
+  const [searching, setSearching] = useState(false);
+  const [active, setActive] = useState<ReportDetail | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const search = async () => {
+    setSearching(true);
+    setMsg(null);
+    try {
+      const r = await axios.get("/api/admin/reports/search", {
+        headers,
+        params: { q: q.trim() || undefined, limit: 50 },
+      });
+      setResults(r.data.reports);
+      setTotal(r.data.total);
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const openReport = (r: ReportDetail) => {
+    setActive(r);
+    setMsg(null);
+  };
+
+  const saveReport = async () => {
+    if (!active) return;
+    setSaving(true);
+    setMsg(null);
+    try {
+      const r = await axios.patch<ReportDetail>(`/api/admin/reports/${active.id}`, {
+        stock_code: active.stock_code,
+        stock_name: active.stock_name,
+        summary: active.summary,
+        recommendation: active.recommendation,
+        target_price: active.target_price,
+        analyst: active.analyst,
+        report_date: active.report_date,
+      }, { headers });
+      setActive(r.data);
+      setResults((prev) => prev.map((x) => x.id === r.data.id ? r.data : x));
+      setMsg({ ok: true, text: "✅ 已儲存" });
+    } catch (e: any) {
+      setMsg({ ok: false, text: `❌ ${e.response?.data?.detail ?? "儲存失敗"}` });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deleteReport = async () => {
+    if (!active) return;
+    if (!confirm(`確定要刪除這筆報告（${active.stock_code} ${active.stock_name ?? ""}）？此動作無法復原。`)) return;
+    setDeleting(true);
+    setMsg(null);
+    try {
+      await axios.delete(`/api/admin/reports/${active.id}`, { headers });
+      setResults((prev) => prev.filter((x) => x.id !== active.id));
+      setTotal((t) => t - 1);
+      setActive(null);
+      setMsg({ ok: true, text: "✅ 已刪除" });
+    } catch (e: any) {
+      setMsg({ ok: false, text: `❌ ${e.response?.data?.detail ?? "刪除失敗"}` });
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <section className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-3">
+        <input
+          type="text"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && search()}
+          placeholder="搜尋股票代號、股名、分析師…"
+          className="flex-1 text-sm px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-300"
+        />
+        <button
+          onClick={search}
+          disabled={searching}
+          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-40 transition"
+        >
+          {searching ? "搜尋中…" : "搜尋"}
+        </button>
+      </section>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <section className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
+            <h2 className="font-semibold text-gray-700">搜尋結果</h2>
+            <span className="text-sm text-gray-400">{total} 筆</span>
+          </div>
+          {results.length === 0 ? (
+            <p className="px-5 py-8 text-center text-gray-400 text-sm">輸入關鍵字後按搜尋</p>
+          ) : (
+            <div className="max-h-[600px] overflow-y-auto divide-y divide-gray-100">
+              {results.map((r) => (
+                <div
+                  key={r.id}
+                  onClick={() => openReport(r)}
+                  className={`px-4 py-2.5 cursor-pointer hover:bg-blue-50 transition ${active?.id === r.id ? "bg-blue-50" : ""}`}
+                >
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-mono text-blue-700 text-sm">{r.stock_code}</span>
+                    <span className="text-sm text-gray-800 font-medium">{r.stock_name ?? "—"}</span>
+                    <span className="text-xs text-gray-400 ml-auto">{r.report_date ?? "—"}</span>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-0.5 truncate">{r.analyst} · {(r.summary ?? "").slice(0, 40)}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        {active && (
+          <section className="bg-white rounded-xl border border-gray-200 p-5 space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="font-semibold text-gray-700">編輯報告 #{active.id}</h2>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={deleteReport}
+                  disabled={deleting}
+                  className="text-xs text-red-500 hover:text-red-700 disabled:opacity-40 transition"
+                >
+                  {deleting ? "刪除中…" : "刪除此報告"}
+                </button>
+                <button
+                  onClick={saveReport}
+                  disabled={saving}
+                  className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-lg text-sm font-medium disabled:opacity-40 transition"
+                >
+                  {saving ? "儲存中…" : "儲存"}
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-xs font-medium text-gray-500 block mb-1">股票代號</label>
+                <input
+                  type="text"
+                  value={active.stock_code}
+                  onChange={(e) => setActive({ ...active, stock_code: e.target.value })}
+                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-400 font-mono"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-500 block mb-1">股票名稱</label>
+                <input
+                  type="text"
+                  value={active.stock_name ?? ""}
+                  onChange={(e) => setActive({ ...active, stock_name: e.target.value })}
+                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-500 block mb-1">分析師</label>
+                <input
+                  type="text"
+                  value={active.analyst ?? ""}
+                  onChange={(e) => setActive({ ...active, analyst: e.target.value })}
+                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-500 block mb-1">報告日期</label>
+                <input
+                  type="date"
+                  value={active.report_date ?? ""}
+                  onChange={(e) => setActive({ ...active, report_date: e.target.value })}
+                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-500 block mb-1">投資建議</label>
+                <input
+                  type="text"
+                  value={active.recommendation ?? ""}
+                  onChange={(e) => setActive({ ...active, recommendation: e.target.value })}
+                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-500 block mb-1">目標價</label>
+                <input
+                  type="number"
+                  value={active.target_price ?? ""}
+                  onChange={(e) => setActive({ ...active, target_price: e.target.value === "" ? null : Number(e.target.value) })}
+                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-medium text-gray-500 block mb-1">摘要</label>
+              <textarea
+                value={active.summary ?? ""}
+                onChange={(e) => setActive({ ...active, summary: e.target.value })}
+                rows={10}
+                className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-400 leading-relaxed"
+              />
+            </div>
+            <p className="text-xs text-gray-400">來源檔案：{active.source_filename ?? "—"}</p>
+
+            {msg && (
+              <div className={`text-sm px-3 py-2 rounded-lg ${msg.ok ? "bg-green-50 text-green-700" : "bg-red-50 text-red-600"}`}>
+                {msg.text}
+              </div>
+            )}
+          </section>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function AdminPage() {
   const { user, token } = useAuth();
   const location = useLocation();
   const locState = location.state as { tab?: "publish" | "daily" | "users"; selectedIds?: number[] } | null;
-  const [tab, setTab] = useState<"publish" | "daily" | "users" | "sync" | "invites">(locState?.tab ?? "sync");
+  const [tab, setTab] = useState<"publish" | "daily" | "users" | "sync" | "invites" | "reports">(locState?.tab ?? "sync");
   const [users, setUsers] = useState<UserRecord[]>([]);
   const [selectedUser, setSelectedUser] = useState<UserRecord | null>(null);
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -1541,6 +1778,7 @@ export default function AdminPage() {
     { id: "publish", label: "社群發布" },
     { id: "users",   label: "帳號管理" },
     { id: "invites", label: "邀請碼" },
+    { id: "reports", label: "報告修正" },
   ] as const;
 
   return (
@@ -1571,6 +1809,8 @@ export default function AdminPage() {
       {tab === "sync" && <SyncHistorySection />}
 
       {tab === "invites" && <InviteCodesSection token={token ?? ""} />}
+
+      {tab === "reports" && <ReportsSection token={token ?? ""} />}
 
       {tab === "users" && (
         <>{/* 使用者列表 */}

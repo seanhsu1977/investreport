@@ -88,7 +88,6 @@ function NewsCard({ r, fromTab, selectable, selected, onToggle }: {
               className="accent-blue-600 w-4 h-4 shrink-0" />
           )}
           <span className="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-600 font-medium">市場新聞</span>
-          {r.analyst && <span className="text-sm text-gray-500">{r.analyst}</span>}
         </div>
         <div className="flex flex-col items-end gap-1 shrink-0 ml-2">
           <div className="text-xs text-gray-400 text-right space-y-0.5">

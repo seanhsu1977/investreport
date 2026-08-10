@@ -97,11 +97,6 @@ function NewsCard({ r, tab, query }: { r: Report & { mentioned_stocks?: string[]
         <span className="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-600 font-medium">
           市場新聞
         </span>
-        {r.analyst && (
-          <span className="text-sm text-gray-500">
-            <Highlight text={r.analyst} query={query} />
-          </span>
-        )}
       </div>
       {/* 日期 + 分享 */}
       <div className="flex items-center justify-between gap-2 mb-2">

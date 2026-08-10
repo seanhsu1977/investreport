@@ -641,7 +641,7 @@ export default function StockPage() {
                     <div key={r.id} className="px-4 py-3.5 border-b border-[#F5F7FC] last:border-b-0">
                       <div className="flex items-center justify-between mb-1.5">
                         <span className="text-[10px] px-2 py-0.5 rounded bg-orange-50 text-orange-600 font-medium border border-orange-200">
-                          {r.analyst ?? "市場新聞"}
+                          市場新聞
                         </span>
                         <span className="text-[10px] text-[#6B7A99]">
                           {(r.report_date ?? r.created_at)?.slice(0, 10)}

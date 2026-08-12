@@ -1526,6 +1526,33 @@ def kdj_screen_refresh(background_tasks: BackgroundTasks):
     return {"status": "started"}
 
 
+@router.get("/breakout-screen")
+def breakout_screen(db: Session = Depends(get_db)):
+    """讀取橫盤整理後突破選股快取（由排程每日收盤後更新）。"""
+    from models import BreakoutScreenCache
+    import json as _json
+
+    row = db.query(BreakoutScreenCache).order_by(BreakoutScreenCache.id.desc()).first()
+    if not row:
+        return {"items": [], "total": 0, "scanned": 0, "computed_at": None, "data_date": None}
+    items = _json.loads(row.items_json)
+    return {
+        "items": items,
+        "total": len(items),
+        "scanned": row.scanned,
+        "computed_at": row.computed_at,
+        "data_date": row.data_date,
+    }
+
+
+@router.post("/breakout-screen/refresh")
+def breakout_screen_refresh(background_tasks: BackgroundTasks):
+    """手動觸發橫盤整理突破選股重新掃描（僅掃自選股，背景執行，完成後快取更新）。"""
+    from scheduler import _breakout_screen_job
+    background_tasks.add_task(_breakout_screen_job, True)
+    return {"status": "started"}
+
+
 @router.get("/{stock_code}/kline")
 def get_stock_kline(stock_code: str, period: str = Query(default="1y")):
     """Return daily OHLCV + MA5/10/20/60 + KDJ(RSV=9, K/D weight=1/12, range=89d)."""

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { stocksApi, RecommendationItem } from "../api/client";
 import KdjScreener from "../components/KdjScreener";
+import BreakoutScreener from "../components/BreakoutScreener";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -294,7 +295,7 @@ function RestCard({ item, rank, onAskReason }: { item: RecommendationItem; rank:
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function RecommendationsPage() {
-  const [tab, setTab] = useState<"rec" | "kdj">("rec");
+  const [tab, setTab] = useState<"rec" | "kdj" | "breakout">("rec");
   const [days, setDays] = useState(30);
   const [minReports, setMinReports] = useState(1);
   const [recFilter, setRecFilter] = useState<"all" | "buy_only">("all");
@@ -462,7 +463,7 @@ export default function RecommendationsPage() {
   const chipActive = "bg-[#0B1E3D] text-white border-[#0B1E3D]";
   const chipInactive = "bg-white text-[#6B7A99] border-[#DDE2EC] hover:text-[#0D1B2A]";
 
-  const tabCls = (t: "rec" | "kdj") =>
+  const tabCls = (t: "rec" | "kdj" | "breakout") =>
     `px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 transition ${
       tab === t
         ? "text-[#0B1E3D] border-[#0B1E3D]"
@@ -478,10 +479,13 @@ export default function RecommendationsPage() {
         <div className="flex gap-1 mt-3 border-b border-[#DDE2EC]">
           <button className={tabCls("rec")} onClick={() => setTab("rec")}>投顧精選</button>
           <button className={tabCls("kdj")} onClick={() => setTab("kdj")}>KDJ 選股</button>
+          <button className={tabCls("breakout")} onClick={() => setTab("breakout")}>盤整突破</button>
         </div>
       </div>
 
       {tab === "kdj" && <KdjScreener />}
+
+      {tab === "breakout" && <BreakoutScreener />}
 
       {tab === "rec" && <>
 

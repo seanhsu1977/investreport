@@ -217,3 +217,14 @@ class KdjScreenCache(Base):
     data_date   = Column(String, nullable=False)   # YYYY-MM-DD 資料日期
     scanned     = Column(Integer, nullable=False, default=0)
     items_json  = Column(Text, nullable=False)     # JSON array of KdjScreenItem
+
+
+class BreakoutScreenCache(Base):
+    """橫盤整理後突破選股結果快取，由排程每日收盤後更新。"""
+    __tablename__ = "breakout_screen_cache"
+
+    id          = Column(Integer, primary_key=True)
+    computed_at = Column(String, nullable=False)   # ISO datetime (Asia/Taipei)
+    data_date   = Column(String, nullable=False)   # YYYY-MM-DD 資料日期
+    scanned     = Column(Integer, nullable=False, default=0)
+    items_json  = Column(Text, nullable=False)     # JSON array of breakout screen items

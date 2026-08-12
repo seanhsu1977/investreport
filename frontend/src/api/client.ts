@@ -197,6 +197,21 @@ export interface KdjScreenItem {
   rsi: number | null;
 }
 
+export interface BreakoutScreenItem {
+  code: string;
+  name: string | null;
+  current_price: number | null;
+  range_pct: number;
+  range_high: number;
+  ma_spread_pct: number;
+  band_width_pct: number | null;
+  volume_ratio: number | null;
+  volume_confirm: boolean;
+  rsi: number | null;
+  momentum_confirm: boolean;
+  confirm_score: number;
+}
+
 interface OhlcPoint  { time: number; open: number; high: number; low: number; close: number; volume?: number }
 interface LinePoint  { time: number; value?: number }
 
@@ -270,6 +285,10 @@ export const stocksApi = {
     api.get<{ items: KdjScreenItem[]; total: number; scanned: number; computed_at: string | null; data_date: string | null }>("/stocks/kdj-screen").then((r) => r.data),
   kdj_screen_refresh: () =>
     api.post<{ status: string }>("/stocks/kdj-screen/refresh").then((r) => r.data),
+  breakout_screen: () =>
+    api.get<{ items: BreakoutScreenItem[]; total: number; scanned: number; computed_at: string | null; data_date: string | null }>("/stocks/breakout-screen").then((r) => r.data),
+  breakout_screen_refresh: () =>
+    api.post<{ status: string }>("/stocks/breakout-screen/refresh").then((r) => r.data),
   fill_all_prices: () =>
     api.post<{ status: string; message: string }>("/stocks/admin/fill-all-prices").then((r) => r.data),
   sectorRotation: () =>

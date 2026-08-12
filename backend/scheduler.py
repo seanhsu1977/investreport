@@ -277,6 +277,89 @@ def _kdj_screen_job(quick: bool = False):
         db.close()
 
 
+def _breakout_screen_job(quick: bool = False):
+    """橫盤整理後突破掃描並寫入快取。
+    quick=True：僅掃自選股（手動觸發用，速度快）；False：含 ETF 成份股（排程用）。
+    """
+    import asyncio
+    import json as _json
+    from datetime import timezone, timedelta
+
+    logger.info("Starting breakout screen job (quick=%s)...", quick)
+    db = SessionLocal()
+    try:
+        from models import Watchlist, EtfDailyChange, BreakoutScreenCache
+        from price_analysis import screen_consolidation_breakout
+
+        wl_codes = {r.stock_code for r in db.query(Watchlist.stock_code).all()}
+
+        if quick:
+            code_list = sorted(wl_codes)
+            etf_names: dict = {}
+        else:
+            etf_rows = (
+                db.query(EtfDailyChange.stock_code, EtfDailyChange.stock_name)
+                .filter(EtfDailyChange.etf_code.in_(["00981A", "00403A"]))
+                .distinct(EtfDailyChange.stock_code).all()
+            )
+            etf_codes = {r.stock_code for r in etf_rows}
+            etf_names = {r.stock_code: r.stock_name for r in etf_rows}
+            priority = list(wl_codes) + [c for c in etf_codes if c not in wl_codes]
+            code_list = priority[:350]
+
+        name_map: dict = {}
+        for code in code_list:
+            name_map[code] = etf_names.get(code)
+            if not name_map[code]:
+                row = (db.query(Report.stock_name).filter(Report.stock_code == code)
+                       .order_by(Report.created_at.desc()).first())
+                name_map[code] = row[0] if row else None
+
+        semaphore = asyncio.Semaphore(8)
+
+        async def fetch_one(code):
+            async with semaphore:
+                try:
+                    hit = await asyncio.to_thread(screen_consolidation_breakout, code)
+                except Exception:
+                    hit = None
+                return code, hit
+
+        async def run_all():
+            return await asyncio.gather(*[fetch_one(c) for c in code_list])
+
+        results = asyncio.run(run_all())
+
+        items = []
+        for code, hit in results:
+            if not hit:
+                continue
+            items.append({**hit, "name": name_map.get(code)})
+        # 信心分數高（量增+動能雙確認）優先，其次區間越窄代表整理越紮實
+        items.sort(key=lambda x: (-x["confirm_score"], x["range_pct"]))
+
+        tpe = timezone(timedelta(hours=8))
+        now_tpe = datetime.now(tpe)
+        cache_row = BreakoutScreenCache(
+            computed_at=now_tpe.strftime("%Y-%m-%d %H:%M"),
+            data_date=now_tpe.strftime("%Y-%m-%d"),
+            scanned=len(code_list),
+            items_json=_json.dumps(items, ensure_ascii=False),
+        )
+        db.add(cache_row)
+        old_rows = (db.query(BreakoutScreenCache)
+                    .order_by(BreakoutScreenCache.id.desc())
+                    .offset(5).all())
+        for r in old_rows:
+            db.delete(r)
+        db.commit()
+        logger.info("Breakout screen job done: scanned=%d, hits=%d", len(code_list), len(items))
+    except Exception as e:
+        logger.exception("Breakout screen job failed: %s", e)
+    finally:
+        db.close()
+
+
 def _etf_tracker_job():
     """每週一至五 20:00 同步 00981A + 00403A 當日成份股變化。
     nstock ETF小百科約 19:30 發布，20:00 抓取保險。"""
@@ -329,6 +412,12 @@ def start_scheduler():
         _kdj_screen_job, "cron",
         day_of_week="mon-fri", hour=15, minute=30, timezone="Asia/Taipei",
         id="kdj_screen",
+    )
+    # 橫盤整理突破選股快取：每天 15:32（收盤後）Mon-Fri
+    scheduler.add_job(
+        _breakout_screen_job, "cron",
+        day_of_week="mon-fri", hour=15, minute=32, timezone="Asia/Taipei",
+        id="breakout_screen",
     )
     # 投顧精選預算快取：每天 07:00 Asia/Taipei（含六日，因用戶週末也會看）
     scheduler.add_job(

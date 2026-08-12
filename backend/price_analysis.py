@@ -754,3 +754,80 @@ def get_signals(code: str) -> dict | None:
         return result
     except Exception:
         return None
+
+
+def screen_consolidation_breakout(code: str) -> dict | None:
+    """篩選「橫盤整理後突破」：近 20 日區間窄 + 均線糾結 → 今日站上區間高點/布林上軌。
+    只支援台股（用 nStock 日K，含 SD20/UB20/LB20/RSI14 現成欄位）。
+    回傳 None 代表不符合（非台股、資料不足、或沒有整理後突破的型態）。
+    """
+    if not _is_tw_stock(code):
+        return None
+    try:
+        daily = ns.get_daily(code)
+        if not daily or not daily.get("日K") or len(daily["日K"]) < 25:
+            return None
+        bars = daily["日K"][:40]  # 最新在前
+    except Exception:
+        return None
+
+    today = bars[0]
+    try:
+        current = float(today["收盤價"])
+        vol_today = float(today.get("成交量", 0) or 0)
+    except (KeyError, TypeError, ValueError):
+        return None
+    if current <= 0:
+        return None
+
+    # 整理窗：排除今天的前 20 個交易日
+    window = bars[1:21]
+    if len(window) < 20:
+        return None
+    range_high = max(float(b["最高價"]) for b in window)
+    range_low = min(float(b["最低價"]) for b in window)
+    range_pct = (range_high - range_low) / current
+
+    closes_s = pd.Series([float(b["收盤價"]) for b in reversed(bars)])
+    ma5 = float(closes_s.iloc[-5:].mean())
+    ma20 = float(today.get("SD20") or closes_s.iloc[-20:].mean())
+    ma_spread_pct = abs(ma5 - ma20) / current
+
+    ub20 = float(today.get("UB20") or 0) or None
+    lb20 = float(today.get("LB20") or 0) or None
+    band_width_pct = None
+    pct_b = None
+    if ub20 and lb20 and (ub20 - lb20) > 0:
+        band_width_pct = (ub20 - lb20) / current
+        pct_b = (current - lb20) / (ub20 - lb20)
+
+    vols_window = [float(b.get("成交量", 0) or 0) for b in window]
+    vols_nonzero = [v for v in vols_window if v > 0]
+    vol_avg = sum(vols_nonzero) / len(vols_nonzero) if vols_nonzero else 0
+    volume_ratio = (vol_today / vol_avg) if vol_avg > 0 else None
+
+    rsi = float(today.get("RSI14") or 0) or None
+
+    # 階段一：整理（區間窄 + 均線糾結）
+    was_consolidating = range_pct <= 0.12 and ma_spread_pct <= 0.03
+    # 階段二：突破（站上區間高點 或 布林 %B > 1）
+    breaks_out = current > range_high or (pct_b is not None and pct_b > 1.0)
+    if not (was_consolidating and breaks_out):
+        return None
+
+    volume_confirm = volume_ratio is not None and volume_ratio >= 1.5
+    momentum_confirm = (rsi is not None and rsi >= 55) or ma5 > ma20
+
+    return {
+        "code": code,
+        "current_price": round(current, 2),
+        "range_pct": round(range_pct * 100, 1),
+        "range_high": round(range_high, 2),
+        "ma_spread_pct": round(ma_spread_pct * 100, 1),
+        "band_width_pct": round(band_width_pct * 100, 1) if band_width_pct is not None else None,
+        "volume_ratio": round(volume_ratio, 2) if volume_ratio is not None else None,
+        "volume_confirm": volume_confirm,
+        "rsi": round(rsi, 1) if rsi is not None else None,
+        "momentum_confirm": momentum_confirm,
+        "confirm_score": int(volume_confirm) + int(momentum_confirm),
+    }

@@ -97,7 +97,7 @@ export default function KdjScreener() {
     <div className="space-y-3">
       <div className="flex items-center justify-between px-1">
         <p className="text-xs text-gray-400">
-          KDJ(89,9,12) J 線 + 交叉訊號・自選股（手動）/ 含 ETF 成份股（每日 15:30 排程）
+          KDJ(89,9,12) J 線 + 交叉訊號 + 三大法人籌碼・自選股（手動）/ 含 ETF 成份股（每日 15:30 排程）
           {result?.data_date && (
             <span className="ml-1.5 text-gray-300">資料日期 {result.data_date}</span>
           )}
@@ -200,6 +200,22 @@ export default function KdjScreener() {
                         {it.kdj_cross_days != null && it.kdj_cross_days > 0 && (
                           <span className="ml-0.5 opacity-60">{it.kdj_cross_days}天</span>
                         )}
+                      </span>
+                    )}
+                    {/* 籌碼：三大法人連續買賣超 badge */}
+                    {it.inst_consec_days != null && it.inst_consec_sign != null && (
+                      <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
+                        it.inst_consec_sign > 0 ? "bg-red-50 text-red-600" : "bg-emerald-50 text-emerald-700"
+                      }`}>
+                        連{it.inst_consec_days}{it.inst_consec_sign > 0 ? "買" : "賣"}
+                      </span>
+                    )}
+                    {/* 籌碼：三大法人 5 日合計買賣超（張） */}
+                    {it.inst_5d != null && (
+                      <span className={`text-xs tabular-nums hidden sm:inline ${
+                        it.inst_5d > 0 ? "text-red-500" : it.inst_5d < 0 ? "text-emerald-600" : "text-gray-400"
+                      }`}>
+                        5日{it.inst_5d > 0 ? "+" : ""}{it.inst_5d.toLocaleString()}張
                       </span>
                     )}
                   </div>

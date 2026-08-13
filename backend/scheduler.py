@@ -253,6 +253,27 @@ def _kdj_screen_job(quick: bool = False):
             x.get("kdj_k") or 99,
         ))
 
+        # 補籌碼資訊（三大法人買賣超）— 只補命中清單，避免對全部掃描代號都多打一輪 API
+        if items:
+            from fundamental_analysis import get_institutional, summarize_institutional
+
+            async def run_inst():
+                inst_semaphore = asyncio.Semaphore(8)
+
+                async def fetch_inst(code):
+                    async with inst_semaphore:
+                        try:
+                            rows = await asyncio.to_thread(get_institutional, code, 5)
+                        except Exception:
+                            rows = None
+                        return code, rows
+
+                return await asyncio.gather(*[fetch_inst(it["code"]) for it in items])
+
+            inst_map = dict(asyncio.run(run_inst()))
+            for it in items:
+                it.update(summarize_institutional(inst_map.get(it["code"])))
+
         # 台北時間
         tpe = timezone(timedelta(hours=8))
         now_tpe = datetime.now(tpe)

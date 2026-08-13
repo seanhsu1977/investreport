@@ -157,6 +157,38 @@ def get_institutional(code: str, days: int = 5) -> list[dict] | None:
     return results if results else None
 
 
+def summarize_institutional(rows: list[dict] | None) -> dict:
+    """把 get_institutional() 回傳的逐日買賣超，摘要成單一訊號物件（供選股清單顯示用）。
+    rows 須為最新在前排序。
+    """
+    if not rows:
+        return {"inst_5d": None, "inst_today": None, "inst_consec_days": None, "inst_consec_sign": None}
+
+    inst_today = rows[0]["total"]
+    inst_5d = sum(r["total"] for r in rows[:5])
+
+    consec = 0
+    sign = None
+    for r in rows:
+        s = 1 if r["total"] > 0 else (-1 if r["total"] < 0 else 0)
+        if sign is None:
+            if s == 0:
+                break
+            sign = s
+            consec = 1
+        elif s == sign:
+            consec += 1
+        else:
+            break
+
+    return {
+        "inst_5d": inst_5d,
+        "inst_today": inst_today,
+        "inst_consec_days": consec if sign is not None else None,
+        "inst_consec_sign": sign,
+    }
+
+
 def get_revenue(code: str) -> dict | None:
     """取最新一個月的月營收（上市股票）"""
     global _REV_ALL, _REV_ALL_TS

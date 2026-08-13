@@ -195,6 +195,10 @@ export interface KdjScreenItem {
   j_cross_days: number | null;
   ma_signal: string | null;
   rsi: number | null;
+  inst_5d: number | null;
+  inst_today: number | null;
+  inst_consec_days: number | null;
+  inst_consec_sign: number | null;
 }
 
 export interface BreakoutScreenItem {

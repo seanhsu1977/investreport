@@ -56,6 +56,17 @@ def resolve_name(code: Optional[str], fallback: Optional[str] = None) -> Optiona
     return name or fallback
 
 
+def resolve_names_for(db: Session, codes: list[str]) -> dict[str, Optional[str]]:
+    """確保這批代號在 stocks 主檔都有名稱，缺的話即時從 nstock 補抓並寫回主檔，
+    供選股類排程（KDJ / 盤整突破）掃到主檔尚未收錄的 ETF 成份股代號時使用。
+    """
+    _load_cache(db)
+    missing = [c for c in codes if c and c != "MARKET" and not _NAME_CACHE.get(c)]
+    if missing:
+        seed_stocks(db, codes=missing)
+    return {c: _NAME_CACHE.get(c) for c in codes}
+
+
 def fetch_name_from_nstock(code: str) -> Optional[str]:
     try:
         with httpx.Client(timeout=8) as client:
@@ -72,13 +83,18 @@ def fetch_name_from_nstock(code: str) -> Optional[str]:
 
 
 def collect_pending_codes(db: Session) -> list[str]:
-    """蒐集所有出現在 reports/watchlist 但 stocks 表沒紀錄的代號。"""
+    """蒐集所有出現在 reports/watchlist/ETF 成份股但 stocks 表沒紀錄的代號。"""
+    from models import EtfDailyChange
+
     existing = {row[0] for row in db.query(Stock.code).all()}
     codes: set[str] = set()
     for (c,) in db.query(Report.stock_code).distinct():
         if c and c != "MARKET":
             codes.add(c)
     for (c,) in db.query(Watchlist.stock_code).distinct():
+        if c:
+            codes.add(c)
+    for (c,) in db.query(EtfDailyChange.stock_code).distinct():
         if c:
             codes.add(c)
     return sorted(codes - existing)

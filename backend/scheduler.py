@@ -183,22 +183,20 @@ def _kdj_screen_job(quick: bool = False):
 
         if quick:
             code_list = sorted(wl_codes)
-            etf_names: dict = {}
         else:
-            etf_rows = (
-                db.query(EtfDailyChange.stock_code, EtfDailyChange.stock_name)
+            etf_codes = {
+                r.stock_code for r in
+                db.query(EtfDailyChange.stock_code)
                 .filter(EtfDailyChange.etf_code.in_(["00981A", "00403A"]))
-                .distinct(EtfDailyChange.stock_code).all()
-            )
-            etf_codes = {r.stock_code for r in etf_rows}
-            etf_names = {r.stock_code: r.stock_name for r in etf_rows}
+                .distinct().all()
+            }
             priority = list(wl_codes) + [c for c in etf_codes if c not in wl_codes]
             code_list = priority[:350]
 
-        name_map: dict = {}
+        import stocks_master
+        name_map = stocks_master.resolve_names_for(db, code_list)
         for code in code_list:
-            name_map[code] = etf_names.get(code)
-            if not name_map[code]:
+            if not name_map.get(code):
                 row = (db.query(Report.stock_name).filter(Report.stock_code == code)
                        .order_by(Report.created_at.desc()).first())
                 name_map[code] = row[0] if row else None
@@ -316,22 +314,20 @@ def _breakout_screen_job(quick: bool = False):
 
         if quick:
             code_list = sorted(wl_codes)
-            etf_names: dict = {}
         else:
-            etf_rows = (
-                db.query(EtfDailyChange.stock_code, EtfDailyChange.stock_name)
+            etf_codes = {
+                r.stock_code for r in
+                db.query(EtfDailyChange.stock_code)
                 .filter(EtfDailyChange.etf_code.in_(["00981A", "00403A"]))
-                .distinct(EtfDailyChange.stock_code).all()
-            )
-            etf_codes = {r.stock_code for r in etf_rows}
-            etf_names = {r.stock_code: r.stock_name for r in etf_rows}
+                .distinct().all()
+            }
             priority = list(wl_codes) + [c for c in etf_codes if c not in wl_codes]
             code_list = priority[:350]
 
-        name_map: dict = {}
+        import stocks_master
+        name_map = stocks_master.resolve_names_for(db, code_list)
         for code in code_list:
-            name_map[code] = etf_names.get(code)
-            if not name_map[code]:
+            if not name_map.get(code):
                 row = (db.query(Report.stock_name).filter(Report.stock_code == code)
                        .order_by(Report.created_at.desc()).first())
                 name_map[code] = row[0] if row else None

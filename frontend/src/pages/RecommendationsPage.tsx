@@ -23,6 +23,30 @@ function formatPrice(price: number) {
   return price.toLocaleString("zh-TW", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+// 投顧精選整組（共識分數/籌碼/推薦理由）走長效快取，但現價要感覺是即時的——
+// 每次拿到清單（不論來自前端快取、後端快取或強制重算）都補一次即時股價，
+// 並用新股價重算 upside/報告後漲跌，避免刷新頁面看到的現價是好幾小時前的舊資料。
+async function withLivePrices(items: RecommendationItem[]): Promise<RecommendationItem[]> {
+  if (items.length === 0) return items;
+  try {
+    const live = await stocksApi.batch_prices(items.map((it) => it.code));
+    return items.map((it) => {
+      const p = live[it.code];
+      if (!p || p.price == null) return it;
+      const current_price = p.price;
+      const upside_pct = it.target_price
+        ? Math.round((it.target_price / current_price - 1) * 1000) / 10
+        : it.upside_pct;
+      const gain_since_report = it.latest_report_price
+        ? Math.round((current_price / it.latest_report_price - 1) * 1000) / 10
+        : it.gain_since_report;
+      return { ...it, current_price, change_pct: p.change_pct ?? it.change_pct, upside_pct, gain_since_report };
+    });
+  } catch {
+    return items;
+  }
+}
+
 function fmtInst(v: number): string {
   if (!v) return "0";
   const k = v / 1000;
@@ -411,6 +435,11 @@ export default function RecommendationsPage() {
         setWarnings(cached.warnings);
         setLastFetched(cached.fetchedAt);
         setLoading(false);
+        // 排行/分數用快取沒關係，但現價補一次即時報價，避免刷新頁面看到舊股價
+        withLivePrices(cached.items).then((live) => {
+          setItems(live);
+          _recCache.set(recCacheKey(days, minReports, recFilter), { items: live, warnings: cached.warnings, fetchedAt: cached.fetchedAt });
+        });
         return;
       }
     }
@@ -420,8 +449,9 @@ export default function RecommendationsPage() {
       const data = await stocksApi.recommendations({ days, min_reports: minReports, rec_filter: recFilter, limit: 30, force });
       const oldComputedAt = data.computed_at;
       const fetchedAt = new Date();
-      _recCache.set(recCacheKey(days, minReports, recFilter), { items: data.items, warnings: data.warnings ?? [], fetchedAt });
-      setItems(data.items);
+      const liveItems = await withLivePrices(data.items);
+      _recCache.set(recCacheKey(days, minReports, recFilter), { items: liveItems, warnings: data.warnings ?? [], fetchedAt });
+      setItems(liveItems);
       setWarnings(data.warnings ?? []);
       setLastFetched(fetchedAt);
 
@@ -435,9 +465,10 @@ export default function RecommendationsPage() {
             const fresh = await stocksApi.recommendations({ days, min_reports: minReports, rec_filter: recFilter, limit: 30 });
             if (fresh.computed_at !== oldComputedAt) {
               clearInterval(poll);
+              const freshLive = await withLivePrices(fresh.items);
               const ft = new Date();
-              _recCache.set(recCacheKey(days, minReports, recFilter), { items: fresh.items, warnings: fresh.warnings ?? [], fetchedAt: ft });
-              setItems(fresh.items);
+              _recCache.set(recCacheKey(days, minReports, recFilter), { items: freshLive, warnings: fresh.warnings ?? [], fetchedAt: ft });
+              setItems(freshLive);
               setWarnings(fresh.warnings ?? []);
               setLastFetched(ft);
               setLoading(false);

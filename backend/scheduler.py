@@ -44,11 +44,15 @@ def _save_sync_log(db, log: SyncLog, result: dict | None, error: str | None = No
         log.errors = result.get("errors", 0)
         log.no_report = result.get("no_report", 0)
         warning = result.get("warning")
+        failed = result.get("failed") or []
         if warning:
             log.status = "error"
             log.error_message = warning
         else:
             log.status = "done"
+            # 個別檔案處理失敗不影響整體狀態，但把原因記下來方便後台檢查
+            # （這些檔案沒被標記為已處理，之後每次同步都會重試，需要人工排查）
+            log.error_message = "；".join(f"{f['filename']}：{f['error']}" for f in failed[:10]) or None
     db.commit()
 
 

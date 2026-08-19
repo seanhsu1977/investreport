@@ -196,6 +196,7 @@ def sync_drive(db: Session, progress: dict | None = None, cancelled=None, since:
     skipped = 0
     errors = 0
     no_report = 0
+    failed: list[dict] = []
 
     if progress is not None:
         progress["total"] = len(files)
@@ -284,6 +285,7 @@ def sync_drive(db: Session, progress: dict | None = None, cancelled=None, since:
             logger.error(f"Error processing {filename}: {err_str}")
             db.rollback()
             errors += 1
+            failed.append({"filename": filename, "error": err_str[:200]})
             if progress is not None:
                 progress["errors"] = errors
             # 餘額不足時立即停止，避免浪費重試次數
@@ -293,6 +295,7 @@ def sync_drive(db: Session, progress: dict | None = None, cancelled=None, since:
                     "skipped": skipped,
                     "errors": errors,
                     "no_report": no_report,
+                    "failed": failed,
                     "synced_at": datetime.utcnow().isoformat(),
                     "warning": "Anthropic API 餘額不足，請至 console.anthropic.com 充值後再同步。",
                 }
@@ -307,5 +310,6 @@ def sync_drive(db: Session, progress: dict | None = None, cancelled=None, since:
         "skipped": skipped,
         "errors": errors,
         "no_report": no_report,
+        "failed": failed,
         "synced_at": datetime.utcnow().isoformat(),
     }

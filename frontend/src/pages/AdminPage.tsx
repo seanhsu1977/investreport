@@ -1323,7 +1323,14 @@ function SyncHistorySection() {
                         )}
                       </div>
                     ) : (
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-green-50 text-green-600 font-medium">完成</span>
+                      <div>
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-green-50 text-green-600 font-medium">完成</span>
+                        {log.error_message && (
+                          <p className="text-xs text-amber-500 mt-1 break-all" title="個別檔案處理失敗，不影響整體同步；這些檔案下次同步會重試">
+                            ⚠ {log.error_message}
+                          </p>
+                        )}
+                      </div>
                     )}
                   </td>
                 </tr>

@@ -35,6 +35,12 @@ def _generate_with_retry(client: anthropic.Anthropic, model: str, system: str, m
 
 MODEL = "claude-haiku-4-5"
 
+# Anthropic Messages API 圖片限制：base64 編碼後 ≤ 10MB、單邊像素 ≤ 8000px
+# （官方建議長邊 ≤1568px 兼顧辨識品質與 token 花費）。超過會直接 400，
+# 且原始檔案永遠不會被標記為已處理，之後每次同步都會重新踩到同一個錯誤。
+_MAX_IMAGE_B64_BYTES = 10 * 1024 * 1024
+_MAX_IMAGE_DIMENSION = 1568
+
 SYSTEM_PROMPT = """你是一位專業的投資報告分析師。
 請從投資研究報告或財經新聞中提取結構化資訊，並以 JSON 格式回傳。
 只回傳 JSON，不要包含其他說明文字。"""
@@ -66,7 +72,7 @@ EXTRACT_PROMPT_IMAGE = """請從這份投資報告或財經新聞圖片中提取
 
 {schema}
 
-注意：mentioned_stocks 只在 stock_code 為 null 時填入，格式為「代碼 公司名稱」（如 "2330 台積電"），若只知道公司名稱無代碼則只填名稱。"""
+注意：mentioned_stocks 只在 stock_code 為 null 時填入，格式為「代碼 公司名稱」（如 "2330 台積電"），若只知道公司名稱無代碼則只填名稱。若為個股報告則填空陣列。"""
 
 
 def extract_text_from_pdf(pdf_bytes: bytes, max_pages: int = 20, skip_pages: int = 0) -> tuple[str, int]:
@@ -89,6 +95,11 @@ def pdf_to_images_base64(pdf_bytes: bytes, max_pages: int = 3) -> list[str]:
         images = convert_from_bytes(pdf_bytes, first_page=1, last_page=max_pages, dpi=150)
         result = []
         for img in images:
+            # 少數 PDF 頁面尺寸異常大（如非標準版面），dpi=150 轉出來仍可能超過
+            # Anthropic 單邊像素上限，這裡先按比例縮到安全範圍再編碼
+            if max(img.size) > _MAX_IMAGE_DIMENSION:
+                ratio = _MAX_IMAGE_DIMENSION / max(img.size)
+                img = img.resize((max(1, int(img.width * ratio)), max(1, int(img.height * ratio))))
             buf = BytesIO()
             img.save(buf, format="JPEG", quality=85)
             result.append(base64.b64encode(buf.getvalue()).decode())
@@ -103,6 +114,20 @@ import re as _re
 logger = logging.getLogger(__name__)
 
 
+def _as_result_dict(parsed) -> dict | None:
+    """schema 要求單一物件，但模型遇到一份文件提到多支股票（如早報彙整）時
+    有時會不理會 schema、回傳 JSON 陣列。取第一筆可用的物件當主要結果，
+    避免呼叫端直接 .get() 炸掉（且該筆永遠不會被標記為已處理、每次同步重踩）。
+    """
+    if isinstance(parsed, dict):
+        return parsed
+    if isinstance(parsed, list):
+        for item in parsed:
+            if isinstance(item, dict):
+                return item
+    return None
+
+
 def parse_json_response(raw: str) -> dict | None:
     if not raw:
         return None
@@ -110,7 +135,9 @@ def parse_json_response(raw: str) -> dict | None:
 
     # 先試直接解析
     try:
-        return json.loads(raw)
+        result = _as_result_dict(json.loads(raw))
+        if result is not None:
+            return result
     except json.JSONDecodeError:
         pass
 
@@ -118,7 +145,9 @@ def parse_json_response(raw: str) -> dict | None:
     fence = _re.search(r"```(?:json)?\s*([\s\S]*?)```", raw)
     if fence:
         try:
-            return json.loads(fence.group(1).strip())
+            result = _as_result_dict(json.loads(fence.group(1).strip()))
+            if result is not None:
+                return result
         except json.JSONDecodeError:
             pass
 
@@ -126,7 +155,9 @@ def parse_json_response(raw: str) -> dict | None:
     obj = _re.search(r"\{[\s\S]*\}", raw)
     if obj:
         try:
-            return json.loads(obj.group(0))
+            result = _as_result_dict(json.loads(obj.group(0)))
+            if result is not None:
+                return result
         except json.JSONDecodeError:
             pass
 
@@ -140,23 +171,26 @@ def build_filename_hint(filename: str | None) -> str:
     return f"檔名（可能含有日期、股票代碼等資訊，請優先參考）：{filename}"
 
 
-# Anthropic Messages API 圖片 base64 上限（超過會直接 400，且原始檔案永遠不會被
-# 標記為已處理，之後每次同步都會重新踩到同一個錯誤）
-_MAX_IMAGE_B64_BYTES = 10 * 1024 * 1024
-
-
 def _shrink_image_if_needed(image_bytes: bytes, media_type: str) -> tuple[bytes, str]:
-    """base64 編碼後超過 Anthropic 10MB 上限時，縮小尺寸/畫質重新編碼成 JPEG。"""
-    if len(base64.b64encode(image_bytes)) <= _MAX_IMAGE_B64_BYTES:
-        return image_bytes, media_type
-
+    """base64 編碼後超過 Anthropic 10MB 上限，或單邊像素超過長邊上限時，
+    縮小尺寸/畫質重新編碼成 JPEG。"""
     try:
         img = Image.open(BytesIO(image_bytes))
-        if img.mode not in ("RGB", "L"):
-            img = img.convert("RGB")
+        too_big_dim = max(img.size) > _MAX_IMAGE_DIMENSION
     except Exception as e:
+        if len(base64.b64encode(image_bytes)) <= _MAX_IMAGE_B64_BYTES:
+            return image_bytes, media_type
         logger.warning("圖片縮圖失敗，原樣送出：%s", e)
         return image_bytes, media_type
+
+    if not too_big_dim and len(base64.b64encode(image_bytes)) <= _MAX_IMAGE_B64_BYTES:
+        return image_bytes, media_type
+
+    if img.mode not in ("RGB", "L"):
+        img = img.convert("RGB")
+    if too_big_dim:
+        ratio = _MAX_IMAGE_DIMENSION / max(img.size)
+        img = img.resize((max(1, int(img.width * ratio)), max(1, int(img.height * ratio))))
 
     quality = 85
     scale = 1.0

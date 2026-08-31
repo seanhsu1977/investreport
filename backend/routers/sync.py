@@ -245,8 +245,8 @@ def _do_reanalyze(file_ids: list[tuple[str, str]]):
                         analyst=result.get("analyst"),
                         report_date=report_date,
                         summary=result.get("summary"),
-                        key_points=json.dumps(result.get("key_points", []), ensure_ascii=False),
-                        mentioned_stocks=json.dumps(list(dict.fromkeys(result.get("mentioned_stocks", []))), ensure_ascii=False),
+                        key_points=json.dumps(result.get("key_points") or [], ensure_ascii=False),
+                        mentioned_stocks=json.dumps(list(dict.fromkeys(result.get("mentioned_stocks") or [])), ensure_ascii=False),
                         source_filename=filename,
                     ))
                     db.commit()

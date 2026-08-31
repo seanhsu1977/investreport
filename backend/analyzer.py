@@ -6,6 +6,7 @@ import pdfplumber
 from io import BytesIO
 import time
 import anthropic
+from PIL import Image
 
 
 def _get_client() -> anthropic.Anthropic:
@@ -139,7 +140,43 @@ def build_filename_hint(filename: str | None) -> str:
     return f"檔名（可能含有日期、股票代碼等資訊，請優先參考）：{filename}"
 
 
+# Anthropic Messages API 圖片 base64 上限（超過會直接 400，且原始檔案永遠不會被
+# 標記為已處理，之後每次同步都會重新踩到同一個錯誤）
+_MAX_IMAGE_B64_BYTES = 10 * 1024 * 1024
+
+
+def _shrink_image_if_needed(image_bytes: bytes, media_type: str) -> tuple[bytes, str]:
+    """base64 編碼後超過 Anthropic 10MB 上限時，縮小尺寸/畫質重新編碼成 JPEG。"""
+    if len(base64.b64encode(image_bytes)) <= _MAX_IMAGE_B64_BYTES:
+        return image_bytes, media_type
+
+    try:
+        img = Image.open(BytesIO(image_bytes))
+        if img.mode not in ("RGB", "L"):
+            img = img.convert("RGB")
+    except Exception as e:
+        logger.warning("圖片縮圖失敗，原樣送出：%s", e)
+        return image_bytes, media_type
+
+    quality = 85
+    scale = 1.0
+    data = image_bytes
+    for _ in range(6):
+        w, h = img.size
+        resized = img.resize((max(1, int(w * scale)), max(1, int(h * scale)))) if scale < 1.0 else img
+        buf = BytesIO()
+        resized.save(buf, format="JPEG", quality=quality)
+        data = buf.getvalue()
+        if len(base64.b64encode(data)) <= _MAX_IMAGE_B64_BYTES:
+            return data, "image/jpeg"
+        quality = quality - 15 if quality > 50 else quality
+        if quality <= 50:
+            scale *= 0.7
+    return data, "image/jpeg"  # 盡力而為，回傳最後一次嘗試的結果（仍可能略超，交給 API 判斷）
+
+
 def analyze_image_file(image_bytes: bytes, media_type: str, filename: str | None = None) -> dict | None:
+    image_bytes, media_type = _shrink_image_if_needed(image_bytes, media_type)
     filename_hint = build_filename_hint(filename)
     client = _get_client()
     prompt = EXTRACT_PROMPT_IMAGE.format(filename_hint=filename_hint, schema=_SCHEMA)
@@ -171,14 +208,25 @@ def analyze_report(pdf_bytes: bytes, filename: str | None = None) -> dict | None
 
     # 大型 PDF（報紙/早報）只讀前 5 頁避免浪費；一般報告讀前 20 頁
     # 先嘗試取 total_pages 判斷是否為超大 PDF
-    text, total_pages = extract_text_from_pdf(pdf_bytes, max_pages=20)
+    # pdfplumber 遇到少數格式異常/損毀的 PDF（如不支援的 stream filter）會直接拋例外，
+    # 若讓它往上炸，這個檔案會永遠不被標記為已處理、每次同步都重踩同一個錯誤——
+    # 這裡當作「沒有文字」處理，往下走圖片版掃描的 Vision 分支。
+    try:
+        text, total_pages = extract_text_from_pdf(pdf_bytes, max_pages=20)
+    except Exception as e:
+        logger.warning("[%s] extract_text_from_pdf failed (%s), fallback to Vision", filename, e)
+        text, total_pages = "", 0
 
     if text.strip():
         # 大型 PDF（早報/報紙/晨會彙整，> 10 頁）：有封面，跳過第 1 頁，取第 2-6 頁
         # 個股投顧報告（≤ 10 頁）：沒有封面，第 1 頁就是評等/目標價，字數上限拉高到 12000
         if total_pages > 10:
-            text_short, _ = extract_text_from_pdf(pdf_bytes, max_pages=5, skip_pages=1)
-            text_to_send = text_short[:10000]
+            try:
+                text_short, _ = extract_text_from_pdf(pdf_bytes, max_pages=5, skip_pages=1)
+                text_to_send = text_short[:10000]
+            except Exception as e:
+                logger.warning("[%s] second-pass extract_text_from_pdf failed (%s), reuse first pass", filename, e)
+                text_to_send = text[:10000]
         else:
             text_to_send = text[:12000]
 

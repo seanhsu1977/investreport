@@ -12,7 +12,7 @@ from googleapiclient.http import MediaIoBaseDownload
 from sqlalchemy.orm import Session
 
 import re
-from analyzer import analyze_report, analyze_image_file
+from analyzer import analyze_report, analyze_image_file, as_str
 from models import DriveFile, Report
 
 logger = logging.getLogger(__name__)
@@ -255,17 +255,17 @@ def sync_drive(db: Session, progress: dict | None = None, cancelled=None, since:
                 if report_date is None:
                     report_date = extract_date_from_filename(filename)
 
-                stock_code = result.get("stock_code") or "MARKET"
+                stock_code = as_str(result.get("stock_code")) or "MARKET"
                 report = Report(
                     drive_file_id=file_id,
                     stock_code=stock_code,
-                    stock_name=result.get("stock_name"),
+                    stock_name=as_str(result.get("stock_name")),
                     # 市場新聞不套用個股評等
-                    recommendation=result.get("recommendation") if stock_code != "MARKET" else None,
+                    recommendation=as_str(result.get("recommendation")) if stock_code != "MARKET" else None,
                     target_price=result.get("target_price"),
-                    analyst=result.get("analyst"),
+                    analyst=as_str(result.get("analyst")),
                     report_date=report_date,
-                    summary=result.get("summary"),
+                    summary=as_str(result.get("summary")),
                     key_points=json.dumps(result.get("key_points") or [], ensure_ascii=False),
                     mentioned_stocks=json.dumps(list(dict.fromkeys(result.get("mentioned_stocks") or [])), ensure_ascii=False),
                     source_filename=filename,

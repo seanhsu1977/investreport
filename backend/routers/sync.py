@@ -201,7 +201,7 @@ def _do_reanalyze(file_ids: list[tuple[str, str]]):
     from datetime import date
     from database import SessionLocal
     from drive_sync import get_drive_service, download_file, extract_date_from_filename, IMAGE_MIME_TYPES
-    from analyzer import analyze_report, analyze_image_file
+    from analyzer import analyze_report, analyze_image_file, as_str
     from models import Report
 
     logger = logging.getLogger(__name__)
@@ -235,16 +235,16 @@ def _do_reanalyze(file_ids: list[tuple[str, str]]):
                     if report_date is None:
                         report_date = extract_date_from_filename(filename)
 
-                    stock_code = result.get("stock_code") or "MARKET"
+                    stock_code = as_str(result.get("stock_code")) or "MARKET"
                     db.add(Report(
                         drive_file_id=file_id,
                         stock_code=stock_code,
-                        stock_name=result.get("stock_name"),
-                        recommendation=result.get("recommendation") if stock_code != "MARKET" else None,
+                        stock_name=as_str(result.get("stock_name")),
+                        recommendation=as_str(result.get("recommendation")) if stock_code != "MARKET" else None,
                         target_price=result.get("target_price"),
-                        analyst=result.get("analyst"),
+                        analyst=as_str(result.get("analyst")),
                         report_date=report_date,
-                        summary=result.get("summary"),
+                        summary=as_str(result.get("summary")),
                         key_points=json.dumps(result.get("key_points") or [], ensure_ascii=False),
                         mentioned_stocks=json.dumps(list(dict.fromkeys(result.get("mentioned_stocks") or [])), ensure_ascii=False),
                         source_filename=filename,

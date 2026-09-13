@@ -165,6 +165,20 @@ def parse_json_response(raw: str) -> dict | None:
     return None
 
 
+def as_str(v) -> str | None:
+    """schema 裡的字串欄位（stock_name/analyst/recommendation…）模型偶爾會回傳
+    陣列（如聯名報告列出多位分析師），直接塞進 sqlite 的字串欄位會噴
+    'type list is not supported'。這裡統一轉成字串，多個值用頓號合併。"""
+    if v is None:
+        return None
+    if isinstance(v, str):
+        return v
+    if isinstance(v, list):
+        parts = [str(x) for x in v if x is not None and str(x).strip()]
+        return "、".join(parts) if parts else None
+    return str(v)
+
+
 def build_filename_hint(filename: str | None) -> str:
     if not filename:
         return ""

@@ -13,6 +13,7 @@ import EtfTrackerPage from "./pages/EtfTrackerPage";
 import SectorRotationPage from "./pages/SectorRotationPage";
 import NewsPage from "./pages/NewsPage";
 import LoginButton from "./components/LoginButton";
+import SyncStatus from "./components/SyncStatus";
 import PostMaterialsBar from "./components/PostMaterialsBar";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 
@@ -153,6 +154,7 @@ function AppInner() {
           </nav>
 
           <div className="flex items-center gap-2 shrink-0">
+            {user?.is_admin && <SyncStatus />}
             <LoginButton />
             <HamburgerMenu />
           </div>

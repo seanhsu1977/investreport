@@ -105,6 +105,7 @@ export interface RecommendationItem {
   };
   latest_report_price: number | null;
   gain_since_report: number | null;
+  moat_score: number | null;
 }
 
 export interface UpsideRankingItem {
@@ -199,6 +200,7 @@ export interface KdjScreenItem {
   inst_today: number | null;
   inst_consec_days: number | null;
   inst_consec_sign: number | null;
+  moat_score: number | null;
 }
 
 export interface MoatScore {
@@ -232,6 +234,7 @@ export interface BreakoutScreenItem {
   rsi: number | null;
   momentum_confirm: boolean;
   confirm_score: number;
+  moat_score: number | null;
 }
 
 interface OhlcPoint  { time: number; open: number; high: number; low: number; close: number; volume?: number }

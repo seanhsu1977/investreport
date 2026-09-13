@@ -111,16 +111,30 @@ def _kdj_signal_from_series(
         signal = "多頭" if cur_k >= cur_d else "空頭"
 
     # J 線訊號：J = 3K - 2D，比 K/D 靈敏，常用 0 / 100 為超賣/超買閾值
+    # 「J回升/J轉弱」代表目前仍處在剛穿越閾值後的狀態，不是「歷史上曾經穿越過」——
+    # 回溯時一旦發現中途又跌破/衝破閾值（代表那次穿越早就失效了），要立刻停止，
+    # 否則會把好幾天前的舊訊號誤判成現在還成立（例如 J 已經又跌回負值，卻還顯示
+    # 「J回升」）。
     j_signal = j_cross_days = None
-    for i in range(min(8, len(valid) - 1)):
-        _, _, this_j = valid[-(i + 1)]
-        _, _, prev_j = valid[-(i + 2)]
-        if prev_j < 0 and this_j >= 0:
-            j_signal, j_cross_days = "J回升", i
-            break
-        if prev_j > 100 and this_j <= 100:
-            j_signal, j_cross_days = "J轉弱", i
-            break
+    if cur_j >= 0:
+        for i in range(min(8, len(valid) - 1)):
+            _, _, this_j = valid[-(i + 1)]
+            if this_j < 0:
+                break
+            _, _, prev_j = valid[-(i + 2)]
+            if prev_j < 0:
+                j_signal, j_cross_days = "J回升", i
+                break
+    elif cur_j <= 100:
+        for i in range(min(8, len(valid) - 1)):
+            _, _, this_j = valid[-(i + 1)]
+            if this_j > 100:
+                break
+            _, _, prev_j = valid[-(i + 2)]
+            if prev_j > 100:
+                j_signal, j_cross_days = "J轉弱", i
+                break
+
     if j_signal is None:
         if cur_j < 0:
             j_signal = "J超賣"

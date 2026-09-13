@@ -3,8 +3,10 @@
 公開介面，是猜測既有 nStock 端點命名規則試出來的，格式若 nStock 調整可能失效。
 """
 from __future__ import annotations
+import asyncio
 import logging
 import time
+from datetime import datetime
 
 import httpx
 
@@ -196,3 +198,55 @@ def compute_moat_score(
         "industry_percentile": round(percentile * 100) if percentile is not None else None,
         "peer_sample_size": len(peer_roes),
     }
+
+
+# 最終護城河結果快取：24 小時（財報資料本來就不會日內變動），讓個股頁跟各個
+# 選股清單（KDJ / 盤整突破 / 投顧精選）共用同一份快取，同一支股票不會重算多次
+_MOAT_CACHE: dict[str, tuple[dict, float]] = {}
+_MOAT_CACHE_TTL = 24 * 3600
+
+
+async def get_moat_score(code: str, peer_limit: int = 20, timeout: float = 15.0) -> dict | None:
+    """算好整包護城河結果（含 history），可能觸發同業家數次的 basic-info 呼叫，
+    走 asyncio.to_thread 平行處理。缺資料（如非台股上市櫃、代號錯誤）回傳 None。
+    供個股頁 API 與各選股清單（KDJ/盤整突破/投顧精選）共用。
+    """
+    cached = _MOAT_CACHE.get(code)
+    if cached and time.time() - cached[1] < _MOAT_CACHE_TTL:
+        return cached[0]
+
+    try:
+        return await asyncio.wait_for(_compute_moat_score(code, peer_limit), timeout=timeout)
+    except Exception as e:
+        logger.warning("get_moat_score(%s) failed/timed out: %s", code, e)
+        return None
+
+
+async def _compute_moat_score(code: str, peer_limit: int) -> dict | None:
+    quarterly, basic = await asyncio.gather(
+        asyncio.to_thread(get_quarterly_financials, code),
+        asyncio.to_thread(get_basic_info, code),
+    )
+    if not quarterly or not basic or not basic.get("industry"):
+        return None
+
+    peer_codes = await asyncio.to_thread(get_industry_peers, code, basic["industry"], peer_limit)
+    semaphore = asyncio.Semaphore(8)
+
+    async def fetch_peer(peer_code: str):
+        async with semaphore:
+            return await asyncio.to_thread(get_basic_info, peer_code)
+
+    peer_basics = await asyncio.gather(*[fetch_peer(c) for c in peer_codes])
+
+    result = compute_moat_score(quarterly, basic, peer_basics)
+    result["code"] = code
+    result["industry"] = basic["industry"]
+    result["computed_at"] = datetime.utcnow().isoformat()
+    result["history"] = [
+        {"period": q["period"], "roe": q["roe"], "gross_margin": q["gross_margin"]}
+        for q in quarterly[:8]
+    ]
+
+    _MOAT_CACHE[code] = (result, time.time())
+    return result

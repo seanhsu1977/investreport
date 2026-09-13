@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { stocksApi, RecommendationItem } from "../api/client";
 import KdjScreener from "../components/KdjScreener";
 import BreakoutScreener from "../components/BreakoutScreener";
+import MoatBadge from "../components/MoatBadge";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -150,6 +151,7 @@ function ScoreCard({ item, rank, onAskReason }: { item: RecommendationItem; rank
           <span className="text-[10px] text-[#6B7A99]">市場</span>
           <span className="text-sm font-bold text-[#6B7A99]">{(item.market_score ?? 0).toFixed(0)}</span>
         </div>
+        <MoatBadge score={item.moat_score} />
       </div>
 
       {/* analyst bars */}
@@ -304,6 +306,7 @@ function RestCard({ item, rank, onAskReason }: { item: RecommendationItem; rank:
               <span className="text-[11px] text-[#6B7A99] truncate">{[maSig, volSig].filter(Boolean).join("·")}</span>
             )}
           </div>
+          <MoatBadge score={item.moat_score} />
           <button
             onClick={onAskReason}
             className="text-xs font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 border-none rounded-md px-2.5 py-1.5 transition shrink-0"

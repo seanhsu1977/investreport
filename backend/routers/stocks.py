@@ -411,7 +411,7 @@ async def _compute_candidates(days: int, min_reports: int, rec_filter: str, db) 
     return candidates
 
 
-async def _fetch_all_market_data(candidates: list[dict]) -> tuple[dict, dict, dict]:
+async def _fetch_all_market_data(candidates: list[dict]) -> tuple[dict, dict, dict, dict]:
     """並行抓所有候選股的價格、技術訊號、法人籌碼。回傳三個 map。"""
     sem_price = asyncio.Semaphore(8)
     sem_signal, sem_inst = _get_sems()  # 全域 semaphore，跨任務限制並發
@@ -461,16 +461,27 @@ async def _fetch_all_market_data(candidates: list[dict]) -> tuple[dict, dict, di
             except Exception:
                 return code, None
 
+    async def fetch_moat(code):
+        import moat_analysis as ma
+        # moat 內部本身會扇出同業查詢，外層併發故意壓低避免疊加成過大瞬間量
+        async with sem_moat:
+            try:
+                return code, await ma.get_moat_score(code)
+            except Exception:
+                return code, None
+
+    sem_moat = asyncio.Semaphore(4)
     codes = [c["code"] for c in candidates]
-    prices, signals, insts = await asyncio.gather(
+    prices, signals, insts, moats = await asyncio.gather(
         asyncio.gather(*[fetch_price(c) for c in codes]),
         asyncio.gather(*[fetch_signal(c) for c in codes]),
         asyncio.gather(*[fetch_inst(c) for c in codes]),
+        asyncio.gather(*[fetch_moat(c) for c in codes]),
     )
-    return dict(prices), dict(signals), dict(insts)
+    return dict(prices), dict(signals), dict(insts), dict(moats)
 
 
-def _build_result(candidates: list[dict], price_map: dict, signal_map: dict, inst_map: dict, limit: int) -> dict:
+def _build_result(candidates: list[dict], price_map: dict, signal_map: dict, inst_map: dict, moat_map: dict, limit: int) -> dict:
     """合併市場資料、算分、排序，回傳最終 result dict。"""
     items: list[dict] = []
     for c in candidates:
@@ -498,6 +509,7 @@ def _build_result(candidates: list[dict], price_map: dict, signal_map: dict, ins
 
         inst_rows = inst_map.get(code) or []
         c["inst_5d_net"] = int(sum((d.get("total") or 0) for d in inst_rows))
+        c["moat_score"] = (moat_map.get(code) or {}).get("score")
         c["score"], c["score_breakdown"] = _compute_score(c)
         c["market_score"], c["market_breakdown"] = _compute_market_score(c)
         items.append(c)
@@ -534,8 +546,8 @@ async def _compute_recommendations_bg(
             if len(candidates) > _MAX_CANDIDATES:
                 candidates.sort(key=lambda c: c["rec_avg"] * c["report_count"], reverse=True)
                 candidates = candidates[:_MAX_CANDIDATES]
-            price_map, signal_map, inst_map = await _fetch_all_market_data(candidates)
-            result = _build_result(candidates, price_map, signal_map, inst_map, limit)
+            price_map, signal_map, inst_map, moat_map = await _fetch_all_market_data(candidates)
+            result = _build_result(candidates, price_map, signal_map, inst_map, moat_map, limit)
 
         _rec_cache[cache_key] = (result, _time.time())
         payload_str = json.dumps(result, ensure_ascii=False, default=str)
@@ -1389,45 +1401,14 @@ async def get_stock_fundamentals(stock_code: str):
     return {"revenue": rev, "institutional": inst}
 
 
-_MOAT_CACHE: dict[str, tuple[dict, float]] = {}
-_MOAT_CACHE_TTL = 24 * 3600  # 財報一天更新一次就夠，避免每次進頁面都重打一輪同業 API
-
-
 @router.get("/{stock_code}/moat")
 async def get_moat_score(stock_code: str):
     """護城河評分：獲利持續性 + 毛利率趨勢 + 同業相對地位（0~100，用 nStock 財報類資料計算）"""
-    cached = _MOAT_CACHE.get(stock_code)
-    if cached and time.time() - cached[1] < _MOAT_CACHE_TTL:
-        return cached[0]
-
     import moat_analysis as ma
 
-    quarterly, basic = await asyncio.gather(
-        asyncio.to_thread(ma.get_quarterly_financials, stock_code),
-        asyncio.to_thread(ma.get_basic_info, stock_code),
-    )
-    if not quarterly or not basic or not basic.get("industry"):
+    result = await ma.get_moat_score(stock_code)
+    if result is None:
         raise HTTPException(status_code=404, detail="缺少足夠的財務資料（可能非台股上市櫃公司，或代號錯誤）")
-
-    peer_codes = await asyncio.to_thread(ma.get_industry_peers, stock_code, basic["industry"], 20)
-    semaphore = asyncio.Semaphore(8)
-
-    async def fetch_peer(code: str):
-        async with semaphore:
-            return await asyncio.to_thread(ma.get_basic_info, code)
-
-    peer_basics = await asyncio.gather(*[fetch_peer(c) for c in peer_codes])
-
-    result = ma.compute_moat_score(quarterly, basic, peer_basics)
-    result["code"] = stock_code
-    result["industry"] = basic["industry"]
-    result["computed_at"] = datetime.utcnow().isoformat()
-    result["history"] = [
-        {"period": q["period"], "roe": q["roe"], "gross_margin": q["gross_margin"]}
-        for q in quarterly[:8]
-    ]
-
-    _MOAT_CACHE[stock_code] = (result, time.time())
     return result
 
 

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { stocksApi, type KdjScreenItem } from "../api/client";
+import MoatBadge from "./MoatBadge";
 
 const KD_SIGNAL_COLOR: Record<string, string> = {
   "低位金叉": "bg-red-100 text-red-700",
@@ -218,6 +219,7 @@ export default function KdjScreener() {
                         5日{it.inst_5d > 0 ? "+" : ""}{it.inst_5d.toLocaleString()}張
                       </span>
                     )}
+                    <MoatBadge score={it.moat_score} />
                   </div>
                 </div>
               ))}

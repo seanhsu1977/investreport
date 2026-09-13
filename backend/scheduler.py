@@ -276,6 +276,23 @@ def _kdj_screen_job(quick: bool = False):
             for it in items:
                 it.update(summarize_institutional(inst_map.get(it["code"])))
 
+            # 補護城河評分 — 一樣只補命中清單；moat 本身內部還會扇出同業查詢，
+            # 外層併發故意壓低（4），避免跟同業查詢疊加成過大的瞬間併發量
+            import moat_analysis as ma
+
+            async def run_moat():
+                moat_semaphore = asyncio.Semaphore(4)
+
+                async def fetch_moat(code):
+                    async with moat_semaphore:
+                        return code, await ma.get_moat_score(code)
+
+                return await asyncio.gather(*[fetch_moat(it["code"]) for it in items])
+
+            moat_map = dict(asyncio.run(run_moat()))
+            for it in items:
+                it["moat_score"] = (moat_map.get(it["code"]) or {}).get("score")
+
         # 台北時間
         tpe = timezone(timedelta(hours=8))
         now_tpe = datetime.now(tpe)
@@ -358,6 +375,23 @@ def _breakout_screen_job(quick: bool = False):
             items.append({**hit, "name": name_map.get(code)})
         # 信心分數高（量增+動能雙確認）優先，其次區間越窄代表整理越紮實
         items.sort(key=lambda x: (-x["confirm_score"], x["range_pct"]))
+
+        # 補護城河評分 — 只補命中清單（通常只有個位數~十幾檔，量很小）
+        if items:
+            import moat_analysis as ma
+
+            async def run_moat():
+                moat_semaphore = asyncio.Semaphore(4)
+
+                async def fetch_moat(code):
+                    async with moat_semaphore:
+                        return code, await ma.get_moat_score(code)
+
+                return await asyncio.gather(*[fetch_moat(it["code"]) for it in items])
+
+            moat_map = dict(asyncio.run(run_moat()))
+            for it in items:
+                it["moat_score"] = (moat_map.get(it["code"]) or {}).get("score")
 
         tpe = timezone(timedelta(hours=8))
         now_tpe = datetime.now(tpe)

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { stocksApi, type BreakoutScreenItem } from "../api/client";
+import MoatBadge from "./MoatBadge";
 
 type CacheResult = {
   items: BreakoutScreenItem[];
@@ -136,6 +137,7 @@ export default function BreakoutScreener() {
                         RSI{it.rsi}
                       </span>
                     )}
+                    <MoatBadge score={it.moat_score} />
                   </div>
                 </div>
               ))}

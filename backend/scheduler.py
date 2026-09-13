@@ -194,7 +194,16 @@ def _kdj_screen_job(quick: bool = False):
                 .filter(EtfDailyChange.etf_code.in_(["00981A", "00403A"]))
                 .distinct().all()
             }
-            priority = list(wl_codes) + [c for c in etf_codes if c not in wl_codes]
+            # 也納入投顧精選的候選成分股（近 30 天內至少 1 篇報告），跟自選股/ETF成份股合併
+            from routers.stocks import _compute_candidates
+            rec_candidates = asyncio.run(_compute_candidates(30, 1, "all", db))
+            rec_codes = {c["code"] for c in rec_candidates}
+
+            priority = (
+                list(wl_codes)
+                + [c for c in rec_codes if c not in wl_codes]
+                + [c for c in etf_codes if c not in wl_codes and c not in rec_codes]
+            )
             code_list = priority[:350]
 
         import stocks_master

@@ -98,7 +98,7 @@ export default function KdjScreener() {
     <div className="space-y-3">
       <div className="flex items-center justify-between px-1">
         <p className="text-xs text-gray-400">
-          KDJ(89,9,12) J 線 + 交叉訊號 + 三大法人籌碼・自選股（手動）/ 含 ETF 成份股（每日 15:30 排程）
+          KDJ(89,9,12) J 線 + 交叉訊號 + 三大法人籌碼・自選股（手動）/ 含 ETF 成份股 + 投顧精選候選股（每日 15:30 排程）
           {result?.data_date && (
             <span className="ml-1.5 text-gray-300">資料日期 {result.data_date}</span>
           )}

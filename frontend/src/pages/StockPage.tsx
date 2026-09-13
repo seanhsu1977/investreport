@@ -12,6 +12,7 @@ import StockLinkedText from "../components/StockLinkedText";
 import { usePostMaterials } from "../hooks/usePostMaterials";
 import KlineChart from "../components/KlineChart";
 import KdjChart from "../components/KdjChart";
+import MoatScoreCard from "../components/MoatScoreCard";
 import { type KlineResponse } from "../api/client";
 import type { ITimeScaleApi, UTCTimestamp } from "lightweight-charts";
 
@@ -26,7 +27,7 @@ const REC_COLOR: Record<string, string> = {
   Sell: "bg-red-500",
 };
 
-type StockTabKey = "reports" | "chips" | "tech" | "insight" | "article" | "news";
+type StockTabKey = "reports" | "chips" | "tech" | "insight" | "moat" | "article" | "news";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -264,6 +265,7 @@ export default function StockPage() {
     { key: "chips",   label: "籌碼面" },
     { key: "tech",    label: "技術訊號" },
     { key: "insight", label: "綜合分析" },
+    { key: "moat",    label: "護城河" },
     { key: "article", label: "AI 每日稿" },
   ];
 
@@ -1143,6 +1145,9 @@ export default function StockPage() {
             </>
           );
         })()}
+
+        {/* ════════════════ TAB: 護城河 ════════════════ */}
+        {!loading && activeTab === "moat" && code && <MoatScoreCard code={code} />}
 
         {/* ════════════════ TAB: AI 每日稿 ════════════════ */}
         {!loading && activeTab === "article" && (

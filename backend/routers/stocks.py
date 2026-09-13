@@ -1389,6 +1389,48 @@ async def get_stock_fundamentals(stock_code: str):
     return {"revenue": rev, "institutional": inst}
 
 
+_MOAT_CACHE: dict[str, tuple[dict, float]] = {}
+_MOAT_CACHE_TTL = 24 * 3600  # 財報一天更新一次就夠，避免每次進頁面都重打一輪同業 API
+
+
+@router.get("/{stock_code}/moat")
+async def get_moat_score(stock_code: str):
+    """護城河評分：獲利持續性 + 毛利率趨勢 + 同業相對地位（0~100，用 nStock 財報類資料計算）"""
+    cached = _MOAT_CACHE.get(stock_code)
+    if cached and time.time() - cached[1] < _MOAT_CACHE_TTL:
+        return cached[0]
+
+    import moat_analysis as ma
+
+    quarterly, basic = await asyncio.gather(
+        asyncio.to_thread(ma.get_quarterly_financials, stock_code),
+        asyncio.to_thread(ma.get_basic_info, stock_code),
+    )
+    if not quarterly or not basic or not basic.get("industry"):
+        raise HTTPException(status_code=404, detail="缺少足夠的財務資料（可能非台股上市櫃公司，或代號錯誤）")
+
+    peer_codes = await asyncio.to_thread(ma.get_industry_peers, stock_code, basic["industry"], 20)
+    semaphore = asyncio.Semaphore(8)
+
+    async def fetch_peer(code: str):
+        async with semaphore:
+            return await asyncio.to_thread(ma.get_basic_info, code)
+
+    peer_basics = await asyncio.gather(*[fetch_peer(c) for c in peer_codes])
+
+    result = ma.compute_moat_score(quarterly, basic, peer_basics)
+    result["code"] = stock_code
+    result["industry"] = basic["industry"]
+    result["computed_at"] = datetime.utcnow().isoformat()
+    result["history"] = [
+        {"period": q["period"], "roe": q["roe"], "gross_margin": q["gross_margin"]}
+        for q in quarterly[:8]
+    ]
+
+    _MOAT_CACHE[stock_code] = (result, time.time())
+    return result
+
+
 @router.get("/{stock_code}/price")
 def get_stock_price(stock_code: str):
     """從 nstock.tw 取得即時股價"""

@@ -201,6 +201,24 @@ export interface KdjScreenItem {
   inst_consec_sign: number | null;
 }
 
+export interface MoatScore {
+  code: string;
+  industry: string;
+  score: number;
+  breakdown: {
+    profitability: number;
+    margin: number;
+    industry_relative: number;
+  };
+  avg_roe_12q: number | null;
+  avg_gross_margin_recent: number | null;
+  avg_gross_margin_3y_ago: number | null;
+  industry_percentile: number | null;
+  peer_sample_size: number;
+  computed_at: string;
+  history: { period: string; roe: number | null; gross_margin: number | null }[];
+}
+
 export interface BreakoutScreenItem {
   code: string;
   name: string | null;
@@ -293,6 +311,8 @@ export const stocksApi = {
     api.get<{ items: BreakoutScreenItem[]; total: number; scanned: number; computed_at: string | null; data_date: string | null }>("/stocks/breakout-screen").then((r) => r.data),
   breakout_screen_refresh: () =>
     api.post<{ status: string }>("/stocks/breakout-screen/refresh").then((r) => r.data),
+  moat: (code: string) =>
+    api.get<MoatScore>(`/stocks/${code}/moat`).then((r) => r.data),
   fill_all_prices: () =>
     api.post<{ status: string; message: string }>("/stocks/admin/fill-all-prices").then((r) => r.data),
   sectorRotation: () =>

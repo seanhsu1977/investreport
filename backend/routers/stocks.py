@@ -1412,6 +1412,32 @@ async def get_moat_score(stock_code: str):
     return result
 
 
+@router.get("/{stock_code}/financial-structure")
+async def get_financial_structure(stock_code: str):
+    """財務結構分頁：近 8 季三率(毛利率/營業利益率/淨利率) + ROE/ROA 趨勢 + 前瞻本益比/共識目標價。
+    純落後資料 + 單一共識快照，不含任何 AI 產生的財務預測。
+    """
+    import moat_analysis as ma
+
+    quarterly, basic, forward = await asyncio.gather(
+        asyncio.to_thread(ma.get_quarterly_financials, stock_code),
+        asyncio.to_thread(ma.get_basic_info, stock_code),
+        asyncio.to_thread(ma.get_forward_estimate, stock_code),
+    )
+    if not quarterly:
+        raise HTTPException(status_code=404, detail="缺少足夠的財務資料（可能非台股上市櫃公司，或代號錯誤）")
+
+    return {
+        "code": stock_code,
+        "industry": (basic or {}).get("industry"),
+        "debt_ratio": (basic or {}).get("debt_ratio"),
+        "roe_ttm": (basic or {}).get("roe_ttm"),
+        "roa_ttm": (basic or {}).get("roa_ttm"),
+        "forward": forward,
+        "quarters": list(reversed(quarterly[:8])),  # 由舊到新，方便前端直接畫圖
+    }
+
+
 @router.get("/{stock_code}/price")
 def get_stock_price(stock_code: str):
     """從 nstock.tw 取得即時股價"""
@@ -1573,6 +1599,34 @@ def breakout_screen_refresh(background_tasks: BackgroundTasks):
     """手動觸發橫盤整理突破選股重新掃描（僅掃自選股，背景執行，完成後快取更新）。"""
     from scheduler import _breakout_screen_job
     background_tasks.add_task(_breakout_screen_job, True)
+    return {"status": "started"}
+
+
+@router.get("/fundamental-screen")
+def fundamental_screen(db: Session = Depends(get_db)):
+    """讀取多因子選股快取（本益比/股價淨值比/殖利率/ROE/毛利率/市值/護城河/前瞻本益比）。
+    完整清單，沒有命中門檻，篩選/排序交給前端做。"""
+    from models import FundamentalScreenCache
+    import json as _json
+
+    row = db.query(FundamentalScreenCache).order_by(FundamentalScreenCache.id.desc()).first()
+    if not row:
+        return {"items": [], "total": 0, "scanned": 0, "computed_at": None, "data_date": None}
+    items = _json.loads(row.items_json)
+    return {
+        "items": items,
+        "total": len(items),
+        "scanned": row.scanned,
+        "computed_at": row.computed_at,
+        "data_date": row.data_date,
+    }
+
+
+@router.post("/fundamental-screen/refresh")
+def fundamental_screen_refresh(background_tasks: BackgroundTasks):
+    """手動觸發多因子選股重新掃描（僅掃自選股，背景執行，完成後快取更新）。"""
+    from scheduler import _fundamental_screen_job
+    background_tasks.add_task(_fundamental_screen_job, True)
     return {"status": "started"}
 
 

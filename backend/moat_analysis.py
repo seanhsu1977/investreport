@@ -100,6 +100,34 @@ def get_basic_info(code: str) -> dict | None:
     return result
 
 
+_forward_cache: dict[str, tuple[dict | None, float]] = {}
+
+
+def get_forward_estimate(code: str) -> dict | None:
+    """分析師共識前瞻估值：預估 EPS、前瞻本益比、共識目標價（單一快照，非分年拆解）。
+    EPS 預估為負時 nstock 會回空字串，一併正規化成 None。
+    """
+    cached = _forward_cache.get(code)
+    if cached and time.time() - cached[1] < _CACHE_TTL:
+        return cached[0]
+
+    data = _fetch_json(f"{_API_BASE}/target-price/data?stock_id={code}")
+    result: dict | None = None
+    try:
+        row = data["data"][0]["資料"][0]
+        result = {
+            "period": row.get("年月"),
+            "estimated_eps": _parse_float(row.get("預估EPS")),
+            "forward_pe": _parse_float(row.get("目前本益比")),
+            "target_price": _parse_float(row.get("目標價")),
+        }
+    except (KeyError, IndexError, TypeError):
+        result = None
+
+    _forward_cache[code] = (result, time.time())
+    return result
+
+
 def _get_stock_list() -> list[dict]:
     global _stock_list_cache
     if _stock_list_cache and time.time() - _stock_list_cache[1] < _STOCK_LIST_TTL:

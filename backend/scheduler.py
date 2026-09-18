@@ -424,6 +424,115 @@ def _breakout_screen_job(quick: bool = False):
         db.close()
 
 
+def _fundamental_screen_job(quick: bool = False):
+    """多因子選股快取：本益比/股價淨值比/殖利率/ROE/毛利率/市值/護城河/前瞻本益比。
+    跟 KDJ/盤整突破不同，這裡沒有命中門檻，是完整清單，篩選/排序交給前端做。
+    quick=True：僅掃自選股（手動觸發用，速度快）；False：含 ETF成份股+投顧精選候選股（排程用）。
+    """
+    import asyncio
+    import json as _json
+    from datetime import timezone, timedelta
+
+    logger.info("Starting fundamental screen job (quick=%s)...", quick)
+    db = SessionLocal()
+    try:
+        from models import Watchlist, EtfDailyChange, FundamentalScreenCache
+
+        wl_codes = {r.stock_code for r in db.query(Watchlist.stock_code).all()}
+
+        if quick:
+            code_list = sorted(wl_codes)
+        else:
+            etf_codes = {
+                r.stock_code for r in
+                db.query(EtfDailyChange.stock_code)
+                .filter(EtfDailyChange.etf_code.in_(["00981A", "00403A"]))
+                .distinct().all()
+            }
+            from routers.stocks import _compute_candidates
+            rec_candidates = asyncio.run(_compute_candidates(30, 1, "all", db))
+            rec_codes = {c["code"] for c in rec_candidates}
+
+            priority = (
+                list(wl_codes)
+                + [c for c in rec_codes if c not in wl_codes]
+                + [c for c in etf_codes if c not in wl_codes and c not in rec_codes]
+            )
+            code_list = priority[:350]
+
+        import stocks_master
+        name_map = stocks_master.resolve_names_for(db, code_list)
+        for code in code_list:
+            if not name_map.get(code):
+                row = (db.query(Report.stock_name).filter(Report.stock_code == code)
+                       .order_by(Report.created_at.desc()).first())
+                name_map[code] = row[0] if row else None
+
+        import moat_analysis as ma
+
+        async def run_all():
+            semaphore = asyncio.Semaphore(4)
+
+            async def fetch_one(code):
+                async with semaphore:
+                    basic, quarterly, forward, moat = await asyncio.gather(
+                        asyncio.to_thread(ma.get_basic_info, code),
+                        asyncio.to_thread(ma.get_quarterly_financials, code),
+                        asyncio.to_thread(ma.get_forward_estimate, code),
+                        ma.get_moat_score(code),
+                    )
+                    return code, basic, quarterly, forward, moat
+
+            return await asyncio.gather(*[fetch_one(c) for c in code_list])
+
+        results = asyncio.run(run_all())
+
+        items = []
+        for code, basic, quarterly, forward, moat in results:
+            if not basic:
+                continue
+            latest_q = quarterly[0] if quarterly else None
+            items.append({
+                "code": code,
+                "name": name_map.get(code),
+                "industry": basic.get("industry"),
+                "pe": basic.get("pe"),
+                "pb": basic.get("pb"),
+                "dividend_yield": basic.get("dividend_yield"),
+                "market_cap": basic.get("market_cap"),
+                "roe_ttm": basic.get("roe_ttm"),
+                "roa_ttm": basic.get("roa_ttm"),
+                "gross_margin": latest_q.get("gross_margin") if latest_q else None,
+                "revenue_yoy": latest_q.get("revenue_yoy") if latest_q else None,
+                "estimated_eps": forward.get("estimated_eps") if forward else None,
+                "forward_pe": forward.get("forward_pe") if forward else None,
+                "target_price": forward.get("target_price") if forward else None,
+                "moat_score": (moat or {}).get("score"),
+            })
+        items.sort(key=lambda x: x["market_cap"] or 0, reverse=True)
+
+        tpe = timezone(timedelta(hours=8))
+        now_tpe = datetime.now(tpe)
+        cache_row = FundamentalScreenCache(
+            computed_at=now_tpe.strftime("%Y-%m-%d %H:%M"),
+            data_date=now_tpe.strftime("%Y-%m-%d"),
+            scanned=len(code_list),
+            items_json=_json.dumps(items, ensure_ascii=False),
+        )
+        db.add(cache_row)
+        old_rows = (db.query(FundamentalScreenCache)
+                    .order_by(FundamentalScreenCache.id.desc())
+                    .offset(5).all())
+        for r in old_rows:
+            db.delete(r)
+        db.commit()
+        logger.info("Fundamental screen job done: scanned=%d, items=%d", len(code_list), len(items))
+    except Exception as e:
+        logger.exception("Fundamental screen job failed: %s", e)
+    finally:
+        db.close()
+
+
 def _etf_tracker_job():
     """每週一至五 20:00 同步 00981A + 00403A 當日成份股變化。
     nstock ETF小百科約 19:30 發布，20:00 抓取保險。"""
@@ -482,6 +591,12 @@ def start_scheduler():
         _breakout_screen_job, "cron",
         day_of_week="mon-fri", hour=15, minute=32, timezone="Asia/Taipei",
         id="breakout_screen",
+    )
+    # 多因子選股快取：每天 15:36（收盤後，錯開前兩個排程）Mon-Fri
+    scheduler.add_job(
+        _fundamental_screen_job, "cron",
+        day_of_week="mon-fri", hour=15, minute=36, timezone="Asia/Taipei",
+        id="fundamental_screen",
     )
     # 投顧精選預算快取：每天 07:00 Asia/Taipei（含六日，因用戶週末也會看）
     scheduler.add_job(

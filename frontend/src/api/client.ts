@@ -221,6 +221,52 @@ export interface MoatScore {
   history: { period: string; roe: number | null; gross_margin: number | null }[];
 }
 
+export interface QuarterFinancial {
+  period: string;
+  roe: number | null;
+  roa: number | null;
+  gross_margin: number | null;
+  operating_margin: number | null;
+  net_margin: number | null;
+  revenue: number | null;
+  revenue_yoy: number | null;
+}
+
+export interface ForwardEstimate {
+  period: string;
+  estimated_eps: number | null;
+  forward_pe: number | null;
+  target_price: number | null;
+}
+
+export interface FinancialStructure {
+  code: string;
+  industry: string | null;
+  debt_ratio: number | null;
+  roe_ttm: number | null;
+  roa_ttm: number | null;
+  forward: ForwardEstimate | null;
+  quarters: QuarterFinancial[];
+}
+
+export interface FundamentalScreenItem {
+  code: string;
+  name: string | null;
+  industry: string | null;
+  pe: number | null;
+  pb: number | null;
+  dividend_yield: number | null;
+  market_cap: number | null;
+  roe_ttm: number | null;
+  roa_ttm: number | null;
+  gross_margin: number | null;
+  revenue_yoy: number | null;
+  estimated_eps: number | null;
+  forward_pe: number | null;
+  target_price: number | null;
+  moat_score: number | null;
+}
+
 export interface BreakoutScreenItem {
   code: string;
   name: string | null;
@@ -314,8 +360,14 @@ export const stocksApi = {
     api.get<{ items: BreakoutScreenItem[]; total: number; scanned: number; computed_at: string | null; data_date: string | null }>("/stocks/breakout-screen").then((r) => r.data),
   breakout_screen_refresh: () =>
     api.post<{ status: string }>("/stocks/breakout-screen/refresh").then((r) => r.data),
+  fundamental_screen: () =>
+    api.get<{ items: FundamentalScreenItem[]; total: number; scanned: number; computed_at: string | null; data_date: string | null }>("/stocks/fundamental-screen").then((r) => r.data),
+  fundamental_screen_refresh: () =>
+    api.post<{ status: string }>("/stocks/fundamental-screen/refresh").then((r) => r.data),
   moat: (code: string) =>
     api.get<MoatScore>(`/stocks/${code}/moat`).then((r) => r.data),
+  financial_structure: (code: string) =>
+    api.get<FinancialStructure>(`/stocks/${code}/financial-structure`).then((r) => r.data),
   fill_all_prices: () =>
     api.post<{ status: string; message: string }>("/stocks/admin/fill-all-prices").then((r) => r.data),
   sectorRotation: () =>

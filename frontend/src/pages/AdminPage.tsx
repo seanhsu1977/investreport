@@ -4,6 +4,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { Navigate, useLocation } from "react-router-dom";
 import { usePostMaterials } from "../hooks/usePostMaterials";
 import { syncApi, type SyncLogEntry } from "../api/client";
+import DailyArticlePreview from "../components/DailyArticlePreview";
 
 interface UserRecord {
   id: number;
@@ -76,6 +77,7 @@ function DailySection({ token }: { token: string }) {
   const [fbSummaryOnly, setFbSummaryOnly] = useState(true);
   const [fbPicture, setFbPicture] = useState("");
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [showRichPreview, setShowRichPreview] = useState(false);
 
   const refreshList = async () => {
     setLoading(true);
@@ -371,49 +373,65 @@ function DailySection({ token }: { token: string }) {
         <section className="bg-white rounded-xl border border-gray-200 p-5 space-y-3">
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <h2 className="font-semibold text-gray-700">編輯草稿 — {active.date}</h2>
-            <button
-              onClick={saveDraft}
-              disabled={saving}
-              className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-lg text-sm font-medium disabled:opacity-40 transition"
-            >
-              {saving ? "儲存中…" : "儲存"}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowRichPreview((v) => !v)}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
+                  showRichPreview ? "bg-blue-600 text-white" : "bg-gray-100 hover:bg-gray-200 text-gray-700"
+                }`}
+              >
+                {showRichPreview ? "純文字編輯" : "視覺預覽"}
+              </button>
+              <button
+                onClick={saveDraft}
+                disabled={saving}
+                className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-lg text-sm font-medium disabled:opacity-40 transition"
+              >
+                {saving ? "儲存中…" : "儲存"}
+              </button>
+            </div>
           </div>
 
-          <input
-            type="text"
-            value={active.title}
-            onChange={(e) => setActive({ ...active, title: e.target.value })}
-            className="w-full text-lg font-semibold border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-400"
-          />
+          {showRichPreview ? (
+            <DailyArticlePreview code={active.topic_stock_code} title={active.title} content={active.content} />
+          ) : (
+            <>
+              <input
+                type="text"
+                value={active.title}
+                onChange={(e) => setActive({ ...active, title: e.target.value })}
+                className="w-full text-lg font-semibold border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-400"
+              />
 
-          {/* 資料來源連結 */}
-          {active.source_links && active.source_links.length > 0 && (
-            <div className="flex flex-wrap gap-2 py-1">
-              <span className="text-xs text-gray-400 self-center">資料來源：</span>
-              {active.source_links.map((l) => (
-                <a
-                  key={l.url}
-                  href={l.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs px-2.5 py-1 rounded-full bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200 transition"
-                >
-                  {l.label} ↗
-                </a>
-              ))}
-            </div>
+              {/* 資料來源連結 */}
+              {active.source_links && active.source_links.length > 0 && (
+                <div className="flex flex-wrap gap-2 py-1">
+                  <span className="text-xs text-gray-400 self-center">資料來源：</span>
+                  {active.source_links.map((l) => (
+                    <a
+                      key={l.url}
+                      href={l.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs px-2.5 py-1 rounded-full bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200 transition"
+                    >
+                      {l.label} ↗
+                    </a>
+                  ))}
+                </div>
+              )}
+
+              <textarea
+                value={active.content}
+                onChange={(e) => setActive({ ...active, content: e.target.value })}
+                rows={24}
+                className="w-full font-mono text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-400 leading-relaxed"
+              />
+              <p className="text-xs text-gray-400">
+                字數 {active.content.length} ｜ 主題：{active.topic_stock_code} {active.topic_stock_name} ｜ 生成時間 {fmtDateTime(active.generated_at)}
+              </p>
+            </>
           )}
-
-          <textarea
-            value={active.content}
-            onChange={(e) => setActive({ ...active, content: e.target.value })}
-            rows={24}
-            className="w-full font-mono text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-400 leading-relaxed"
-          />
-          <p className="text-xs text-gray-400">
-            字數 {active.content.length} ｜ 主題：{active.topic_stock_code} {active.topic_stock_name} ｜ 生成時間 {fmtDateTime(active.generated_at)}
-          </p>
 
           {/* 發送區：nStock + Threads + Facebook */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-3 border-t border-gray-100">

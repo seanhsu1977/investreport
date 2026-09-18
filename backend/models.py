@@ -228,3 +228,16 @@ class BreakoutScreenCache(Base):
     data_date   = Column(String, nullable=False)   # YYYY-MM-DD 資料日期
     scanned     = Column(Integer, nullable=False, default=0)
     items_json  = Column(Text, nullable=False)     # JSON array of breakout screen items
+
+
+class FundamentalScreenCache(Base):
+    """多因子選股（本益比/股價淨值比/殖利率/ROE/毛利率/市值/護城河等）快取，
+    由排程每日收盤後更新。跟 KDJ/盤整突破不同，這裡沒有命中門檻——
+    是完整清單，篩選/排序交給前端做。"""
+    __tablename__ = "fundamental_screen_cache"
+
+    id          = Column(Integer, primary_key=True)
+    computed_at = Column(String, nullable=False)   # ISO datetime (Asia/Taipei)
+    data_date   = Column(String, nullable=False)   # YYYY-MM-DD 資料日期
+    scanned     = Column(Integer, nullable=False, default=0)
+    items_json  = Column(Text, nullable=False)     # JSON array of fundamental screen items

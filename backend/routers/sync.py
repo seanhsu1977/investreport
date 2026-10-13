@@ -27,6 +27,7 @@ def sync_progress():
 async def trigger_sync(
     background_tasks: BackgroundTasks,
     since: Optional[str] = Query(None, description="只同步此日期後的檔案，格式 YYYY-MM-DD"),
+    _=Depends(require_admin),
 ):
     """手動觸發立即同步（在獨立執行緒背景執行，不阻塞 API）"""
     from fastapi import HTTPException
@@ -64,7 +65,7 @@ def sync_history(limit: int = Query(default=20, ge=1, le=100), db: Session = Dep
 
 
 @router.post("/cancel")
-def cancel_sync_endpoint():
+def cancel_sync_endpoint(_=Depends(require_admin)):
     """中止正在進行的同步"""
     cancel_sync()
     return {"status": "cancelling"}

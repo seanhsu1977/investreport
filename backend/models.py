@@ -241,3 +241,31 @@ class FundamentalScreenCache(Base):
     data_date   = Column(String, nullable=False)   # YYYY-MM-DD 資料日期
     scanned     = Column(Integer, nullable=False, default=0)
     items_json  = Column(Text, nullable=False)     # JSON array of fundamental screen items
+
+
+class OptionsPcr(Base):
+    """選擇權 Put/Call Ratio 每日一筆（期交所 CSV）。"""
+    __tablename__ = "options_pcr"
+
+    date       = Column(String, primary_key=True)   # YYYY-MM-DD
+    put_volume = Column(Integer, nullable=False)
+    call_volume = Column(Integer, nullable=False)
+    pcr_volume = Column(Float, nullable=False)       # %
+    put_oi     = Column(Integer, nullable=False)
+    call_oi    = Column(Integer, nullable=False)
+    pcr_oi     = Column(Float, nullable=False)       # %
+
+
+class LargeTraderTx(Base):
+    """臺股期貨(TX)大額交易人未沖銷部位。口數為期交所折算後的大台口數(TX+MTX/4)。
+    trader_type：0=全部交易人，1=特定法人；settlement_month 999999=所有契約、666666=週契約合計。"""
+    __tablename__ = "large_trader_tx"
+
+    date             = Column(String, primary_key=True)   # YYYY-MM-DD
+    settlement_month = Column(String, primary_key=True)   # 202611 / 999999 / 666666
+    trader_type      = Column(Integer, primary_key=True)  # 0 / 1
+    top5_buy   = Column(Integer, nullable=False)
+    top5_sell  = Column(Integer, nullable=False)
+    top10_buy  = Column(Integer, nullable=False)
+    top10_sell = Column(Integer, nullable=False)
+    oi_market  = Column(Integer, nullable=False)

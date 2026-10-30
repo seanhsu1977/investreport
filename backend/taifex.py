@@ -239,6 +239,134 @@ def _fetch_csv(url: str, payload: dict) -> Optional[str]:
         return None
 
 
+_PCR_CSV_URL = "https://www.taifex.com.tw/cht/3/pcRatioDown"
+_LARGE_TRADER_CSV_URL = "https://www.taifex.com.tw/cht/3/largeTraderFutDown"
+
+
+def _csv_date(s: str) -> Optional[str]:
+    """'2025/01/10' → '2025-01-10'；格式不符回 None。"""
+    parts = s.strip().split("/")
+    if len(parts) != 3 or not all(p.isdigit() for p in parts):
+        return None
+    return f"{int(parts[0]):04d}-{int(parts[1]):02d}-{int(parts[2]):02d}"
+
+
+def _to_int(s: str) -> Optional[int]:
+    try:
+        return int(s.strip().replace(",", ""))
+    except ValueError:
+        return None
+
+
+def _to_float(s: str) -> Optional[float]:
+    try:
+        return float(s.strip().replace(",", ""))
+    except ValueError:
+        return None
+
+
+def fetch_pcr_range(start: date, end: date) -> list[dict]:
+    """選擇權 Put/Call Ratio 歷史（期交所 CSV）。每日一筆，日期為 YYYY-MM-DD。"""
+    text = _fetch_csv(_PCR_CSV_URL, {
+        "queryStartDate": start.strftime("%Y/%m/%d"),
+        "queryEndDate": end.strftime("%Y/%m/%d"),
+    })
+    if not text:
+        return []
+    rows = []
+    for line in text.splitlines()[1:]:
+        c = [x.strip() for x in line.split(",")]
+        if len(c) < 7:
+            continue
+        d = _csv_date(c[0])
+        vals = [_to_int(c[1]), _to_int(c[2]), _to_float(c[3]), _to_int(c[4]), _to_int(c[5]), _to_float(c[6])]
+        if not d or any(v is None for v in vals):
+            continue
+        rows.append({
+            "date": d,
+            "put_volume": vals[0], "call_volume": vals[1], "pcr_volume": vals[2],
+            "put_oi": vals[3], "call_oi": vals[4], "pcr_oi": vals[5],
+        })
+    return rows
+
+
+def fetch_large_traders_tx_range(start: date, end: date) -> list[dict]:
+    """大額交易人未沖銷部位（臺股期貨 TX）歷史（期交所 CSV）。
+    trader_type：0=全部交易人，1=特定法人；settlement_month 999999=所有契約、666666=週契約合計。
+    CSV 含所有商品、檔案很大，呼叫端應以約一個月為單位分段。
+    """
+    text = _fetch_csv(_LARGE_TRADER_CSV_URL, {
+        "queryStartDate": start.strftime("%Y/%m/%d"),
+        "queryEndDate": end.strftime("%Y/%m/%d"),
+    })
+    if not text:
+        return []
+    rows = []
+    for line in text.splitlines()[1:]:
+        c = [x.strip() for x in line.split(",")]
+        if len(c) < 10 or c[1] != "TX":
+            continue
+        d = _csv_date(c[0])
+        vals = [_to_int(x) for x in (c[4], c[5], c[6], c[7], c[8], c[9])]
+        if not d or not c[3] or any(v is None for v in vals):
+            continue
+        rows.append({
+            "date": d, "settlement_month": c[3], "trader_type": vals[0],
+            "top5_buy": vals[1], "top5_sell": vals[2],
+            "top10_buy": vals[3], "top10_sell": vals[4], "oi_market": vals[5],
+        })
+    return rows
+
+
+def _num(v) -> Optional[float]:
+    """期交所開放資料的空值有 '-'、'NULL'、''，一律轉 None。"""
+    try:
+        return float(str(v).replace(",", "").strip())
+    except ValueError:
+        return None
+
+
+def get_tx_curve() -> Optional[dict]:
+    """臺股期貨(TX)各契約月的最新一個交易日報價：日盤（一般）、夜盤（盤後）、結算價、量、未平倉，
+    以及近月/次月價差商品。資料來自開放 API，只有最新一天（無歷史）。"""
+    raw = _fetch(f"{_BASE}/DailyMarketReportFut", ttl=_TTL_TODAY)
+    if not raw:
+        return None
+    tx = [r for r in raw if r.get("Contract") == "TX"]
+    if not tx:
+        return None
+    d = max(r.get("Date", "") for r in tx)
+    iso = f"{d[:4]}-{d[4:6]}-{d[6:]}"
+
+    months: dict[str, dict] = {}
+    spread = None
+    for r in tx:
+        if r.get("Date") != d:
+            continue
+        m = (r.get("ContractMonth(Week)") or "").strip()
+        night = r.get("TradingSession") == "盤後"
+        if "/" in m:
+            if not night:
+                spread = {"pair": m, "last": _num(r.get("Last")), "volume": _num(r.get("Volume"))}
+            continue
+        if not (m.isdigit() and len(m) == 6):
+            continue
+        row = months.setdefault(m, {"month": m})
+        if night:
+            row["night_last"] = _num(r.get("Last"))
+        else:
+            row["day_last"] = _num(r.get("Last"))
+            row["day_change"] = _num(r.get("Change"))
+            row["settle"] = _num(r.get("SettlementPrice"))
+            row["volume"] = _num(r.get("Volume"))
+            row["oi"] = _num(r.get("OpenInterest"))
+    return {
+        "date": iso,
+        "months": [months[k] for k in sorted(months)],
+        "spread": spread,
+    }
+
+
 _CSV_INST_NAMES = {
     "臺股期貨": "TXF",
     "微型臺指期貨": "TMF",

@@ -12,6 +12,7 @@ import {
   Cell,
 } from "recharts";
 import { Link } from "react-router-dom";
+import OptionsChipsSection from "../components/OptionsChipsSection";
 import { chipsApi, stocksApi, type ChipSnapshot, type InstitutionPosition, type KlineResponse, type KlineTechnical, type TowerSignal } from "../api/client";
 import KlineChart from "../components/KlineChart";
 import KdjChart from "../components/KdjChart";
@@ -832,6 +833,9 @@ export default function ChipsPage() {
           <RetailDetailCard snap={latest} history={history} />
         </div>
       ) : null}
+
+      {/* 選擇權 Put/Call Ratio、大額交易人、近遠月價差 */}
+      <OptionsChipsSection taiex={latest?.taiex ?? null} />
     </div>
   );
 }

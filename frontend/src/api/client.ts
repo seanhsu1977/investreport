@@ -585,7 +585,50 @@ export const etfTrackerApi = {
 };
 
 
+export interface PcrRow {
+  date: string;
+  put_volume: number;
+  call_volume: number;
+  pcr_volume: number;
+  put_oi: number;
+  call_oi: number;
+  pcr_oi: number;
+}
+
+export interface LargeTraderRow {
+  date: string;
+  settlement_month: string;
+  trader_type: number; // 0=全部交易人 1=特定法人
+  top5_buy: number;
+  top5_sell: number;
+  top10_buy: number;
+  top10_sell: number;
+  oi_market: number;
+}
+
+export interface FuturesCurveMonth {
+  month: string;
+  day_last?: number | null;
+  day_change?: number | null;
+  night_last?: number | null;
+  settle?: number | null;
+  volume?: number | null;
+  oi?: number | null;
+}
+
+export interface FuturesCurve {
+  date: string;
+  months: FuturesCurveMonth[];
+  spread: { pair: string; last: number | null; volume: number | null } | null;
+}
+
 export const chipsApi = {
+  pcr: (days: number) =>
+    api.get<PcrRow[]>(`/chips/pcr?days=${days}`).then((r) => r.data),
+  largeTraders: (days: number, month = "all") =>
+    api.get<LargeTraderRow[]>(`/chips/large-traders?days=${days}&month=${month}`).then((r) => r.data),
+  futuresCurve: () =>
+    api.get<FuturesCurve>("/chips/futures-curve").then((r) => r.data),
   latest: () => api.get<ChipSnapshot>("/chips/latest").then((r) => r.data),
   history: (days: number) =>
     api.get<ChipSnapshot[]>(`/chips/history?days=${days}`).then((r) => r.data),

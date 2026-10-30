@@ -113,6 +113,14 @@ def _chips_job():
             logger.info("Chips snapshot saved for %s", iso)
         else:
             logger.info("No chips data for %s (likely non-trading day)", today)
+
+        # 選擇權 PCR 與大額交易人：每次往回補最近 7 天，期交所公布時間較晚或漏抓時隔天會自動補齊
+        try:
+            import chips_store
+            result = chips_store.sync_options_chips(db, today - timedelta(days=7), today)
+            logger.info("Options chips synced: %s", result)
+        except Exception as e:
+            logger.warning("Options chips sync failed: %s", e)
     finally:
         db.close()
 
